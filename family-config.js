@@ -14,6 +14,9 @@
 window.HA_FAMILY = {
   familyId: "burris",
   familyName: "Burris Family",
+  // no sitterName → the sitter tab is hidden for this family
+  windowText: "School day",   // first-boot schedule-window banner; Melanie can set real hours in-app
+
   firebase: {
     apiKey:"AIzaSyDzZTCmxPSe_9XQ-ZCnVIiZnCd_h0xDbCA",
     authDomain:"how-academy-burris.firebaseapp.com",
