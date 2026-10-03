@@ -2360,9 +2360,9 @@ let SITTER_NAME=window.HA_FAMILY?(window.HA_FAMILY.sitterName||""):"Maggie";
 // 🧩 PAGES — per-family top-tab switches, settings/pages/<tab> = true|false (2026-10-01, for the Dewalt
 // start). Howe: everything on. Any other family starts on Schedule + Mom's Day + Kids' Corner + Admin, and Mom
 // turns the rest on in Settings ▸ Pages as the family is ready. Kiosk links (?kiosk=…) ignore this.
-const PAGE_KEYS=["notebook","mastery","units","play","moms-plan","kids","purchases","workbooks","eic"];   // purchases / workbooks / eic = Mom HQ rows, not top tabs
-const PAGE_LABEL={notebook:"Notebook",mastery:"Mastery",units:"Units",play:"School Room","moms-plan":"Mom's Day",kids:"Kids' Corner",purchases:"Purchases & ESA",workbooks:"Workbooks",eic:"Editor in Chief"};
-const PAGE_DEFAULT=(function(){ const howe=!(window.HA_FAMILY&&window.HA_FAMILY.familyId&&window.HA_FAMILY.familyId!=="howe"); const d={}; PAGE_KEYS.forEach(k=>{ d[k]=howe||k==="moms-plan"||k==="kids"; }); return d; })();
+const PAGE_KEYS=["notebook","mastery","units","play","moms-plan","kids","purchases","workbooks","eic","helpers"];   // purchases / workbooks / eic = Mom HQ rows, not top tabs
+const PAGE_LABEL={notebook:"Notebook",mastery:"Mastery",units:"Units",play:"School Room","moms-plan":"Mom's Day",kids:"Kids' Corner",purchases:"Purchases & ESA",workbooks:"Workbooks",eic:"Editor in Chief",helpers:"Helpers"};
+const PAGE_DEFAULT=(function(){ const howe=!(window.HA_FAMILY&&window.HA_FAMILY.familyId&&window.HA_FAMILY.familyId!=="howe"); const d={}; PAGE_KEYS.forEach(k=>{ d[k]=k!=="helpers"&&(howe||k==="moms-plan"||k==="kids"); }); return d; })();   // 🙋 helpers starts off everywhere
 let PAGES=(function(){ try{ const v=JSON.parse(HA_LS.getItem("ha_pages")||"null"); if(v&&typeof v==="object") return Object.assign({},PAGE_DEFAULT,v); }catch(e){} return Object.assign({},PAGE_DEFAULT); })();
 function pageOn(k){ return PAGE_KEYS.includes(k)?PAGES[k]!==false:true; }
 function pagesApply(v){
@@ -3739,6 +3739,8 @@ function initFb() {
       else if(!currData||!currData.subjects){ currData=Object.assign(currData||{},{subjects:{},lessons:{},weekDays:{}}); dbg("curriculum empty — blank skeleton so the Subjects tab can add the first subject"); renderAll(); }   // (the done-marks listener may already have made a {done:{}} stub — keep it)
       schedCascade(); // curriculum may be the LAST loader to answer — re-arm the debounced sweep
     });
+    db.ref("config/helpers").on("value",s=>{ helpersOnValue(s.val()); });   // 🙋 helper profiles
+    try{ db.ref("helperDays").orderByKey().limitToLast(3).on("value",s=>{ helperDaysOnValue(s.val()); }); }catch(e){}   // 🙋 who is here today
     db.ref("worksheets").on("value",s=>{ wsOnValue(s.val()); });   // 📋 worksheets from Adrienne
     db.ref("messages").on("value",s=>{ msgOnValue(s.val()); });     // ✉ Mom's messages to Adrienne (text only — photos load on demand)
     db.ref("config/rules").on("value",s=>{
@@ -4233,10 +4235,11 @@ function dayPct(d){
 function renderKidFilter(){
   document.getElementById("kid-filter").innerHTML=
     ["all",...ROSTER,"mom"].map(k=>{
-      const isActive = k===kid || (k==="mom" && momModeActive);
+      const isActive = (k===kid&&!(k==="all"&&typeof helperViewActive==="function"&&helperViewActive())) || (k==="mom" && momModeActive);
       return '<button class="kid-btn'+(isActive?" active":"")+'" data-kid="'+k+'" onclick="selKid(\''+k+'\')">'+
         (k==="mom" && momModeActive ? "✓ Mom" : cap(k))+'</button>';
     }).join("")
+    + ((typeof helperChipsHTML==="function")?helperChipsHTML():"")   // 🙋 "👵 Grandma" while she's here
     // ⭐ Star balance rides beside the chips — only when ONE kid is picked (nothing on All/Mom).
     // Tapping it jumps straight to that kid's Stars (the Wins tab).
     + (ROSTER.indexOf(kid)>=0
@@ -4258,6 +4261,7 @@ function renderKidFilter(){
   }
 }
 function selKid(k){
+  try{ helperView=null; }catch(e){}   // 🙋 leave a helper's list
   if(k==="mom"){
     if(momModeActive){
       if(kid==="mom"){
@@ -6352,6 +6356,384 @@ function msgOnValue(v){
   if(key!==msgKey){ msgKey=key; try{ renderAll(); }catch(e){} }
 }
 // ── WORKSHEETS_END ──
+// ── HELPERS_START ── 🙋 helpers: Grandma, Dad, a sitter — people who can take some of Mom's school tasks ──
+// Her ask 2026-10-03 (Dewalt: Grandma comes Wed 9:30–12 and does Andrew's phonics + the spelling tests).
+// Slice 1 = the PROFILES only: config/helpers/<id> = {name, icon, pick, help:{kid:{subjectKey:true}},
+// days:{<day>:{start,end}}, createdAt}. Nothing here touches a schedule — the "I'm here / Left" button and the
+// scheduler read these later, as an overlay (a task is never rewritten, so a helper leaving = Mom's again).
+// Every write is ONE leaf under its own helper's node, never the whole config/helpers node.
+let helpersData={}, helpersOpen={};
+const HELPER_ICONS=["👵","👴","👨","👩","🧑","🙋"];
+function helpersOnValue(v){
+  helpersData=(v&&typeof v==="object")?v:{};
+  const ae=(typeof document!=="undefined")&&document.activeElement;
+  if(!(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))&&typeof renderAll==="function") renderAll();
+}
+function _hlpQ(s){ return String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;"); }
+function _hlpIdOk(id){ return typeof id==="string"&&/^[A-Za-z0-9_-]+$/.test(id); }
+// One leaf write (or remove when val===null), mirrored locally so the card updates at once (and in dry-run).
+function _hlpWrite(id,path,val){
+  if(!momHere()||!_hlpIdOk(id)) return false;
+  const parts=path.split("/");
+  let o=helpersData[id]=helpersData[id]||{};
+  for(let i=0;i<parts.length-1;i++){ if(!o[parts[i]]||typeof o[parts[i]]!=="object") o[parts[i]]={}; o=o[parts[i]]; }
+  if(val===null) delete o[parts[parts.length-1]]; else o[parts[parts.length-1]]=val;
+  if(db&&!_dryRun()){ const r=db.ref("config/helpers/"+id+"/"+path); if(val===null) r.remove(); else r.set(val); }
+  return true;
+}
+function helpersAdd(){
+  if(!momHere()) return;
+  const nm=prompt("Helper's name (Grandma, Dad, a sitter…) — you can change it later:","");
+  if(nm===null) return;
+  const name=String(nm).trim()||"Helper";
+  const id="h"+Date.now().toString(36);
+  _hlpWrite(id,"name",name); _hlpWrite(id,"icon","🙋"); _hlpWrite(id,"pick",false); _hlpWrite(id,"createdAt",Date.now());
+  helpersOpen[id]=true; rulesOpen.helpers=true;
+  renderAll();
+}
+function helpersSetName(id,v){ const n=String(v||"").trim(); if(!n) { renderAll(); return; } _hlpWrite(id,"name",n); renderAll(); }
+function helpersSetIcon(id,ic){ if(HELPER_ICONS.indexOf(ic)<0) return; _hlpWrite(id,"icon",ic); renderAll(); }
+function helpersTogglePick(id){ const h=helpersData[id]||{}; _hlpWrite(id,"pick",!h.pick); renderAll(); }
+function helpersToggleHelp(id,kid,sk){
+  const h=helpersData[id]||{}; const on=!!(h.help&&h.help[kid]&&h.help[kid][sk]);
+  _hlpWrite(id,"help/"+kid+"/"+sk,on?null:true); renderAll();
+}
+function helpersToggleDay(id,d){
+  if(DAYS.indexOf(d)<0) return;
+  const h=helpersData[id]||{}; const on=!!(h.days&&h.days[d]);
+  _hlpWrite(id,"days/"+d,on?null:{start:"9:00 AM",end:"12:00 PM"}); renderAll();
+}
+function helpersSetTime(id,d,which,v){
+  if(DAYS.indexOf(d)<0||(which!=="start"&&which!=="end")||!v) return;
+  _hlpWrite(id,"days/"+d+"/"+which,to12h(v)); renderAll();
+}
+function helpersDelete(id){
+  if(!momHere()||!_hlpIdOk(id)||!helpersData[id]) return;
+  if(!confirm("Remove "+(helpersData[id].name||"this helper")+"? Their profile and what they can help with go away.")) return;
+  delete helpersData[id]; delete helpersOpen[id];
+  if(db&&!_dryRun()) db.ref("config/helpers/"+id).remove();
+  renderAll();
+}
+function helpersToggleOpen(id){ helpersOpen[id]=!helpersOpen[id]; renderAll(); }
+function _hlpSummary(h){
+  let n=0; Object.keys(h.help||{}).forEach(k=>{ n+=Object.keys(h.help[k]||{}).length; });
+  const ds=DAYS.filter(d=>h.days&&h.days[d]).map(d=>DAY_LBL[d].slice(0,3)+" "+(h.days[d].start||"")+"–"+(h.days[d].end||""));
+  return (n?n+" subject"+(n===1?"":"s"):"no subjects yet")+(ds.length?" · "+ds.join(", "):"");
+}
+function helpersCardHTML(){
+  const o=id=>rulesOpen[id]?" open":"";
+  let h='<div class="rules-card'+o("helpers")+'">';
+  h+='<div class="rules-card-hdr" onclick="rulesToggleCard(\'helpers\')">';
+  h+='<div class="rules-card-title"><span>&#128587;</span> Helpers</div>';
+  h+='<div class="rules-card-arrow">&#9654;</div></div>';
+  h+='<div class="rules-card-body">';
+  h+='<div style="font-size:11.5px;color:var(--muted);padding:2px 0 8px;line-height:1.45">People who can take some of Mom\'s school tasks — Grandma, Dad, a sitter. Set who they are and what they can help with. <i>Coming next: an "I\'m here" button that hands them those tasks while they\'re here.</i></div>';
+  const subs=(typeof currData!=="undefined"&&currData&&currData.subjects)||{};
+  const ids=Object.keys(helpersData||{}).filter(_hlpIdOk).sort((a,b)=>((helpersData[a].createdAt||0)-(helpersData[b].createdAt||0)));
+  if(!ids.length) h+='<div style="font-size:12px;color:var(--muted);padding:4px 0 8px">No helpers yet.</div>';
+  ids.forEach(id=>{
+    const p=helpersData[id]||{}, open=!!helpersOpen[id];
+    h+='<div style="border:1px solid var(--border);border-radius:10px;margin:0 0 8px;background:#fff">';
+    h+='<div style="display:flex;align-items:center;gap:8px;padding:9px 11px;cursor:pointer" onclick="helpersToggleOpen(\''+id+'\')">';
+    h+='<span style="font-size:20px">'+esc(p.icon||"🙋")+'</span><div style="flex:1;min-width:0"><div style="font-weight:700;font-size:13.5px">'+esc(p.name||"Helper")+'</div>';
+    h+='<div style="font-size:11px;color:var(--muted)">'+esc(_hlpSummary(p))+'</div></div><span style="color:var(--muted);font-size:11px">'+(open?"&#9660;":"&#9654;")+'</span></div>';
+    if(open){
+      h+='<div style="padding:4px 11px 11px;border-top:1px solid var(--border)">';
+      h+='<div class="rules-row"><div class="rules-label">Name</div><input type="text" class="rules-time" style="width:150px;font-size:13px" value="'+esc(p.name||"")+'" autocomplete="off" data-lpignore="true" onchange="helpersSetName(\''+id+'\',this.value)"></div>';
+      h+='<div style="display:flex;gap:6px;flex-wrap:wrap;padding:4px 0 8px">';
+      HELPER_ICONS.forEach(ic=>{ h+='<div class="pnw-chip'+((p.icon||"🙋")===ic?" on":"")+'" style="padding:4px 10px;font-size:16px" onclick="helpersSetIcon(\''+id+'\',\''+ic+'\')">'+ic+'</div>'; });
+      h+='</div>';
+      h+='<div class="rules-row"><div class="rules-label">Let them pick which tasks</div><div class="rules-toggle'+(p.pick?" on":"")+'" onclick="helpersTogglePick(\''+id+'\')"></div></div>';
+      h+='<div style="font-size:11px;color:var(--muted);padding:0 0 8px">'+(p.pick?'When they tap "I\'m here", they tick which of their tasks they\'ll take.':'When they tap "I\'m here", they get every task they\'re approved for.')+'</div>';
+      h+='<div class="rules-row"><div class="rules-label">Checks in from &#128104; Dad&rsquo;s Day</div><div class="rules-toggle'+(p.dadPage?" on":"")+'" onclick="helpersToggleDadPage(\''+id+'\')"></div></div>';
+      if(p.dadPage){
+        h+='<div class="rules-row"><div class="rules-label">Mom approves when he checks in</div><div class="rules-toggle'+(!p.selfIn?" on":"")+'" onclick="helpersToggleSelfIn(\''+id+'\')"></div></div>';
+        h+='<div style="font-size:11px;color:var(--muted);padding:0 0 8px">'+(!p.selfIn?'His "I\'m here" tap asks you first — you tap Approve on the schedule.':'His "I\'m here" tap switches him on right away.')+(helperDadId()!==id?' <b>Only the first helper with this on gets the Dad\'s Day button.</b>':'')+'</div>';
+      }
+      h+='<div class="rules-section-lbl" style="margin-top:4px">Can help with</div>';
+      const kids=[...ROSTER].filter(k=>Object.keys(subs[k]||{}).length);
+      if(!kids.length) h+='<div style="font-size:11px;color:var(--muted);padding:4px 0">No subjects yet — add subjects first.</div>';
+      kids.forEach(k=>{
+        h+='<div style="font-size:12px;font-weight:700;padding:6px 0 2px">'+esc(cap(k))+'</div><div style="display:flex;gap:6px;flex-wrap:wrap;padding:2px 0 4px">';
+        Object.keys(subs[k]).sort((a,b)=>String((subs[k][a]||{}).display||(subs[k][a]||{}).name||a).localeCompare(String((subs[k][b]||{}).display||(subs[k][b]||{}).name||b))).forEach(sk=>{
+          const s=subs[k][sk]||{}, on=!!(p.help&&p.help[k]&&p.help[k][sk]);
+          h+='<div class="pnw-chip'+(on?" on":"")+'" style="padding:5px 11px" onclick="helpersToggleHelp(\''+id+'\',\''+_hlpQ(k)+'\',\''+_hlpQ(sk)+'\')">'+esc(s.display||s.name||sk)+((s.mom||"none")==="required"?' <span title="Mom-required">&#128105;</span>':'')+'</div>';
+        });
+        h+='</div>';
+      });
+      h+='<div class="rules-section-lbl" style="margin-top:10px">Regular days <span style="font-weight:500;color:var(--muted)">(optional — leave off for drop-in help like Dad)</span></div>';
+      h+='<div style="display:flex;gap:6px;flex-wrap:wrap;padding:6px 0">';
+      DAYS.forEach(d=>{ h+='<div class="pnw-chip'+(p.days&&p.days[d]?" on":"")+'" style="padding:5px 11px" onclick="helpersToggleDay(\''+id+'\',\''+d+'\')">'+DAY_LBL[d].slice(0,3)+'</div>'; });
+      h+='</div>';
+      DAYS.filter(d=>p.days&&p.days[d]).forEach(d=>{
+        const w=p.days[d];
+        h+='<div class="rules-row"><div class="rules-label">'+DAY_LBL[d]+'</div><div style="display:flex;gap:6px;align-items:center">'+
+          '<input type="time" class="rules-time" value="'+ampmTo24(w.start||"")+'" onchange="helpersSetTime(\''+id+'\',\''+d+'\',\'start\',this.value)">'+
+          '<span style="color:var(--muted);font-size:12px">to</span>'+
+          '<input type="time" class="rules-time" value="'+ampmTo24(w.end||"")+'" onchange="helpersSetTime(\''+id+'\',\''+d+'\',\'end\',this.value)"></div></div>';
+      });
+      h+='<div style="padding-top:10px"><button onclick="helpersDelete(\''+id+'\')" style="background:none;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Remove helper</button></div>';
+      h+='</div>';
+    }
+    h+='</div>';
+  });
+  h+='<button onclick="helpersAdd()" style="background:#111827;color:#fff;border:none;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">+ Add helper</button>';
+  h+='</div></div>';
+  return h;
+}
+// ── 🙋 Slice 2 (2026-10-03): "Is she here?" / "She left". A helper's session lives in its OWN node,
+// helperDays/<yyyy-mm-dd>/<helperId> = {arrived, left, took:{taskKey:true}}. While she is here, helperHolds(t)
+// says a card is hers: it leaves Mom's queue (the loop, the Mom-off sink, "send to Mom") and shows
+// "with Grandma". Nothing about the task is ever rewritten — tap "She left" (or the date turning over) and
+// helperHolds answers null again, so every unfinished card is Mom's exactly as before. A check-off made while
+// she has the card counts exactly like Mom's and its history entry carries helper:"Grandma".
+let helperDaysData={}, helpersPopId=null;
+function _hlpTodayISO(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function _hlpKey(id){ return String(id).replace(/[.$#\[\]\/%]/g,c=>"%"+c.charCodeAt(0).toString(16)); }   // Firebase-safe task key
+function helperDaysOnValue(v){
+  helperDaysData=(v&&typeof v==="object")?v:{};
+  const ae=(typeof document!=="undefined")&&document.activeElement;
+  if(!(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))&&typeof renderAll==="function") renderAll();
+  if(helpersPopId) helpersPopRender();
+}
+function helperSessionsToday(){ return (helperDaysData&&helperDaysData[_hlpTodayISO()])||{}; }
+function helperIsHere(id){ const s=helperSessionsToday()[id]; return !!(s&&s.arrived&&!s.left&&helpersData[id]); }
+function _hlpApproved(p,t){ return !!(p&&p.help&&t&&p.help[t.who]&&p.help[t.who][t.subjectKey]); }
+function _hlpIsToday(t){ try{ return ((typeof _mlDayOf==="function")?_mlDayOf(t):t.day)===_todayDay; }catch(e){ return false; } }
+// The one question everything asks: is this card a helper's right now? → helper id, or null.
+function helperHolds(t){
+  try{
+    if(!t||!t.who||!t.subjectKey||!pageOn("helpers")) return null;
+    const ss=helperSessionsToday(); const ids=Object.keys(ss); if(!ids.length) return null;
+    if(String(t.id||"").endsWith("_c")||!_hlpIsToday(t)) return null;
+    for(let i=0;i<ids.length;i++){
+      const id=ids[i]; if(!helperIsHere(id)) continue;
+      const p=helpersData[id];
+      if(!_hlpApproved(p,t)) continue;
+      if(p.pick&&!(ss[id].took&&ss[id].took[_hlpKey(t.id)])) continue;
+      return id;
+    }
+  }catch(e){}
+  return null;
+}
+function helperName(id){ return ((helpersData&&helpersData[id])||{}).name||"Helper"; }
+function helperIcon(id){ return ((helpersData&&helpersData[id])||{}).icon||"🙋"; }
+// Today's cards this helper is approved for (done or not), in time order.
+function helperTasksToday(id){
+  const p=helpersData[id]; if(!p) return [];
+  let all=[]; try{ all=(typeof getActiveTasks==="function"?getActiveTasks():weekData.tasks)||[]; }catch(e){ all=[]; }
+  return all.filter(t=>t&&!String(t.id||"").endsWith("_c")&&!/lunch/i.test(t.title||"")&&_hlpIsToday(t)&&_hlpApproved(p,t))
+    .sort((a,b)=>(toMin(a.time)-toMin(b.time))||String(a.who).localeCompare(String(b.who)));
+}
+// Session writes: one leaf under helperDays/<today>/<id>, mirrored locally (and so in dry-run too).
+function _hlpDayWrite(id,path,val){
+  if(!_hlpIdOk(id)||!helpersData[id]) return false;
+  const iso=_hlpTodayISO();
+  const day=helperDaysData[iso]=helperDaysData[iso]||{};
+  let o=day[id]=day[id]||{}; const parts=path.split("/");
+  for(let i=0;i<parts.length-1;i++){ if(!o[parts[i]]||typeof o[parts[i]]!=="object") o[parts[i]]={}; o=o[parts[i]]; }
+  if(val===null) delete o[parts[parts.length-1]]; else o[parts[parts.length-1]]=val;
+  if(db&&!_dryRun()){ const r=db.ref("helperDays/"+iso+"/"+id+"/"+path); if(val===null) r.remove(); else r.set(val); }
+  return true;
+}
+// 🔒 Her rule 10/3: checking a helper in or out (and Dad's ticks) is behind Mom mode / the Mom PIN — the strip
+// itself shows to everyone so the kids can see who is here.
+function helperArrive(id){
+  if(!momHere()||!_hlpIdOk(id)||!helpersData[id]) return;
+  _hlpDayWrite(id,"arrived",Date.now()); _hlpDayWrite(id,"left",null);
+  helpersPopId=id; renderAll(); helpersPopRender();
+}
+function helperLeave(id){
+  if(!_hlpCanAct(id)||!helperIsHere(id)) return;
+  const nm=helperName(id);
+  if(!confirm(nm+" left? Anything "+nm+" didn't finish goes back to Mom.")) return;
+  _hlpDayWrite(id,"left",Date.now());
+  helpersPopId=null; helpersPopRender(); renderAll();
+}
+function helperTake(id,taskId){
+  if(!_hlpCanAct(id)||!helperIsHere(id)) return;
+  const k=_hlpKey(taskId), s=helperSessionsToday()[id]||{};
+  _hlpDayWrite(id,"took/"+k,(s.took&&s.took[k])?null:true);
+  renderAll(); helpersPopRender();
+}
+function helpersPopOpen(id){
+  if(!_hlpCanAct(id)){ if(typeof kitPinGate==="function") kitPinGate(function(){ helpersPopOpen(id); },"Checking a helper in or out is for Mom."); return; }
+  helpersPopId=id; helpersPopRender();
+}
+function helpersPopClose(){ helpersPopId=null; helpersPopRender(); }
+function helpersPopRender(){
+  if(typeof document==="undefined") return;
+  let el=document.getElementById("hlp-pop");
+  if(!helpersPopId||!helpersData[helpersPopId]){ if(el) el.remove(); return; }
+  if(!el){ el=document.createElement("div"); el.id="hlp-pop"; document.body.appendChild(el); }
+  el.innerHTML=helpersPopHTML(helpersPopId);
+}
+function helpersPopHTML(id){
+  const p=helpersData[id]||{}, here=helperIsHere(id), s=helperSessionsToday()[id]||{};
+  const ts=helperTasksToday(id), nm=esc(helperName(id));
+  let h='<div onclick="if(event.target===this)helpersPopClose()" style="position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9000;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto">';
+  h+='<div style="background:#fff;border-radius:16px;max-width:460px;width:100%;padding:16px 16px 14px;box-shadow:0 20px 50px rgba(0,0,0,.25);font-family:\'DM Sans\',sans-serif">';
+  h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px"><span style="font-size:28px">'+esc(helperIcon(id))+'</span><div style="flex:1"><div style="font-size:17px;font-weight:800">'+nm+(here?' is here':'')+'</div>';
+  h+='<div style="font-size:12px;color:var(--muted)">'+(here?(p.pick?'Tap the ones '+nm+' will take — the rest stay with Mom.':'These are '+nm+'\'s today. Check them off as you go.'):'Not here right now.')+'</div></div>';
+  h+='<button onclick="helpersPopClose()" style="border:none;background:none;font-size:22px;cursor:pointer;color:#64748b">&times;</button></div>';
+  if(!ts.length) h+='<div style="padding:14px 4px;font-size:13px;color:var(--muted)">Nothing on today\'s schedule that '+nm+' helps with.</div>';
+  ts.forEach(t=>{
+    const done=!!(typeof checked!=="undefined"&&checked&&checked[t.id]);
+    const took=!p.pick||!!(s.took&&s.took[_hlpKey(t.id)]);
+    const mine=here&&took;
+    const col=(typeof KID_COLOR!=="undefined"&&KID_COLOR[t.who])||"#64748b";
+    h+='<div style="display:flex;align-items:center;gap:10px;padding:9px 6px;border-top:1px solid var(--border)">';
+    if(here&&p.pick&&!done) h+='<input type="checkbox" '+(took?'checked ':'')+'onchange="helperTake(\''+id+'\',\''+_hlpQ(t.id)+'\')" style="width:20px;height:20px;accent-color:#16a34a;flex-shrink:0">';
+    else h+='<span style="width:20px;text-align:center;flex-shrink:0;font-size:15px">'+(done?'&#9989;':(mine?'&#9675;':'&middot;'))+'</span>';
+    h+='<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700'+(done?';text-decoration:line-through;color:#94a3b8':'')+'">'+esc(t.title)+'</div>';
+    h+='<div style="font-size:11px;color:var(--muted)"><span style="color:'+col+';font-weight:800">'+esc(cap(t.who))+'</span>'+(done?' · done':(here&&!took?' · stays with Mom':''))+'</div></div></div>';
+  });
+  h+='<div style="display:flex;gap:8px;margin-top:12px">';
+  if(here) h+='<button onclick="helperLeave(\''+id+'\')" style="flex:1;border:1.5px solid #fca5a5;background:#fff;color:#b91c1c;border-radius:10px;padding:9px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">'+nm+' left</button>';
+  else h+='<button onclick="'+((!momHere()&&id===helperDadId())?'helperDadRequest()':'helperArrive(\''+id+'\')')+'" style="flex:1;border:none;background:#16a34a;color:#fff;border-radius:10px;padding:9px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">'+nm+' is here</button>';
+  h+='<button onclick="helpersPopClose()" style="flex:1;border:none;background:#111827;color:#fff;border-radius:10px;padding:9px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">Done</button></div>';
+  h+='</div></div>';
+  return h;
+}
+// The strip on today's schedule: one chip per helper — "Grandma here?" or "Grandma ✓ here · 3".
+function helpersStripHTML(){
+  try{
+    if(!pageOn("helpers")) return "";
+    const ids=Object.keys(helpersData||{}).filter(_hlpIdOk).sort((a,b)=>((helpersData[a].createdAt||0)-(helpersData[b].createdAt||0)));
+    if(!ids.length) return "";
+    let h='<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 8px;padding:7px 10px;background:#f0fdf4;border-left:4px solid #16a34a;border-radius:0 10px 10px 0">';
+    h+='<span style="font-size:11.5px;font-weight:800;color:#166534">&#128587; Helpers</span>';
+    ids.forEach(id=>{
+      const here=helperIsHere(id), nm=esc(helperName(id)), ic=esc(helperIcon(id));
+      if(here){
+        const n=helperTasksToday(id).filter(t=>helperHolds(t)===id&&!(checked&&checked[t.id])).length;
+        h+='<button onclick="helpersPopOpen(\''+id+'\')" style="border:none;background:#16a34a;color:#fff;border-radius:20px;padding:4px 11px;font-size:11.5px;font-weight:800;cursor:pointer;font-family:inherit">'+ic+' '+nm+' &#10003; here'+(n?' · '+n+' to do':'')+'</button>';
+      }else if(typeof helperRequested==="function"&&helperRequested(id)){
+        h+='<span style="display:inline-flex;align-items:center;gap:5px;background:#fef9c3;border:1.5px solid #fde047;border-radius:20px;padding:2px 4px 2px 10px;font-size:11.5px;font-weight:800;color:#854d0e">'+ic+' '+nm+' wants to help'
+          +'<button onclick="helperApprove(\''+id+'\')" style="border:none;background:#16a34a;color:#fff;border-radius:14px;padding:2px 9px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit">Approve</button>'
+          +'<button onclick="helperDecline(\''+id+'\')" style="border:none;background:none;color:#854d0e;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Not now</button></span>';
+      }else{
+        h+='<button onclick="helpersPopOpen(\''+id+'\')" style="border:1.5px dashed #86efac;background:#fff;color:#166534;border-radius:20px;padding:3px 11px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit">'+ic+' '+nm+' here?</button>';
+      }
+    });
+    h+='</div>';
+    return h;
+  }catch(e){ return ""; }
+}
+// ── 🙋 Her list (2026-10-03, her ask: "so she can see what she's doing and check it off"): while a helper is
+// checked in, a chip with her name joins All · kids · Mom at the top. It is the All schedule filtered to the cards
+// helperHolds() gives her — the same cards, so a check-off from her tablet or a kid's shows on both at once.
+// No PIN to look or to check off (kids check off without one too); checking her in/out stays behind Mom mode.
+var helperView=null;   // var, not let: renderKidFilter can run before this line on boot
+function helperViewActive(){
+  try{ if(helperView&&!(pageOn("helpers")&&helperIsHere(helperView))) helperView=null; }catch(e){ helperView=null; }
+  return !!helperView;
+}
+function selHelper(id){
+  if(!helperIsHere(id)) return;
+  helperView=id; kid="all";
+  try{ day=_todayDay; }catch(e){}
+  try{ schedShowAdmin=false; schedShowHistory=false; schedShowPace=false; schedShowBoard=false; schedShowPeek=false; }catch(e){}
+  if(typeof tab!=="undefined"&&tab!=="schedule"&&typeof showTab==="function") showTab("schedule"); else renderAll();
+  try{ window.scrollTo({top:0,behavior:"smooth"}); }catch(e){}
+}
+// Chips for the helpers who are here right now (none when nobody is).
+function helperChipsHTML(){
+  try{
+    if(!pageOn("helpers")) return "";
+    helperViewActive();
+    return Object.keys(helpersData||{}).filter(_hlpIdOk).filter(helperIsHere)
+      .sort((a,b)=>((helpersData[a].createdAt||0)-(helpersData[b].createdAt||0)))
+      .map(id=>'<button class="kid-btn'+(helperView===id?" active":"")+'" data-helper="'+id+'"'+(helperView===id?' style="background:#16a34a;color:#fff;border-color:#16a34a"':' style="border-color:#86efac;color:#166534"')+' onclick="selHelper(\''+id+'\')">'+esc(helperIcon(id))+' '+esc(helperName(id))+'</button>').join("");
+  }catch(e){ return ""; }
+}
+// The header on her list.
+function helperViewHeadHTML(day){
+  try{
+    if(!helperViewActive()||day!==_todayDay) return "";
+    const id=helperView, ts=helperTasksToday(id).filter(t=>helperHolds(t)===id);
+    const left=ts.filter(t=>!(checked&&checked[t.id])).length;
+    return '<div style="margin:0 0 8px;padding:10px 12px;background:#f0fdf4;border-left:4px solid #16a34a;border-radius:0 10px 10px 0">'
+      +'<div style="font-size:14px;font-weight:800;color:#166534">'+esc(helperIcon(id))+' '+esc(helperName(id))+'&rsquo;s list</div>'
+      +'<div style="font-size:11.5px;color:#15803d">'+(ts.length?(left?left+' to do · tap a card to check it off. When a kid checks one off, it shows here too.':'All done &mdash; thank you!'):'Nothing for '+esc(helperName(id))+' today.')+'</div></div>';
+  }catch(e){ return ""; }
+}
+// ── 👨 Dad checks himself in (her ask 2026-10-03): one helper profile can be marked "checks in from 👨 Dad's Day".
+// He taps "I'm here — ready to help with school" on his page; by default that is a REQUEST (helperDays/<today>/<id>/
+// requested) and Mom's Approve turns him on — her setting per profile can let him switch himself on instead. Only
+// the Dad profile gets this (nobody else has their own page yet). He can pick his cards and say "I'm done helping"
+// himself; checking anyone else in or out stays behind Mom mode.
+function helperDadId(){
+  try{ return Object.keys(helpersData||{}).filter(_hlpIdOk).filter(id=>helpersData[id]&&helpersData[id].dadPage)
+    .sort((a,b)=>((helpersData[a].createdAt||0)-(helpersData[b].createdAt||0)))[0]||null; }catch(e){ return null; }
+}
+function helperDadCanAct(){ try{ return (typeof dadUnlocked!=="undefined"&&dadUnlocked===true)||(typeof _kioskD==="function"&&!!_kioskD()); }catch(e){ return false; } }
+// Who may act for this helper: Mom always; Dad for his own profile from his page.
+function _hlpCanAct(id){ return momHere()||(!!id&&id===helperDadId()&&helperDadCanAct()); }
+function helperRequested(id){ const s=helperSessionsToday()[id]; return !!(s&&s.requested&&!helperIsHere(id)); }
+function helpersToggleDadPage(id){ const h=helpersData[id]||{}; _hlpWrite(id,"dadPage",!h.dadPage); renderAll(); }
+function helpersToggleSelfIn(id){ const h=helpersData[id]||{}; _hlpWrite(id,"selfIn",!h.selfIn); renderAll(); }
+function helperDadRequest(){
+  const id=helperDadId(); if(!id||!helperDadCanAct()||helperIsHere(id)) return;
+  if(helpersData[id].selfIn){ _hlpDayWrite(id,"arrived",Date.now()); _hlpDayWrite(id,"left",null); _hlpDayWrite(id,"requested",null); }
+  else _hlpDayWrite(id,"requested",Date.now());
+  renderAll();
+}
+function helperDadCancel(){ const id=helperDadId(); if(!id||!helperDadCanAct()) return; _hlpDayWrite(id,"requested",null); renderAll(); }
+function helperApprove(id){
+  if(!momHere()){ if(typeof kitPinGate==="function") kitPinGate(function(){ helperApprove(id); },"Saying yes to a helper is for Mom."); return; }
+  if(!helperRequested(id)) return;
+  _hlpDayWrite(id,"arrived",Date.now()); _hlpDayWrite(id,"left",null); _hlpDayWrite(id,"requested",null);
+  renderAll();
+}
+function helperDecline(id){
+  if(!momHere()){ if(typeof kitPinGate==="function") kitPinGate(function(){ helperDecline(id); },"Saying no to a helper is for Mom."); return; }
+  _hlpDayWrite(id,"requested",null); renderAll();
+}
+// The card on 👨 Dad's Day.
+function helperDadCardHTML(){
+  try{
+    if(!pageOn("helpers")) return "";
+    const id=helperDadId(); if(!id) return "";
+    const here=helperIsHere(id), asked=helperRequested(id), p=helpersData[id]||{};
+    const box=(inner)=>'<div style="margin:10px 12px 0;background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:11px 13px">'+inner+'</div>';
+    const btn=(on,label,bg,fg,bd)=>'<button onclick="'+on+'" style="border:'+(bd?'1.5px solid '+bd:'none')+';background:'+bg+';color:'+fg+';border-radius:10px;padding:8px 13px;font-size:13px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">'+label+'</button>';
+    if(here){
+      const mine=helperTasksToday(id).filter(t=>helperHolds(t)===id), left=mine.filter(t=>!(checked&&checked[t.id])).length;
+      return box('<div style="font-size:14px;font-weight:800;color:#166534">'+esc(helperIcon(id))+' You\'re helping with school</div>'
+        +'<div style="font-size:12px;color:#15803d;margin:2px 0 9px">'+(mine.length?(left?left+' to do':'All done &mdash; thank you!'):(p.pick?'Pick the cards you\'ll take.':'Nothing on today\'s list for you.'))+'</div>'
+        +'<div style="display:flex;gap:7px;flex-wrap:wrap">'
+        +btn("selHelper('"+id+"')","My list","#16a34a","#fff")
+        +(p.pick?btn("helpersPopOpen('"+id+"')","Pick my cards","#fff","#166534","#86efac"):'')
+        +btn("helperLeave('"+id+"')","I'm done helping","#fff","#b91c1c","#fca5a5")+'</div>');
+    }
+    if(asked) return box('<div style="font-size:14px;font-weight:800;color:#166534">&#9203; Waiting for Mom to say yes</div>'
+      +'<div style="font-size:12px;color:#15803d;margin:2px 0 9px">She\'ll see "'+esc(helperName(id))+' wants to help" on the schedule.</div>'
+      +btn("helperDadCancel()","Cancel","#fff","#64748b","#cbd5e1"));
+    return box('<div style="font-size:14px;font-weight:800;color:#166534">&#127979; Help with school</div>'
+      +'<div style="font-size:12px;color:#15803d;margin:2px 0 9px">'+(p.selfIn?'Tap when you\'re ready — your cards come off Mom\'s list.':'Tap when you\'re ready — Mom says yes, then your cards come off her list.')+'</div>'
+      +btn("helperDadRequest()","I'm here &mdash; ready to help with school","#16a34a","#fff"));
+  }catch(e){ return ""; }
+}
+// ── 🙋 Slice 3 (2026-10-03): the week build plans around a REGULAR helper. A helper with regular hours on this
+// weekday (and "hand them everything", not pick) gets the Mom-required cards she's approved for laid inside her
+// window on her own clock (packDay item.helper). On the day she's checked in they stay hers (helperHolds); if she
+// doesn't come, the living-day lay treats them as Mom's again — nothing to undo.
+function helperPlanWin(dayName,kid,key){
+  try{
+    if(!pageOn("helpers")||!dayName||!kid||!key) return null;
+    const ids=Object.keys(helpersData||{}).filter(_hlpIdOk).sort((a,b)=>((helpersData[a].createdAt||0)-(helpersData[b].createdAt||0)));
+    for(let i=0;i<ids.length;i++){
+      const p=helpersData[ids[i]]; if(!p||p.pick) continue;
+      const w=p.days&&p.days[dayName]; if(!w||!w.start||!w.end) continue;
+      if(!(p.help&&p.help[kid]&&p.help[kid][key])) continue;
+      const s=toMin(w.start), e=toMin(w.end); if(!(e>s)) continue;
+      return {id:ids[i],s:s,e:e};
+    }
+  }catch(e){}
+  return null;
+}
+// ── HELPERS_END ──
 function renderMomHQ(el,ah){
   if(!el){el=document.getElementById("content");if(!el)return;}
   let h=(ah||'')+'<div class="rules-wrap">';
@@ -7002,6 +7384,7 @@ function renderSchedule(el){
   let allDay=activeTasks.filter(t=>effectiveDay(t)===day);
   if(kid==="mom") allDay=allDay.filter(t=>t.mom==="required"||t.mom==="maybe");
   else if(kid!=="all") allDay=allDay.filter(t=>t.who===kid);
+  else if(typeof helperViewActive==="function"&&helperViewActive()) allDay=allDay.filter(t=>helperHolds(t)===helperView);   // 🙋 her list
 
   // Within-week rolled-forward work (unfinished, effectiveDay===today) shows INLINE in the
   // day's list like normal work — no separate box. Only end-of-week overflow (over the
@@ -7044,6 +7427,8 @@ function renderSchedule(el){
     '<div class="day-prog-bar"><div class="day-prog-fill" style="width:'+pct+'%"></div></div></div>';
   // 👩 the Mom loop — who has her right now. Mom-gated, today only, reports nothing on
   // another day's view where "ready" and "paused" have no meaning.
+  if(day===_todayDay){ try{ h+=helpersStripHTML(); }catch(e){} }   // 🙋 "Grandma here?"
+  try{ h+=helperViewHeadHTML(day); }catch(e){}   // 🙋 "Grandma's list"
   if(day===_todayDay){ try{ h+=mlStripHTML(); }catch(e){} }
   // Stage 2: the kid's own "Mom's ready for you" banner — their page only, today only.
   if(day===_todayDay&&kid!=="all"&&kid!=="mom"){ try{ h+=mlBannerHTML(kid); }catch(e){} }
@@ -7560,6 +7945,7 @@ function finalizeDone(id, doneTs, score){
     if(origDateStr){const yr=new Date().getFullYear();const od=new Date(origDateStr+", "+yr);const td=new Date();od.setHours(0,0,0,0);td.setHours(0,0,0,0);daysLate=Math.round((td-od)/864e5);}
     const entry={id:id,title:t.title,who:t.who,day:t.day,originalDay:origDay,checkedOnDay:effectiveDay(t),daysLate:daysLate,ts:doneTs,week:WK};
     if(score) entry.score=score;
+    try{ const _hp=(typeof helperHolds==="function")?helperHolds(t):null; if(_hp) entry.helper=helperName(_hp); }catch(e){}   // 🙋 "done with Grandma"
     if(t.lid){ entry.lid=t.lid; entry.pid=t.who+"__"+t.subjectKey; }   // frozen record is lid-resolvable without title parsing
     hist[id]=entry; histState[id]=entry; sv(WK+"_history",hist); if(db) db.ref(WK+"/history/"+id).set(entry);
     try{ lidDoneWrite(t,doneTs,id); }catch(e){ dbg("lid done write skip: "+e); }
@@ -8331,7 +8717,13 @@ function taskCard(t, fromDay, readOnly, doneId){
   const bcls=t.mom==="required"?"req":t.mom==="maybe"?"maybe":"";
   const klbl=cap(t.who);
   let mb="";
-  if(kid==="mom"){
+  const _hlpId=(typeof helperHolds==="function")?helperHolds(t):null;   // 🙋
+  const _hlpDone=done&&histState&&histState[srcId]&&histState[srcId].helper;
+  if(_hlpId&&!done){
+    mb='<span class="mom-badge" style="background:#dcfce7;color:#166534">'+esc(helperIcon(_hlpId))+' with '+esc(helperName(_hlpId))+(kid==="mom"?" — "+klbl:"")+'</span>';
+  } else if(_hlpDone){
+    mb='<span class="mom-badge" style="background:#f0fdf4;color:#166534">done with '+esc(histState[srcId].helper)+'</span>';
+  } else if(kid==="mom"){
     const lbl=t.mom==="required"?"Mom Required — "+klbl:"May Need Mom — "+klbl;
     mb='<span class="mom-badge '+(t.mom==="required"?"req-badge":"maybe-badge")+'">'+lbl+'</span>';
   } else if(t.mom==="required"){
@@ -8883,7 +9275,7 @@ function tapTask(id){
     document.getElementById("dlg").style.display="flex"; return;
   }
   // Not done, not claimed — when this subject needs Mom's check and Mom isn't here, the tap becomes a claim
-  const verify=needsVerify(t)&&!momHere();
+  const verify=needsVerify(t)&&!momHere()&&!(typeof helperHolds==="function"&&helperHolds(t));   // 🙋 the helper checks it
   pendingClaimMode=verify;
   const _vref=taskLessonRef(t);
   document.getElementById("dlg-detail").textContent=verify?(t.detail+"  —  Leave your work open"+(_vref?" to "+_vref:"")+" for Mom to check; it counts once she approves."):t.detail;
@@ -9186,6 +9578,7 @@ function renderDadsDay(el){
     if(_dp.n) h+='<div style="margin:10px 12px 0;background:#fff;border-radius:12px;padding:10px 12px 4px;box-shadow:0 4px 20px rgba(43,122,120,0.13)">'
       +'<div style="font-size:11px;font-weight:800;color:#ea580c;letter-spacing:.04em;margin-bottom:6px">🔴 KITCHEN NOW</div>'+_dp.html+'</div>';
   }catch(e){}
+  try{ h+=helperDadCardHTML(); }catch(e){}   // 🙋 "I'm here — ready to help with school"
   // ── his checklist — the one card he owns outright ──
   h+='<div style="margin:10px 12px;background:#fff;border-radius:12px;box-shadow:0 4px 20px rgba(43,122,120,0.13);overflow:hidden">'
     +'<div style="display:flex;align-items:center;gap:8px;padding:11px 14px;background:#2C5F8A;color:#fff;font-weight:800;font-size:13px"><span>✅</span> My checklist'
@@ -10937,14 +11330,14 @@ function kitCloseRecipe(){ kitView=null; const el=document.getElementById('conte
 function kitMealsLSSave(){ try{ const o={}; Object.keys(kitMeals||{}).forEach(k=>{ const m=kitMeals[k]; if(m&&m.photo){ const c=Object.assign({},m); delete c.photo; o[k]=c; } else o[k]=m; }); HA_LS.setItem('ha_kit_meals',JSON.stringify(o)); }catch(e){} }
 // 🔒 Recipe changes need the Mom PIN (her ask 2026-10-02: kids shouldn't add recipes yet). Mom's Day itself stays
 //    open — kids still see the plan and vote. Once the PIN is in, it holds for the session (same as Blockout).
-function kitPinGate(then){
+function kitPinGate(then,why){
   if(typeof momHere==="function"&&momHere()){ then(); return; }
   window._kitPinThen=then;
   let w=document.getElementById("kit-pin-wrap"); if(!w){ w=document.createElement("div"); w.id="kit-pin-wrap"; document.body.appendChild(w); }
   w.innerHTML='<div onclick="if(event.target===this)kitPinClose()" style="position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;padding:20px">'
     +'<div style="background:#fff;border-radius:16px;padding:22px 20px;width:100%;max-width:300px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35)">'
     +'<div style="font-size:34px">🔒</div><div style="font-weight:800;font-size:15px;margin:4px 0 2px">Mom PIN</div>'
-    +'<div style="font-size:12px;color:#64748b;margin-bottom:12px">Adding, changing or importing recipes is for Mom.</div>'
+    +'<div style="font-size:12px;color:#64748b;margin-bottom:12px">'+(why?esc(why):'Adding, changing or importing recipes is for Mom.')+'</div>'
     +'<input id="kit-pin-input" type="password" inputmode="numeric" maxlength="4" placeholder="PIN" autocomplete="off" oninput="kitPinCheck(this.value)" style="width:120px;text-align:center;padding:10px;border:1.5px solid #cbd5e1;border-radius:10px;font-size:18px;font-weight:700;letter-spacing:8px;font-family:\'DM Sans\',sans-serif">'
     +'<div id="kit-pin-err" style="font-size:11px;color:#b5394a;margin-top:6px;min-height:14px"></div>'
     +'<button onclick="kitPinClose()" style="margin-top:4px;border:none;background:none;color:#64748b;font-size:12px;cursor:pointer">Cancel</button></div></div>';
@@ -26723,6 +27116,319 @@ function unitPinLock(){
   renderAll();
 }
 // ── UNIT STUDIES tab: shared library any kid can pull into their drills/notebook ──
+// STARTER_UNITS_START — 📚 Starter units: units that ship IN THE CODE so any family adds one with a
+// tap instead of anyone rebuilding it per family (her ask 2026-10-02: "i will have other families and
+// wont have to recreate"). Units tab → 📚 Starter units → "Add to our family" (Mom-only) copies the
+// built unit into THIS family's unitStudies/<id> — one new node, written only when it doesn't exist
+// yet. After that it is an ordinary unit: the family's own copy, its own progress and edits.
+// 🧮 Math Fluency Path (her name, 2026-10-02): ONE path from K numbers to the times tables, 7 stages,
+// running ALONGSIDE whatever math book a family uses (the book teaches; this drills to automatic).
+// Stages 6 (+ −) and 7 (× ÷) carry cards now; 1–5 are named, filled in later. The deck key stays
+// "Math Facts" — the app special-cases that name (Math-Fact Dash, sprints, quiz mode) — and the
+// + − names match Andrew's live DeWalt deck exactly (plain "-" minus), so a kid who already has
+// those cards gets no duplicates. Cards carry their own answer (def): the built-in answer list only
+// covers the Howe facts. No lesson numbers on shared cards — the book link is per kid (next change).
+function _mfpCards(){
+  const cards=[]; let order=0;
+  const add=(name,ans,family,stage)=>cards.push({name,def:String(ans),family,stage,order:++order});
+  // Stage 6 — + and −, Abeka families: adding by the SUM, subtracting by the STARTING number, zeros in.
+  for(let n=0;n<=18;n++){
+    const fam="+ − · "+n+" family";
+    if(n===9){  // the 9 family in true fact-family order (a+b, b+a, 9−b, 9−a), zeros last
+      for(let a=1;a<=4;a++){ add(a+"+"+(9-a),9,fam,6); add((9-a)+"+"+a,9,fam,6); add("9-"+(9-a),a,fam,6); add("9-"+a,9-a,fam,6); }
+      add("0+9",9,fam,6); add("9+0",9,fam,6); add("9-0",9,fam,6); add("9-9",0,fam,6); continue; }
+    const lo=n<=9?0:n-9, hi=n<=9?n:9;   // 10–18: single-digit facts only
+    for(let a=lo;a<=hi;a++) add(a+"+"+(n-a),n,fam,6);
+    for(let k=lo;k<=hi;k++) add(n+"-"+k,n-k,fam,6);
+  }
+  // Stage 7 — × and ÷ through the 12s, one table at a time (6×1…6×12, then 6÷6…72÷6), together as
+  // fact families — research: division is learned as multiplication with a missing factor (her call
+  // 2026-10-02, "together"). The 0s come first (her yes 10/2): 0×0…0×12, then 1×0…12×0 — no ÷0.
+  { const fam="× ÷ · 0s"; for(let k=0;k<=12;k++) add("0\u00d7"+k,0,fam,7); for(let k=1;k<=12;k++) add(k+"\u00d70",0,fam,7); }
+  for(let t=1;t<=12;t++){
+    const fam="× ÷ · "+t+"s";
+    for(let k=1;k<=12;k++) add(t+"×"+k,t*k,fam,7);
+    for(let k=1;k<=12;k++) add((t*k)+"÷"+t,k,fam,7);
+  }
+  // Stage 8 — beyond the tables (her ask 2026-10-02, "do a lot of research"). What research/standards say
+  // is worth knowing FROM MEMORY in grades 4–8: fraction–decimal–percent benchmarks (NMAP 2008 + IES 2010:
+  // fraction fluency is foundational for algebra; Siegler 2012: fraction knowledge at 10 predicts algebra at
+  // 16), squares to 15² and cubes to 5³ (8.EE.A.2), powers of 10 (5.NBT.A.2, 6.EE.A.1) and 2, primes under 50 (plus look-alikes like 51, 57, 91),
+  // unit sizes (4.MD.A.1), and integer signs AFTER the concept is taught (7.NS). NOT drilled — taught: order
+  // of operations, GCF/LCM, divisibility, percent-of problems, formulas. Family order = the research order.
+  // Names carry no . / # $ [ ] (Firebase keys). A decimal on a card FRONT uses "․" (U+2024 one dot leader —
+  // looks like a period in DM Sans, legal as a key; her ask 10/2 "get the decimal … to work"); answers keep
+  // real periods. Fractions use ⁄ (U+2044 fraction slash), never "/". And
+  // Lincoln's built-in Howe names are kept exactly ("⅓ as decimal", "2⁵", "−4 × −5"…) so he gets no duplicates.
+  const f8=(name,ans,fam)=>add(name,ans,fam,8);
+  const dl=t=>String(t).replace(/\./g,"\u2024");   // front-of-card decimal point (see above)
+  // Each equivalent, all four ways: fraction → decimal, fraction → %, % → fraction, decimal → fraction.
+  const FDP=(fam,rows)=>{ rows.forEach(r=>f8(r[0]+" as decimal",r[1],fam)); rows.forEach(r=>f8(r[0]+" as percent",r[2],fam));
+    rows.forEach(r=>f8(dl(r[2])+" as fraction",r[0],fam)); rows.forEach(r=>f8(dl(r[1])+" as fraction",r[0],fam)); };
+  FDP("Halves & fourths",[["½","0.5","50%"],["¼","0.25","25%"],["¾","0.75","75%"]]);
+  FDP("Fifths & tenths",[["⅕","0.2","20%"],["⅖","0.4","40%"],["⅗","0.6","60%"],["⅘","0.8","80%"],
+    ["⅒","0.1","10%"],["³⁄₁₀","0.3","30%"],["⁷⁄₁₀","0.7","70%"],["⁹⁄₁₀","0.9","90%"]]);
+  FDP("Eighths",[["⅛","0.125","12.5%"],["⅜","0.375","37.5%"],["⅝","0.625","62.5%"],["⅞","0.875","87.5%"]]);
+  FDP("Thirds & sixths",[["⅓","0.333…","33⅓%"],["⅔","0.666…","66⅔%"],["⅙","0.1666…","16⅔%"],["⅚","0.8333…","83⅓%"]]);
+  [["¹⁄₂₀","5%"],["¹⁄₂₅","4%"],["¹⁄₅₀","2%"],["¹⁄₁₀₀","1%"]].forEach(r=>{ f8(r[0]+" as percent",r[1],"Percent shortcuts"); f8(r[1]+" as fraction",r[0],"Percent shortcuts"); });
+  f8("1¼ as percent","125%","Percent shortcuts"); f8("1½ as percent","150%","Percent shortcuts"); f8("2 as percent","200%","Percent shortcuts");
+  f8("150% as a mixed number","1½","Percent shortcuts"); f8("125% as a mixed number","1¼","Percent shortcuts");
+  const SUP={"0":"⁰","1":"¹","2":"²","3":"³","4":"⁴","5":"⁵","6":"⁶","7":"⁷","8":"⁸","9":"⁹","-":"⁻"};
+  const sup=n=>String(n).split("").map(ch=>SUP[ch]).join("");
+  for(let n=1;n<=15;n++) f8(n+"²",n*n,"Squares to 15²");
+  for(let n=1;n<=15;n++) f8("√"+(n*n),n,"Squares to 15²");
+  for(let n=1;n<=5;n++) f8(n+"³",n*n*n,"Cubes to 5³");
+  for(let n=1;n<=5;n++) f8("∛"+(n*n*n),n,"Cubes to 5³");
+  for(let e=1;e<=6;e++) if(e!==2) f8("10"+sup(e),(Math.pow(10,e)).toLocaleString("en-US"),"Powers of 10 & 2");  // 10² lives in Squares
+  [["10⁻¹","0.1"],["10⁻²","0.01"],["10⁻³","0.001"]].forEach(r=>f8(r[0],r[1],"Powers of 10 & 2"));
+  for(let e=1;e<=10;e++) if(e!==2&&e!==3) f8("2"+sup(e),(Math.pow(2,e)).toLocaleString("en-US"),"Powers of 10 & 2");  // 2² 2³ live in Squares/Cubes
+  [2,3,5,7,11,13,17,19,23,29,31,37,41,43,47].forEach(p=>f8("Prime? "+p,"Yes","Prime or not?"));
+  [[1,"No — 1 is not prime"],[9,"No — 3 × 3"],[15,"No — 3 × 5"],[21,"No — 3 × 7"],[27,"No — 3 × 9"],[33,"No — 3 × 11"],
+   [39,"No — 3 × 13"],[49,"No — 7 × 7"],[51,"No — 3 × 17"],[57,"No — 3 × 19"],[91,"No — 7 × 13"]].forEach(r=>f8("Prime? "+r[0],r[1],"Prime or not?"));
+  [["Inches in a foot","12"],["Feet in a yard","3"],["Inches in a yard","36"],["Feet in a mile","5,280"],["Fluid ounces in a cup","8"],["Cups in a pint","2"],
+   ["Pints in a quart","2"],["Cups in a quart","4"],["Quarts in a gallon","4"],["Cups in a gallon","16"],["Ounces in a pound","16"],["Pounds in a ton","2,000"]].forEach(r=>f8(r[0],r[1],"Customary units"));
+  [["kilo- means","1,000"],["centi- means","¹⁄₁₀₀"],["milli- means","¹⁄₁₀₀₀"],["Meters in a kilometer","1,000"],
+   ["Centimeters in a meter","100"],["Millimeters in a meter","1,000"],["Milliliters in a liter","1,000"],["Grams in a kilogram","1,000"]].forEach(r=>f8(r[0],r[1],"Metric"));
+  [["−3 + 7","4"],["−5 − 4","−9"],["−8 + 3","−5"],["6 × (−2)","−12"],["−12 ÷ 3","−4"],["−4 × −5","20"],
+   ["−9 + 4","−5"],["5 − 9","−4"],["−6 − (−2)","−4"],["8 + (−11)","−3"],["−7 + (−6)","−13"],["0 − 6","−6"],
+   ["−7 × −8","56"],["−3 × 7","−21"],["−20 ÷ −4","5"],["−15 ÷ 5","−3"],["18 ÷ (−6)","−3"],["−1 × −1","1"],
+   ["−2 × −2 × −2","−8"],["−10 + 10","0"]].forEach(r=>f8(r[0],r[1],"Integer signs"));
+  return cards;
+}
+// Stages 1–4 (her yes 2026-10-02: "build that way"). Stages 1–2 reuse Julian's deck names —
+// "Numbers" (see the numeral, say it) and "Counting" (count the dinosaurs; 11–20 and the tens draw as
+// ten-frames already) — so a kid who has those cards keeps them, no duplicates. Flash cards, no back:
+// the kid says it. Stages 3–4 are a "Number Sense" flip deck (question → answer on the back).
+function _mfpEarlyDecks(){
+  const W=["one","two","three","four","five","six","seven","eight","nine","ten","eleven","twelve","thirteen","fourteen","fifteen","sixteen","seventeen","eighteen","nineteen","twenty"];
+  const num=[],cnt=[],ns=[]; let o1=0,o2=0,o3=0;
+  const fam5=n=>n<=5?"1–5":n<=10?"6–10":n<=15?"11–15":"16–20";
+  for(let n=1;n<=20;n++){ const st=n<=10?1:2;
+    num.push({name:String(n),family:fam5(n),stage:st,order:++o1});
+    cnt.push({name:W[n-1],family:fam5(n),stage:st,order:++o2}); }
+  ["thirty","forty","fifty","sixty","seventy","eighty","ninety","one hundred"].forEach(w=>cnt.push({name:w,family:"Count by 10s",stage:4,order:++o2}));
+  const q=(name,def,family,stage)=>ns.push({name,def:String(def),family,stage,order:++o3});
+  for(let n=1;n<=9;n++) q("1 more than "+n,n+1,"One more · to 10",3);
+  for(let n=2;n<=10;n++) q("1 less than "+n,n-1,"One less · to 10",3);
+  [[3,7],[8,5],[2,9],[10,6],[4,1],[12,15],[18,11],[9,14],[20,13],[16,19]].forEach(([a,b])=>q("Which is bigger: "+a+" or "+b+"?",Math.max(a,b),"Bigger",3));
+  for(let n=10;n<=19;n++) q("1 more than "+n,n+1,"One more · to 20",3);
+  for(let n=11;n<=20;n++) q("1 less than "+n,n-1,"One less · to 20",3);
+  for(let n=1;n<=9;n++) q("10 + "+n,10+n,"Teen numbers",4);
+  [[10,20,30],[20,30,40],[30,40,50],[40,50,60],[50,60,70],[60,70,80],[70,80,90]].forEach(s=>q(s.join(", ")+", what comes next?",s[2]+10,"Count by 10s",4));
+  // Stage 5 — number partners (her yes 2026-10-02, "go"): a five-/ten-frame with N of the kid's own
+  // counting picture filled ("4 and ? make 5" → mastPartnerVis draws it), then the same partners as
+  // plain number sentences — the bridge into the + − facts of Stage 6.
+  for(let n=1;n<=4;n++) q(n+" and ? make 5",5-n,"Make 5",5);
+  for(let n=1;n<=9;n++) q(n+" and ? make 10",10-n,"Make 10",5);
+  for(let n=1;n<=9;n++) q(n+" + ? = 10",10-n,"Partners of 10",5);
+  return [
+    { key:"Numbers", mode:"flash", introCap:3, groupBy:"family", cards:num },
+    { key:"Counting", mode:"flash", introCap:3, groupBy:"family", cards:cnt },
+    { key:"Number Sense", mode:"flip", introCap:3, groupBy:"family", cards:ns }];
+}
+const STARTER_UNITS={
+  math_fluency_path:()=>({ id:"math_fluency_path", starter:"math_fluency_path", starterVer:1,
+    title:"Math Fluency Path", emoji:"\u{1F9EE}", nbInsert:false,   // facts drill, no notebook pages
+    desc:"One path from counting to the times tables — numbers first, then + and − facts, then × and ÷. It runs alongside your math book: the book teaches it, this drills it until it’s automatic.",
+    stages:[
+      {n:1,label:"Numbers 1–10",weeklyFrom:0},{n:2,label:"Numbers 11–20",weeklyFrom:0},{n:3,label:"More & less",weeklyFrom:0},{n:4,label:"Tens",weeklyFrom:0},
+      {n:5,label:"Number partners",weeklyFrom:0},{n:6,label:"+ and − facts",deck:"Math Facts",weeklyFrom:6},{n:7,label:"× and ÷ facts",deck:"Math Facts",weeklyFrom:6},
+      {n:8,label:"Fractions, decimals & beyond",deck:"Math Facts",weeklyFrom:0}],
+    decks:_mfpEarlyDecks().concat([{ key:"Math Facts", mode:"quiz", introCap:3, groupBy:"family", cards:_mfpCards() }]) })
+};
+// Staged units enroll per kid (start stage, what they already know, book link — UNIT_STAGES below);
+// the plain enroll (which would start EVERY kid at card 1) stays closed for them.
+function _unitStagedEnrollPending(u){ return !!(u&&u.stages); }
+function _starterUnitsHtml(){
+  if(!momHere()) return "";
+  const esc=v=>String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
+  const ids=Object.keys(STARTER_UNITS).filter(id=>!(unitStudies||{})[id]);
+  if(!ids.length) return "";
+  let h='<div style="font-size:13px;font-weight:800;color:#1f2937;margin:22px 0 4px">📚 Starter units</div>';
+  h+='<div style="font-size:11px;color:var(--muted);line-height:1.45;margin-bottom:10px">Ready-made units. Add one to your family and it shows up above — each kid keeps their own progress.</div>';
+  ids.forEach(id=>{ const u=STARTER_UNITS[id]();
+    const n=(u.decks||[]).reduce((s,d)=>s+((d.cards||[]).length),0);
+    h+='<div style="background:#faf8f5;border:1.5px dashed var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px">';
+    h+='<div style="display:flex;align-items:center;gap:8px"><span style="font-size:22px">'+(u.emoji||"📘")+'</span><span style="font-size:16px;font-weight:800;color:#1f2937">'+esc(u.title)+'</span></div>';
+    h+='<div style="font-size:12px;color:var(--muted);line-height:1.45;margin:5px 0 8px">'+esc(u.desc||"")+'</div>';
+    if(u.stages) h+='<div style="font-size:10.5px;color:#374151;line-height:1.6;margin-bottom:8px">'+u.stages.map(s=>s.n+'. '+esc(s.label)).join(' · ')+'</div>';
+    h+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:10.5px;color:var(--muted);font-weight:700">'+n+' cards</span>';
+    h+='<button onclick="starterUnitAdd(\''+id+'\')" style="margin-left:auto;padding:7px 14px;border-radius:10px;border:none;background:#2d6a4f;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">＋ Add to our family</button></div>';
+    h+='</div>'; });
+  return h;
+}
+function starterUnitAdd(id){
+  if(!momHere()) return;
+  const mk=STARTER_UNITS[id]; if(!mk||(unitStudies||{})[id]) return;
+  const u=mk(); u.addedTs=Date.now();
+  const done=()=>{ unitStudies[id]=u; const el=document.getElementById("content"); if(el) renderUnits(el); };
+  if(db&&!_dryRun()){
+    // Only ever creates the node — if this family already has it (another device), leave theirs alone.
+    db.ref("unitStudies/"+id).transaction(cur=>cur?undefined:u).then(r=>{ if(r&&r.committed) done(); }).catch(()=>{});
+  } else done();
+}
+// UNIT_STAGES_START — staged enroll + book link (her plan 2026-10-02). A staged unit (u.stages) enrolls
+// each kid at THEIR stage: Mom picks the stage, what the kid already knows ("knows through the 5s"),
+// and optionally the kid's math book + a book map. Known families go straight onto the ladder as
+// review (family ≥ stage.weeklyFrom → weekly, below → every 2 weeks, first reviews spread out — the
+// pattern Andrew's and Taylor's decks were built with); the next family starts learning, introCap at a
+// time. Only the kid's CURRENT stage goes into their bank, so auto-pull stops at the stage's end —
+// "✓ ready to move up" — and Mom taps ➡ to start the next stage (the old stage keeps reviewing).
+// Book link is PER KID, never on the shared cards: a map turns family → lesson that opens it and is
+// stamped as `ch` on THIS kid's bank entries + cat_gate → the RS4K gate does the rest (fails open).
+// Maps are curriculum-specific and ship here so the next family on the same book doesn't redo them.
+const UNIT_BOOK_MAPS={
+  // Abeka Arithmetic 2 (DeWalt, 10/2): Abeka publishes no per-family lesson list, so families 10–18
+  // are spaced evenly from L36 — Mrs. DeWalt's pick ("keep the even spacing"). 0–9 open from the start.
+  abeka_arith_2:{label:"Abeka Arithmetic 2", stage:6,
+    add:{10:36,11:42,12:49,13:55,14:61,15:68,16:74,17:81,18:103},
+    sub:{10:36,11:43,12:51,13:58,14:66,15:73,16:81,17:96,18:111}}
+};
+function _ustFamNum(c){ const m=/(\d+)/.exec(String((c&&c.family)||"")); return m?parseInt(m[1],10):null; }
+// A stage's cards across ALL decks (stage 1 = Numbers + Counting), each tagged with its deck (_dk).
+function _ustCards(u,n){ const out=[]; (u.decks||[]).forEach(d=>{ ((d&&d.cards)||[]).filter(c=>c&&c.stage===n).slice().sort((a,b)=>(a.order||0)-(b.order||0)).forEach(c=>out.push(Object.assign({},c,{_dk:d.key}))); }); return out; }
+function _ustFamilies(u,n){ const out=[]; _ustCards(u,n).forEach(c=>{ if(out.indexOf(c.family)<0) out.push(c.family); }); return out; }
+function _ustStageDef(u,n){ return (u.stages||[]).find(s=>s&&s.n===n)||null; }
+function _ustStagesWithCards(u){ return (u.stages||[]).filter(s=>s&&_ustCards(u,s.n).length); }
+function _ustBookCh(mapId,c){ const m=UNIT_BOOK_MAPS[mapId]; if(!m||m.stage!==c.stage) return null;
+  const f=_ustFamNum(c), op=/\+/.test(c.name)?"add":"sub"; const v=(m[op]||{})[f]; return v==null?null:v; }
+function _ustSlug(name){ return String(name).replace(/\+/g,"p").replace(/-/g,"m").replace(/×/g,"x").replace(/÷/g,"d").replace(/[^a-z0-9]/gi,"_"); }
+// Seed ONE stage into a kid's mastery data (in memory). Returns what to write: new item / bank indices.
+function _ustApply(u,kid,stageN,knows,subject,mapId){
+  const sd=_ustStageDef(u,stageN)||{}; const cards=_ustCards(u,stageN); if(!cards.length) return null;
+  let items=masteryData[kid]; if(!Array.isArray(items)) items=masteryData[kid]=(items?Object.values(items):[]);
+  let bank=masteryData[kid+"_custom_items"]; if(!Array.isArray(bank)) bank=masteryData[kid+"_custom_items"]=(bank?Object.values(bank):[]);
+  const st=masteryData[kid+"_settings"]||(masteryData[kid+"_settings"]={});
+  st.cat_modes=st.cat_modes||{}; st.cat_intro_max=st.cat_intro_max||{}; st.definitions=st.definitions||{};
+  const startItems=items.length, startBank=bank.length;
+  const decks={}; (u.decks||[]).forEach(d=>{ if(d&&cards.some(c=>c._dk===d.key)) decks[d.key]=d; });
+  const modes={},intro={}; Object.keys(decks).forEach(k=>{ st.cat_modes[k]=modes[k]=decks[k].mode||"flash"; st.cat_intro_max[k]=intro[k]=decks[k].introCap||3; });
+  const bm=UNIT_BOOK_MAPS[mapId]; const mapDeck=(bm&&bm.deck)||"Math Facts";
+  const useMap=!!(subject&&bm&&bm.stage===stageN&&decks[mapDeck]);
+  let gate=null; if(useMap){ st.cat_gate=st.cat_gate||{}; st.cat_gate[mapDeck]={subject}; gate={key:mapDeck,v:{subject}}; }
+  const upto=(useMap&&typeof mastGateChapter==="function")?mastGateChapter(kid,subject):null;
+  const fams=_ustFamilies(u,stageN); const kIdx=knows?fams.indexOf(knows):-1;
+  const pk=(dk,n)=>dk+"\u0001"+n;
+  const haveBank=new Set(bank.filter(Boolean).map(c=>pk(c.cat,c.name)));
+  const haveItem=new Set(items.filter(Boolean).map(i=>pk(i.subject,i.prompt)));
+  const ids=new Set(items.map(i=>i&&i.id));
+  const mkId=n=>{ const b=kid.slice(0,3)+"_"+_ustSlug(n); let id=b,k=2; while(ids.has(id)) id=b+"_"+(k++); ids.add(id); return id; };
+  const wFrom=(sd.weeklyFrom!=null)?sd.weeklyFrom:6; let nW=0,nB=0;
+  const started={}; Object.keys(decks).forEach(k=>{ started[k]=items.filter(i=>i&&i.subject===k&&i.status==="introduction").length; });
+  const defs={};
+  cards.forEach(c=>{ const dk=c._dk, d=decks[dk];
+    if(c.def!=null&&(typeof mastDefKeyOk!=="function"||mastDefKeyOk(c.name))){ st.definitions[c.name]=c.def; defs[c.name]=c.def; }
+    const ch=(useMap&&dk===mapDeck)?_ustBookCh(mapId,c):null;
+    if(!haveBank.has(pk(dk,c.name))){ const be={cat:dk,name:c.name}; if(ch!=null) be.ch=ch; bank.push(be); haveBank.add(pk(dk,c.name)); }
+    if(haveItem.has(pk(dk,c.name))) return;
+    const fi=fams.indexOf(c.family);
+    const base={id:mkId(c.name),subject:dk,type:dk.toLowerCase(),prompt:c.name,review_mode:"flash",drop_count:0,consecutive_correct:0,cycle:1};
+    if(c.def!=null) base.answer=String(c.def);   // Numbers/Counting: no back — the kid says it
+    if(fi<=kIdx){  // already known → review on the ladder
+      const wk=(_ustFamNum(c)||0)>=wFrom;
+      items.push(Object.assign(base,{status:"active",tier:wk?"weekly":"bi_weekly",tally_dots:5,next_due:2+(wk?(nW++%7):(nB++%14))}));
+      haveItem.add(pk(dk,c.name));
+    } else if(started[dk]<(d.introCap||3)&&(upto==null||ch==null||ch<=upto)){
+      items.push(Object.assign(base,{status:"introduction",tier:"daily",tally_dots:0}));
+      haveItem.add(pk(dk,c.name)); started[dk]++;
+    }
+  });
+  const iu={}; for(let i=startItems;i<items.length;i++) iu[i]=items[i];
+  const bu={}; for(let i=startBank;i<bank.length;i++) bu[i]=bank[i];
+  return {iu,bu,defs,gate,modes,intro};
+}
+function _ustWrite(unitId,kid,w,rec){
+  if(!db||_dryRun()) return;
+  if(Object.keys(w.iu).length) db.ref("mastery/"+kid).update(w.iu);
+  if(Object.keys(w.bu).length) db.ref("mastery/"+kid+"_custom_items").update(w.bu);
+  db.ref("mastery/"+kid+"_settings/cat_modes").update(w.modes);
+  db.ref("mastery/"+kid+"_settings/cat_intro_max").update(w.intro);
+  if(Object.keys(w.defs).length) db.ref("mastery/"+kid+"_settings/definitions").update(w.defs);
+  if(w.gate) db.ref("mastery/"+kid+"_settings/cat_gate/"+w.gate.key).set(w.gate.v);
+  db.ref("unitStudies/"+unitId+"/kidStage/"+kid).set(rec);
+  db.ref("unitStudies/"+unitId+"/enrolled/"+kid).set(true);
+}
+function _ustDone(unitId,kid,rec){
+  const u=unitStudies[unitId]; if(!u.enrolled) u.enrolled={}; u.enrolled[kid]=true;
+  if(!u.kidStage) u.kidStage={}; u.kidStage[kid]=rec; unitStageForm=null;
+  try{HA_LS.setItem("ha_mastery",JSON.stringify(masteryData));}catch(e){}
+  const el=document.getElementById("content"); if(el) renderUnits(el);
+}
+let unitStageForm=null;   // {unitId,kid,stage,knows,subject,map} — the open "+ Kid" form
+function unitStageFormOpen(unitId,kid){ if(!momHere()) return; const u=unitStudies[unitId]; if(!u) return;
+  const s=_ustStagesWithCards(u)[0]; unitStageForm={unitId,kid,stage:s?s.n:null,knows:"",subject:"",map:""};
+  const el=document.getElementById("content"); if(el) renderUnits(el); }
+function unitStageFormSet(field,val){ if(!unitStageForm) return;
+  unitStageForm[field]=(field==="stage")?Number(val):val; if(field==="stage"){ unitStageForm.knows=""; unitStageForm.map=""; }
+  const el=document.getElementById("content"); if(el) renderUnits(el); }
+function unitStageFormClose(){ unitStageForm=null; const el=document.getElementById("content"); if(el) renderUnits(el); }
+function unitStageEnroll(){
+  if(!momHere()||!unitStageForm) return; const f=unitStageForm; const u=unitStudies[f.unitId];
+  if(!u||(u.enrolled||{})[f.kid]||!_ustCards(u,f.stage).length) return;
+  const w=_ustApply(u,f.kid,f.stage,f.knows,f.subject,f.map); if(!w) return;
+  const rec={stage:f.stage,knows:f.knows||"",subject:f.subject||"",map:(w.gate?f.map:"")||"",ts:Date.now()};
+  _ustWrite(f.unitId,f.kid,w,rec); _ustDone(f.unitId,f.kid,rec);
+}
+// Where a kid stands in their current stage: total / on the ladder / learning, and the family they're on.
+function unitStageStatus(u,kid){
+  const ks=((u.kidStage||{})[kid])||null; if(!ks) return null;
+  const items=Array.isArray(masteryData[kid])?masteryData[kid]:Object.values(masteryData[kid]||{});
+  const by={}; items.forEach(i=>{ if(i) by[i.subject+"\u0001"+i.prompt]=i; });
+  const cards=_ustCards(u,ks.stage); let on=0,learn=0,fam="";
+  cards.forEach(c=>{ const it=by[c._dk+"\u0001"+c.name]; if(!it) return; if(it.status==="introduction"){ learn++; if(!fam) fam=c.family; } else if(it.status!=="parked") on++; });
+  const next=_ustStagesWithCards(u).find(s=>s.n>ks.stage)||null;
+  return {stage:ks.stage,total:cards.length,on,learn,fam,ready:cards.length>0&&on===cards.length,next};
+}
+function unitStageMoveUp(unitId,kid){
+  if(!momHere()) return; const u=unitStudies[unitId]; if(!u) return; const st=unitStageStatus(u,kid); if(!st||!st.next) return;
+  const ks=u.kidStage[kid]; const w=_ustApply(u,kid,st.next.n,"",ks.subject,ks.map); if(!w) return;
+  const rec={stage:st.next.n,knows:"",subject:ks.subject||"",map:(w.gate?ks.map:"")||"",ts:Date.now(),from:ks.stage};
+  _ustWrite(unitId,kid,w,rec); _ustDone(unitId,kid,rec);
+}
+function _unitStageRowsHtml(u,roster){
+  const esc=v=>String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
+  const sel='padding:5px 8px;border-radius:8px;border:1.5px solid var(--border);font-size:11.5px;font-family:\'DM Sans\',sans-serif;background:#fff;max-width:100%';
+  const btn=(bg,fg,bd)=>'padding:6px 12px;border-radius:9px;border:1.5px solid '+bd+';background:'+bg+';color:'+fg+';font-size:11.5px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif';
+  const subjName=(kid,sk)=>{ const s=(((currData||{}).subjects||{})[kid]||{})[sk]; return (s&&s.display)||sk; };
+  let h='';
+  roster.forEach(k=>{
+    h+='<div style="padding:8px 0;border-top:1px solid #f3f1ee">';
+    const ks=((u.kidStage||{})[k])||null;
+    if(ks){ const st=unitStageStatus(u,k)||{}; const sd=_ustStageDef(u,ks.stage)||{};
+      h+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:12.5px;font-weight:800;color:#1f2937;min-width:64px">'+esc(cap(k))+'</span>';
+      h+='<span style="font-size:11.5px;color:#374151;font-weight:700">Stage '+ks.stage+' · '+esc(sd.label||"")+'</span>';
+      h+=st.ready?'<span style="font-size:10.5px;font-weight:800;color:#15803d;background:#f0fdf4;border-radius:8px;padding:2px 8px">✓ ready to move up</span>'
+        :'<span style="font-size:10.5px;color:var(--muted);font-weight:700">'+(st.on||0)+' of '+(st.total||0)+' on the ladder'+(st.fam?' · learning '+esc(st.fam):'')+'</span>';
+      if(st.next) h+='<button onclick="unitStageMoveUp(\''+esc(u.id)+'\',\''+esc(k)+'\')" style="margin-left:auto;'+(st.ready?btn("#2d6a4f","#fff","#2d6a4f"):btn("#fff","#2d6a4f","var(--border)"))+'">➡ Start Stage '+st.next.n+': '+esc(st.next.label)+'</button>';
+      h+='</div>';
+      if(typeof mastCountEmoji==="function"&&(u.decks||[]).some(d=>d&&d.key==="Counting")){ const ce=mastCountEmoji(k);
+        h+='<div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap;margin-top:5px"><span style="font-size:10.5px;color:var(--muted);font-weight:700;margin-right:4px">Counts</span>';
+        MAST_COUNT_PICS.forEach(p=>{ const on=p[0]===ce; h+='<button title="'+p[1]+'" onclick="mastSetCountEmoji(\''+esc(k)+'\',\''+p[0]+'\')" style="width:28px;height:28px;padding:0;border-radius:8px;border:1.5px solid '+(on?'#2d6a4f':'transparent')+';background:'+(on?'#f2faf5':'transparent')+';font-size:16px;cursor:pointer;line-height:1">'+p[0]+'</button>'; });
+        h+='</div>'; }
+      h+='<div style="font-size:10.5px;color:var(--muted);margin-top:3px">'+(ks.subject&&ks.map?'📘 '+esc(subjName(k,ks.subject))+' · '+esc((UNIT_BOOK_MAPS[ks.map]||{}).label||ks.map)+' map — new families open at their lesson':'No book link — the next family opens when the last one is learned')+'</div>';
+    } else if(unitStageForm&&unitStageForm.unitId===u.id&&unitStageForm.kid===k){
+      const f=unitStageForm;
+      h+='<div style="font-size:12.5px;font-weight:800;color:#1f2937;margin-bottom:6px">Start '+esc(cap(k))+'</div>';
+      h+='<div style="display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;font-size:11px;color:#374151;font-weight:700">';
+      h+='<span>Stage</span><select style="'+sel+'" onchange="unitStageFormSet(\'stage\',this.value)">'+_ustStagesWithCards(u).map(s=>'<option value="'+s.n+'"'+(s.n===f.stage?' selected':'')+'>'+s.n+'. '+esc(s.label)+'</option>').join('')+'</select>';
+      h+='<span>Already knows</span><select style="'+sel+'" onchange="unitStageFormSet(\'knows\',this.value)"><option value="">Nothing yet — start at the beginning</option>'+_ustFamilies(u,f.stage).map(fm=>'<option value="'+esc(fm)+'"'+(fm===f.knows?' selected':'')+'>through the '+esc(fm)+'</option>').join('')+'</select>';
+      const subs=Object.keys((((currData||{}).subjects||{})[k])||{});
+      h+='<span>Math book</span><select style="'+sel+'" onchange="unitStageFormSet(\'subject\',this.value)"><option value="">No book link</option>'+subs.map(sk=>'<option value="'+esc(sk)+'"'+(sk===f.subject?' selected':'')+'>'+esc(subjName(k,sk))+'</option>').join('')+'</select>';
+      const maps=Object.keys(UNIT_BOOK_MAPS).filter(id=>UNIT_BOOK_MAPS[id].stage===f.stage);
+      if(f.subject) h+='<span>Book map</span><select style="'+sel+'" onchange="unitStageFormSet(\'map\',this.value)"><option value="">No map — next family opens when the last is learned</option>'+maps.map(id=>'<option value="'+esc(id)+'"'+(id===f.map?' selected':'')+'>'+esc(UNIT_BOOK_MAPS[id].label)+'</option>').join('')+'</select>';
+      h+='</div>';
+      const fams=_ustFamilies(u,f.stage), ki=f.knows?fams.indexOf(f.knows):-1, nxt=fams[ki+1];
+      h+='<div style="font-size:10.5px;color:var(--muted);line-height:1.45;margin:7px 0">'+(ki>=0?'Through the '+esc(f.knows)+' go straight to review. ':'')+(nxt?'Starts learning the '+esc(nxt)+'.':'Everything in this stage is review.')+'</div>';
+      h+='<div style="display:flex;gap:6px"><button onclick="unitStageEnroll()" style="'+btn("#2d6a4f","#fff","#2d6a4f")+'">Start '+esc(cap(k))+'</button><button onclick="unitStageFormClose()" style="'+btn("#fff","var(--muted)","var(--border)")+'">Cancel</button></div>';
+    } else {
+      h+='<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12.5px;font-weight:800;color:#9ca3af;min-width:64px">'+esc(cap(k))+'</span><button onclick="unitStageFormOpen(\''+esc(u.id)+'\',\''+esc(k)+'\')" style="'+btn("#fff","#1f2937","var(--border)")+'">+ '+esc(cap(k))+'</button></div>';
+    }
+    h+='</div>';
+  });
+  return '<div style="flex:1 1 100%;min-width:0">'+h+'</div>';  // sits inside the enroll box's flex row
+}
+// UNIT_STAGES_END
+// STARTER_UNITS_END
 function renderUnits(el){
   const con=el||document.getElementById("content"); if(!con) return;
   const esc=v=>String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
@@ -26743,6 +27449,7 @@ function renderUnits(el){
     if(enrolled.length) h+='<div style="font-size:10px;color:#15803d;font-weight:700;margin-top:8px">✓ '+enrolled.map(cap).join(", ")+'</div>';
     h+='</div>';
   });
+  h+=_starterUnitsHtml();
   h+='</div>';
   con.innerHTML=h;
 }
@@ -26763,7 +27470,8 @@ function renderUnitDetail(u){
     h+='<div style="background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:14px">';
     h+='<div style="font-size:12px;font-weight:800;color:#1f2937;margin-bottom:8px">Add to a kid’s drills &amp; notebook</div>';
     h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
-    roster.forEach(k=>{ const on=!!((u.enrolled||{})[k]);
+    if(_unitStagedEnrollPending(u)) h+=_unitStageRowsHtml(u,roster);
+    else roster.forEach(k=>{ const on=!!((u.enrolled||{})[k]);
       h+='<button onclick="unitEnroll(\''+u.id+'\',\''+k+'\')" '+(on?'disabled':'')+' style="padding:7px 14px;border-radius:10px;border:1.5px solid '+(on?'#86efac':'var(--border)')+';background:'+(on?'#f0fdf4':'#fff')+';color:'+(on?'#15803d':'#1f2937')+';font-size:12px;font-weight:700;cursor:'+(on?'default':'pointer')+';font-family:\'DM Sans\',sans-serif">'+(on?'✓ ':'+ ')+cap(k)+'</button>'; });
     h+='</div><div id="unit-enroll-msg" style="font-size:11px;color:#15803d;font-weight:700;margin-top:8px"></div>';
     // Notebook-insert switch: whether this unit's pages ride along in enrolled kids' printed
@@ -26914,6 +27622,7 @@ function renderUnitDetail(u){
 function unitEnroll(unitId,kid){
   if(!momHere()) return; // U7: enrolling seeds drill decks — Mom-only
   const u=unitStudies[unitId]; if(!u||(u.enrolled||{})[kid]) return;
+  if(typeof _unitStagedEnrollPending==="function"&&_unitStagedEnrollPending(u)) return;  // staged units enroll per kid (STARTER_UNITS)
   let items=masteryData[kid]; if(!Array.isArray(items)) items=masteryData[kid]=(items?Object.values(items):[]);
   let bank=masteryData[kid+"_custom_items"]; if(!Array.isArray(bank)) bank=masteryData[kid+"_custom_items"]=[];
   const settings=masteryData[kid+"_settings"]||(masteryData[kid+"_settings"]={});
@@ -39428,6 +40137,33 @@ function mastSidesPaint(wrap,justLit){
   if(rs) rs.style.display=k?"inline-block":"none";
 }
 // SHAPE_SIDES_END
+// COUNT_PIC_START — per-kid counting picture (her ask 2026-10-02: "change the emoji to customize it to
+// each kid"). Counting cards drew 🦕 for everyone (Julian's dinosaurs); now each kid counts their own
+// picture — mastery/<kid>_settings/count_emoji, Mom picks it on the kid's row in the Math Fluency Path
+// unit. Unset → 🦕, so Julian's cards look exactly as before. The intro hint names the picture.
+const MAST_COUNT_PICS=[["\u{1F995}","dinosaurs"],["\u{1F697}","cars"],["\u{1F69C}","tractors"],["\u{1F436}","puppies"],["\u{1F431}","kitties"],["\u{1F984}","unicorns"],
+  ["\u{1F41E}","ladybugs"],["\u{1F98B}","butterflies"],["\u{2B50}","stars"],["\u{1F34E}","apples"],["\u{26BD}","balls"],["\u{1F680}","rockets"]];
+function mastCountEmoji(kid){ const s=(typeof masteryData!=="undefined"&&masteryData[(kid||masteryKid)+"_settings"])||{}; return s.count_emoji||"\u{1F995}"; }
+function mastCountWord(kid){ const e=mastCountEmoji(kid); const p=MAST_COUNT_PICS.find(x=>x[0]===e); return p?p[1]:"pictures"; }
+function mastSetCountEmoji(kid,e){
+  if(!momHere()||!MAST_COUNT_PICS.some(x=>x[0]===e)) return;
+  const st=masteryData[kid+"_settings"]||(masteryData[kid+"_settings"]={}); st.count_emoji=e;
+  if(db&&!_dryRun()) db.ref("mastery/"+kid+"_settings/count_emoji").set(e);
+  try{HA_LS.setItem("ha_mastery",JSON.stringify(masteryData));}catch(x){}
+  const el=document.getElementById("content"); if(el&&typeof renderUnits==="function"&&tab==="units") renderUnits(el);
+}
+// Stage 5 partner cards: "4 and ? make 5" / "7 and ? make 10" → a five-frame / ten-frame with that many
+// of the kid's counting pictures filled and the rest empty. Any other prompt → "" (no picture).
+function mastPartnerVis(prompt,box){
+  const m=/^(\d+) and \? make (5|10)$/.exec(String(prompt||"")); if(!m) return "";
+  const have=Math.min(+m[1],+m[2]), tot=+m[2], e=mastCountEmoji();
+  const cell=Math.floor(Math.min(box||240,320)/5), fs=Math.round(cell*0.62);
+  const inner=()=>'<span style="font-size:'+fs+'px;line-height:1">'+e+'</span>';
+  if(tot===10&&typeof mastCountFrame==="function") return mastCountFrame(have,cell,inner);
+  let cells=''; for(let i=0;i<5;i++) cells+='<div style="width:'+cell+'px;height:'+cell+'px;display:flex;align-items:center;justify-content:center;line-height:1;border:1px dashed #b7dcc4">'+(i<have?inner():'')+'</div>';
+  return '<div style="display:grid;grid-template-columns:repeat(5,auto);border:2px solid #16a34a;border-radius:6px;overflow:hidden;background:#fff">'+cells+'</div>';
+}
+// COUNT_PIC_END
 const MAST_COUNT_WORDS={one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,eleven:11,twelve:12,thirteen:13,fourteen:14,fifteen:15,sixteen:16,seventeen:17,eighteen:18,nineteen:19,twenty:20,thirty:30,forty:40,fifty:50,sixty:60,seventy:70,eighty:80,ninety:90,"one hundred":100};
 function mastCountN(it){ return MAST_COUNT_WORDS[((it&&it.prompt)||"").toLowerCase()]||0; }
 // Counting cards show N dinosaurs to count out loud (never the numeral). Sized in container
@@ -39452,8 +40188,8 @@ function mastCountVis(n,box,tap){
   const bd=Math.max(22,Math.round(px*0.34)), bf=Math.max(11,Math.round(px*0.19));
   let cells='';
   for(let i=0;i<n;i++){
-    if(!tap){ cells+='<span style="font-size:'+px+'px;line-height:1.05">\u{1F995}</span>'; continue; }
-    cells+='<span onclick="event.stopPropagation();mastCountTap(this)" style="position:relative;font-size:'+px+'px;line-height:1.05;cursor:pointer;transition:opacity 0.15s,transform 0.15s;-webkit-tap-highlight-color:transparent">\u{1F995}'
+    if(!tap){ cells+='<span style="font-size:'+px+'px;line-height:1.05">'+mastCountEmoji()+'</span>'; continue; }
+    cells+='<span onclick="event.stopPropagation();mastCountTap(this)" style="position:relative;font-size:'+px+'px;line-height:1.05;cursor:pointer;transition:opacity 0.15s,transform 0.15s;-webkit-tap-highlight-color:transparent">'+mastCountEmoji()
       +'<span data-badge style="display:none;position:absolute;top:0;right:0;width:'+bd+'px;height:'+bd+'px;border-radius:50%;background:#16a34a;color:#fff;font-family:\'DM Sans\',sans-serif;font-size:'+bf+'px;font-weight:800;align-items:center;justify-content:center;line-height:1;box-shadow:0 1px 4px rgba(0,0,0,0.25)"></span>'
       +'</span>';
   }
@@ -39479,8 +40215,8 @@ function mastCountFrame(fill,cell,inner){
 function mastCountVisFrames(n,box,tap){
   box=box||240;
   let grid, step;
-  const _dino=(px)=>'<span style="font-size:'+px+'px;line-height:1">\u{1F995}</span>';
-  const _tapDino=(px,bd,bf)=>'<span onclick="event.stopPropagation();mastCountTap(this)" style="position:relative;font-size:'+px+'px;line-height:1;cursor:pointer;transition:opacity 0.15s,transform 0.15s;-webkit-tap-highlight-color:transparent">\u{1F995}'
+  const _dino=(px)=>'<span style="font-size:'+px+'px;line-height:1">'+mastCountEmoji()+'</span>';
+  const _tapDino=(px,bd,bf)=>'<span onclick="event.stopPropagation();mastCountTap(this)" style="position:relative;font-size:'+px+'px;line-height:1;cursor:pointer;transition:opacity 0.15s,transform 0.15s;-webkit-tap-highlight-color:transparent">'+mastCountEmoji()
     +'<span data-badge style="display:none;position:absolute;top:-2px;right:-4px;width:'+bd+'px;height:'+bd+'px;border-radius:50%;background:#16a34a;color:#fff;font-family:\'DM Sans\',sans-serif;font-size:'+bf+'px;font-weight:800;align-items:center;justify-content:center;line-height:1;box-shadow:0 1px 4px rgba(0,0,0,0.25)"></span>'
     +'</span>';
   if(n<=20){
@@ -39564,7 +40300,7 @@ function mastItemVis(it){
   const cat=it.subject||"";
   if(cat==="Colors"&&MAST_COLOR_MAP[it.prompt]) return '<div style="width:36px;height:36px;border-radius:50%;background:'+MAST_COLOR_MAP[it.prompt]+';border:1.5px solid '+mastColorBorder(it.prompt)+';margin:0 auto"></div>';
   if(cat==="Shapes") return mastShapeVis(it.prompt,26);
-  if(cat==="Counting"){ const n=mastCountN(it); return '<span style="font-size:14px">'+"\u{1F995}".repeat(Math.min(n,6))+(n>6?"…":"")+'</span>'; }
+  if(cat==="Counting"){ const n=mastCountN(it); return '<span style="font-size:14px">'+mastCountEmoji().repeat(Math.min(n,6))+(n>6?"…":"")+'</span>'; }
   const _vl=it.prompt.length; const _vfs=_vl<=3?22:_vl<=6?16:_vl<=10?12:10;
   const _vff=cat==="Letters"?"font-family:'Fraunces',serif;":"";  // serif so capital I ≠ lowercase l
   return '<span style="'+_vff+'font-size:'+_vfs+'px;font-weight:800;color:#c2410c;line-height:1.1">'+it.prompt+'</span>';
@@ -43546,6 +44282,7 @@ function _renderMasteryInner(el){
     if(!bigVis&&cat==="Colors"&&MAST_COLOR_MAP[it.prompt]) bigVis='<div style="width:240px;height:240px;border-radius:50%;background:'+MAST_COLOR_MAP[it.prompt]+';border:3px solid '+mastColorBorder(it.prompt)+'"></div>';
     if(!bigVis&&cat==="Shapes") bigVis=MAST_SHAPE_SIDES[it.prompt]?mastShapeSidesVis(it.prompt,210,mastSidesKey(it,secondLook)):'<span class="mast-bigmoji">'+mastShapeVis(it.prompt,210)+'</span>';   // SHAPE_SIDES: tap-each-side drill for straight-sided shapes
     if(!bigVis&&cat==="Counting") bigVis=mastCountVisBig(it);
+    if(!bigVis&&cat==="Number Sense"&&typeof mastPartnerVis==="function") bigVis=mastPartnerVis(it.prompt,240);  // Stage 5 frames
     if(!bigVis){ const _pl=it.prompt.length; const _fs=_pl<=3?200:_pl<=8?120:_pl<=14?72:_pl<=22?48:36; const _lf=cat==="Letters"?"font-family:'Fraunces',serif;":""; bigVis='<span style="'+_lf+'font-size:'+_fs+'px;font-weight:800;color:#c2410c;word-break:break-word;max-width:100%">'+it.prompt+'</span>'; }
     // Definitions-map first; fall back to the card's own answer (when it's a real answer,
     // not the answer==prompt placeholder the old pull paths minted) so a card whose map
@@ -43618,7 +44355,7 @@ function _renderMasteryInner(el){
         c+='<div class="mast-slide-img">'+bigVis+'</div>';
         if(_ruleQ) c+='<div style="font-size:14px;color:#7c3aed;font-weight:700;margin-bottom:2px">'+_ruleQ+'</div>';
         else if(!_ruleStyle&&!_faceName) c+='<div class="mast-slide-name">'+it.prompt+'</div>';  // rule/name-mode cards don't repeat the prompt on the front
-        c+='<div class="mast-flip-hint">\u{1F4A1} tap to see '+(_faceName?'who this is':(_ruleStyle?'the rule':(_learnFlip?'the answer':'definition')))+'</div>';
+        c+='<div class="mast-flip-hint">\u{1F4A1} tap to see '+(_faceName?'who this is':(_ruleStyle?'the rule':((_learnFlip||cat==="Number Sense")?'the answer':'definition')))+'</div>';
       }
       c+=_tallyH;
       c+='</div>';
@@ -43634,7 +44371,7 @@ function _renderMasteryInner(el){
         c+='<div class="mast-flip-hint">\u{1F4A1} tap to flip back</div>';
       } else {
         { const _bpl=it.prompt.length; const _bfs=_bpl<=6?60:_bpl<=14?42:_bpl<=22?32:24; c+='<div class="mast-slide-img"><span style="font-size:'+_bfs+'px;font-weight:800;color:#7c3aed;word-break:break-word;max-width:100%">'+it.prompt+'</span></div>'; }
-        if(!_faceName) c+='<div class="mast-flip-def">'+(_backText?((_ruleStyle||_learnFlip)?_backText:'&ldquo;'+_backText+'&rdquo;'):'<span style="color:#a78bfa;font-size:16px">no '+(_ruleStyle?'rule':'definition')+' yet</span>')+'</div>';
+        if(!_faceName) c+='<div class="mast-flip-def">'+(_backText?((_ruleStyle||_learnFlip||cat==="Number Sense")?_backText:'&ldquo;'+_backText+'&rdquo;'):'<span style="color:#a78bfa;font-size:16px">no '+(_ruleStyle?'rule':'definition')+' yet</span>')+'</div>';
         c+=_audBtn;
         c+='<div class="mast-flip-hint">\u{1F4A1} tap to flip back</div>';
       }
@@ -43689,7 +44426,7 @@ function _renderMasteryInner(el){
         c+='<button onclick="event.stopPropagation();mastTraceOpen(\''+_tpEsc+'\')" style="margin:6px 0 2px;padding:7px 18px;border-radius:999px;border:1.5px solid #fdba74;background:#fff7ed;color:#c2410c;font-size:13px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif;position:relative;z-index:2">\u{270D}\u{FE0F} Trace it</button>';
       }
       if(isIntro&&(_catMode==="quiz"||mastItemIsQuiz(masteryKid,it))){
-        const _hint=MAST_INTRO_HINTS[cat]||"practice out loud";
+        const _hint=(cat==="Counting"&&typeof mastCountWord==="function")?"count the "+mastCountWord()+" out loud":(MAST_INTRO_HINTS[cat]||"practice out loud");
         c+='<div style="margin-top:8px;padding:8px 16px;background:#eef2ff;border-radius:10px;border:1.5px solid #c7d2fe">';
         c+='<span style="font-size:13px;color:#4f46e5;font-weight:700">\u{1F3A4} '+_hint+'</span></div>';
       }
@@ -44168,7 +44905,7 @@ function mastPrintCards(){
     if(cat==="Counting"){
       const cn=mastCountN(it);
       if(cn>10) return '<span style="display:inline-block">'+mastCountVisFrames(cn,Math.round(sz*2.2),false)+'</span>';  // paper: same ten-frames, no taps
-      let cd=''; for(let i=0;i<cn;i++) cd+='<span style="font-size:'+Math.round(sz*0.5)+'px;line-height:1">\u{1F995}</span>';
+      let cd=''; for(let i=0;i<cn;i++) cd+='<span style="font-size:'+Math.round(sz*0.5)+'px;line-height:1">'+mastCountEmoji()+'</span>';
       return '<span style="display:inline-flex;flex-wrap:wrap;gap:2px;justify-content:center;max-width:'+(sz*3)+'px">'+cd+'</span>';
     }
     return '<span style="font-size:'+sz+'px;font-weight:800;color:'+kc+'">'+it.prompt+'</span>';
@@ -44492,6 +45229,7 @@ function mlRemaining(kid){
   try{
     return (getActiveTasks()||[]).filter(function(t){
       return t&&t.who===kid&&_mlDayOf(t)===_todayDay&&t.mom==="required"
+        &&!(typeof helperHolds==="function"&&helperHolds(t))   // 🙋 a helper has it
         &&!String(t.id||"").endsWith("_c")
         &&!(typeof checked!=="undefined"&&checked&&checked[t.id]);
     });
@@ -44776,6 +45514,7 @@ function mlQueueLay(tasks){ return _mlLanePass(_mlQueueLayCore(tasks)); }
 function _mlQueueLayCore(tasks){
   try{
     if(!Array.isArray(tasks)||!tasks.length) return tasks;
+    const _mr=function(t){ return !!t&&t.mom==="required"&&!(typeof helperHolds==="function"&&helperHolds(t)); };   // 🙋 Mom work = not a helper's
     const _sc=_mlScan(); const order=_sc.order, n=order.length; if(!n) return tasks;
     const cur=_sc.cur;
     const now=mlNow();
@@ -44789,7 +45528,7 @@ function _mlQueueLayCore(tasks){
     order.forEach(function(k){
       mine[k]=tasks.filter(function(t){ return movable(t)&&t.who===k; })
         .sort(function(a,b){ return toMin(a.time)-toMin(b.time); });
-      momQ[k]=mine[k].filter(function(t){ return t.mom==="required"; });
+      momQ[k]=mine[k].filter(function(t){ return _mr(t); });
       if(momQ[k].length>1) momQ[k]=prMomOrder(k,momQ[k]);   // 🎯 what's needed first, inside the kid's own Mom block
     });
     // Ring kids who still owe Mom work, in loop order from the cursor.
@@ -44874,15 +45613,15 @@ function _mlQueueLayCore(tasks){
     // Where a kid's BUFFER (their first unchecked card, when it is not Mom work) really lands:
     // the later of its slot and the kid's floor, stepped over lunch and checked cards. Her rule
     // "still notebook first": Mom's block for ANY kid starts after it, never on top of it.
-    const _bufLanding=function(k){ const f=mine[k][0]; if(!f||f.mom==="required"||_mlClose(f)) return null; const d0=f.dur||20; let s0=Math.max(_mlKidFloor(k),toMin(f.time)); const W=lunchOf(k).concat(fixedOf(k)); let mv=true; while(mv){ mv=false; W.forEach(function(iv){ if(s0<iv[1]&&s0+d0>iv[0]){ s0=iv[1]; mv=true; } }); } return {start:s0,end:s0+d0}; };
+    const _bufLanding=function(k){ const f=mine[k][0]; if(!f||_mr(f)||_mlClose(f)) return null; const d0=f.dur||20; let s0=Math.max(_mlKidFloor(k),toMin(f.time)); const W=lunchOf(k).concat(fixedOf(k)); let mv=true; while(mv){ mv=false; W.forEach(function(iv){ if(s0<iv[1]&&s0+d0>iv[0]){ s0=iv[1]; mv=true; } }); } return {start:s0,end:s0+d0}; };
     let t=0;
     if(seq.length){
       const k0=seq[0].kid, first0=mine[k0][0];
-      if((now&&now.held&&now.kid===k0)||!first0||first0.mom==="required") t=toMin((first0||seq[0].cards[0]).time);
+      if((now&&now.held&&now.kid===k0)||!first0||_mr(first0)) t=toMin((first0||seq[0].cards[0]).time);
       else t=toMin(first0.time)+(first0.dur||20);
       // 🌞 and never before NOW: the buffer card below lays from now too, so "right after the
       // buffer" is right after where the buffer really is.
-      if(first0&&first0.mom!=="required"&&(!(now&&now.held&&now.kid===k0)||_mlMorn(first0))){
+      if(first0&&!_mr(first0)&&(!(now&&now.held&&now.kid===k0)||_mlMorn(first0))){
         // …where the buffer REALLY lands (the per-kid lay below places it identically, so the
         // block sits right behind it).
         const bl=_bufLanding(k0); if(bl) t=bl.end;
@@ -44912,7 +45651,7 @@ function _mlQueueLayCore(tasks){
     // the buffer/chain and re-tuck to the TRUE end of the kid's re-laid day below.
     order.forEach(function(k){
       const Ls=lunchOf(k);
-      const closes=mine[k].filter(function(x){ return x.mom!=="required"&&_mlClose(x); })
+      const closes=mine[k].filter(function(x){ return !_mr(x)&&_mlClose(x); })
         .sort(function(a,b){ return toMin(a.time)-toMin(b.time); });
       const momIv=[]; let buf=null, others=[];
       if(momOffNow){
@@ -44923,7 +45662,7 @@ function _mlQueueLayCore(tasks){
         // right there the moment she is back (the next render lays them again from the time it
         // is). Once the day has started nothing sits before "now"; before it, the plan's times
         // hold (the queue starts at the first card's slot, not at 6 AM).
-        const own=mine[k].filter(function(x){ return x.mom!=="required"&&!_mlClose(x); });
+        const own=mine[k].filter(function(x){ return !_mr(x)&&!_mlClose(x); });
         const first=mine[k].find(function(x){ return !_mlClose(x); })||null;
         const fixed=fixedOf(k);
         const _kf=_mlKidFloor(k);
@@ -44931,7 +45670,7 @@ function _mlQueueLayCore(tasks){
         own.concat(momQ[k]).forEach(function(c){
           const d=c.dur||20; let moved=true;
           while(moved){ moved=false; Ls.concat(fixed).forEach(function(iv){ if(s<iv[1]&&s+d>iv[0]){ s=iv[1]; moved=true; } }); }
-          newTimes[c.id]=s; if(c.mom==="required"){ momWait[c.id]=true; momIv.push([s,s+d]); } s+=d;
+          newTimes[c.id]=s; if(_mr(c)){ momWait[c.id]=true; momIv.push([s,s+d]); } s+=d;
         });
         others=own;
       }else{
@@ -44939,8 +45678,8 @@ function _mlQueueLayCore(tasks){
         const s=(newTimes[c.id]!==undefined)?newTimes[c.id]:toMin(c.time);
         momIv.push([s,s+(c.dur||20)]);
       });
-      buf=mine[k].find(function(x){ return x.mom!=="required"&&!_mlClose(x); })||null;
-      others=mine[k].filter(function(x){ return x.mom!=="required"&&x!==buf&&!_mlClose(x); });
+      buf=mine[k].find(function(x){ return !_mr(x)&&!_mlClose(x); })||null;
+      others=mine[k].filter(function(x){ return !_mr(x)&&x!==buf&&!_mlClose(x); });
       // Push-later-only: a card keeps the packer's slot (device lanes and gaps survive)
       // and steps later only to clear the kid's Mom block, lunch, or the card before it.
       // The buffer keeps its slot too — UNLESS the kid's own Mom block covers it (a held
@@ -45017,7 +45756,7 @@ function mlBannerHTML(kid){
       // "play, but tidy up after yourself and be ready for Mom when she calls you to start."
       const _rem=(getActiveTasks()||[]).filter(function(t){ return t&&t.who===kid&&_mlDayOf(t)===_todayDay&&!String(t.id||"").endsWith("_c")
         &&!(typeof checked!=="undefined"&&checked&&checked[t.id])&&!/lunch/i.test(t.title||"")&&!(t.subjectKey==="closing_nb"||/closing notebook/i.test(t.title||"")); });
-      const _allMom=_rem.length>0&&_rem.every(function(t){ return t.mom==="required"; });
+      const _allMom=_rem.length>0&&_rem.every(function(t){ return t.mom==="required"&&!(typeof helperHolds==="function"&&helperHolds(t)); });
       if(_allMom) return '<div style="background:#f5f3ff;border-left:4px solid #a78bfa;border-radius:0 10px 10px 0;padding:9px 12px;margin:0 0 8px;display:flex;align-items:center;gap:9px">'
         +'<span style="font-size:19px">&#127918;</span>'
         +'<div><div style="font-size:12.5px;font-weight:800;color:#5b21b6">Mom&rsquo;s busy right now</div>'
@@ -45277,6 +46016,7 @@ function auditSchedule(tasks,checkedMap){
     return isNaN(dt.getTime())?null:dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");
   };
   const byDay={};
+  const _hlpIn=(d,x)=>{ try{ if(typeof helperPlanWin!=="function") return null; const w=helperPlanWin(d,x.t.who,x.t.subjectKey); return (w&&x.s>=w.s&&x.e<=w.e)?w.id:null; }catch(e){ return null; } };   // 🙋
   tasks.forEach(t=>{ if(!t||!t.day||t.day==="carryover") return; if(String(t.id||"").endsWith("_c")) return; if(_ck[t.id]) return; (byDay[t.day]=byDay[t.day]||[]).push(t); });
   for(const day in byDay){
     const o=sdOv[day]||{};
@@ -45291,7 +46031,11 @@ function auditSchedule(tasks,checkedMap){
     for(let i=0;i<ts.length;i++)for(let j=i+1;j<ts.length;j++){
       const a=ts[i],b=ts[j]; if(!(a.s<b.e&&b.s<a.e)) continue;
       if(a.t.who===b.t.who){ v.push(lbl+": "+cap(a.t.who)+" double-booked at "+a.t.time); continue; }
-      if(neverSet.has("mom_required")&&a.t.mom==="required"&&b.t.mom==="required") v.push(lbl+": two Mom-Required at once");
+      if(neverSet.has("mom_required")&&a.t.mom==="required"&&b.t.mom==="required"){
+        const ha=_hlpIn(day,a), hb=_hlpIn(day,b);   // 🙋 a card in a regular helper's window is hers, not Mom's
+        if(ha&&hb&&ha===hb) v.push(lbl+": two of "+helperName(ha)+"'s cards at once");
+        else if(!ha&&!hb) v.push(lbl+": two Mom-Required at once");
+      }
     }
     // Device pools: computers (cap N) and the shared iPad+phone screen pool (cap M).
     // Flag only when more tasks overlap than there are devices. Lucy's iPad is her own
@@ -46687,6 +47431,7 @@ function rulesFamilyCardsHTML(openSchool){
   h+='</div>';
   h+='<div style="font-size:11px;color:var(--muted);padding:2px 0">Kids checked here have zero school tasks during babysitter time. Applies to current + future weeks.</div>';
   h+='</div></div>';
+  if(pageOn("helpers")) h+=helpersCardHTML();   // 🙋 Helpers — profiles (switch in Settings ▸ Pages)
 
   h+=rulesSchoolDayCardHTML(r,!!openSchool);   // 📅 School Day Times — opens by itself in Settings
 
@@ -50278,6 +51023,8 @@ function gwSubjectDetail(kid,key){
 //           kidStart, laneStart, momStart,            // per-kid / per-lane / Mom earliest — seed past already-fixed (checked) work
 //           lanes,                                    // contending device lanes (default below)
 //           allowOvertime, overtimeMax }              // Saturday catch-up: stack past `end`
+//   item.helper = {id, s, e} (optional, 🙋 2026-10-03): a regular helper (Grandma Wed 9:30–12) takes this Mom card
+//     inside her window on her own clock; doesn't fit (or has a device lane) → the normal Mom path, unchanged.
 //   -> { byId:{id:startMin}, placed:[{id,start}], overflow:[item], dropped:[item] }
 //      overflow = couldn't fit and must be re-homed/carried (never silently lost);
 //      dropped  = couldn't fit AND flagged droppable (e.g. reflex).
@@ -50351,6 +51098,7 @@ function packDay(items, ctx){
   })();
   let momFree = Math.max(dayStart, ctx.momStart || 0);
   const kidFree = {};
+  const helperFree = {};   // 🙋 each regular helper's own clock
   const hardEnd = ctx.allowOvertime ? (ctx.end + (ctx.overtimeMax || 180)) : ctx.end;
   const placed = [], overflow = [], dropped = [], byId = {};
   for(const it of (items || [])){
@@ -50360,6 +51108,16 @@ function packDay(items, ctx){
     const lane = (it.lane && laneSet[it.lane]) ? it.lane : null;
     let from = dayStart;
     for(const k of kids) from = Math.max(from, kidFree[k] || 0, (ctx.kidStart && ctx.kidStart[k]) || 0);
+    const hw = it.helper;
+    if(hw && !lane && hw.e > hw.s){
+      const hs = _walk(_windows(kids, false), Math.max(from, hw.s, helperFree[hw.id] || 0), dur);
+      if(hs + dur <= hw.e && hs + dur <= hardEnd){
+        for(const k of kids) kidFree[k] = hs + dur;
+        helperFree[hw.id] = hs + dur;
+        placed.push({ id: it.id, start: hs }); byId[it.id] = hs;
+        continue;
+      }
+    }
     if(it.momRequired) from = Math.max(from, momFree);
     // Windows that apply whichever device is picked: lunch, this kid's classes, and Mom's.
     const shared = _windows(kids, it.momRequired);
@@ -50430,7 +51188,9 @@ function packAround(existing, newTasks, ctx){
     kidStart[t.who]=Math.max(kidStart[t.who]||dStart,end);
     if(t.mom==="required") momStart=Math.max(momStart,end);
   });
-  var items=newTasks.map(function(t){ return {id:t.id,who:t.who,lane:laneOf(t),durMin:t.dur||20,momRequired:t.mom==="required"}; });
+  var items=newTasks.map(function(t){ var it={id:t.id,who:t.who,lane:laneOf(t),durMin:t.dur||20,momRequired:t.mom==="required"};
+    if(ctx.helperFor&&it.momRequired){ try{ var hw=ctx.helperFor(t); if(hw) it.helper=hw; }catch(e){} }   // 🙋 regular helper
+    return it; });
   var packed=packDay(items,{start:dStart,end:ctx.end,lunchStart:ctx.lunchStart,lunchEnd:ctx.lunchEnd,
     busy:ctx.busy,momBusy:ctx.momBusy,laneBusy:ctx.laneBusy,
     kidStart:kidStart,laneStart:laneStart,momStart:momStart,allowOvertime:!!ctx.allowOvertime,overtimeMax:ctx.overtimeMax||180,lanes:ctx.lanes,
@@ -50620,7 +51380,8 @@ function gwBuildDayTasks(kidAssignments,dayConfig,prefix,counter){
   // Place everything through the shared packer (no phone lane, to match the prior
   // generator; Mom deferred past the sitter return on babysitter days).
   const overflow=packAround([],toPack,{start:schoolStart,end:cutoff,lunchStart:r.lunchStart,lunchEnd:r.lunchEnd,
-    kidStart:kidStart,momStart:(isSitter?sitterEnd:0),busy:fxBusy,momBusy:fxMomBusy,laneBusy:fxLaneBusy,lanes:["computer","screen","ipadLucy","keyboard"],laneCap:gwDeviceCaps()});
+    kidStart:kidStart,momStart:(isSitter?sitterEnd:0),busy:fxBusy,momBusy:fxMomBusy,laneBusy:fxLaneBusy,lanes:["computer","screen","ipadLucy","keyboard"],laneCap:gwDeviceCaps(),
+    helperFor:(typeof helperPlanWin==="function")?function(it){ const mm=meta[it.id]; return mm?helperPlanWin(dayName,mm.kid,mm.key):null; }:null});   // 🙋 Grandma's regular window
   const overflowSet=new Set(overflow);
   items.forEach(it=>{
     const mm=meta[it.id];
