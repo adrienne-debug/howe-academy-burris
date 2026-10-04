@@ -21591,7 +21591,7 @@ function haNbPickerRows(lib){
       <!-- NBPRINT: 🖨 Print = the letter-size PDF (prints right from Safari/iPad/AirPrint), her call 2026-10-03 for every family; 👁 = the quick page view -->
       <button onclick="haNbPdf('${k}','student')" title="Makes a letter-size PDF — prints right from any browser, iPad or iPhone" style="padding:7px 12px;border-radius:9px;border:none;background:#ea580c;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🖨 Print</button>
       <button onclick="haNbPdf('${k}','parent')" title="The parent guide as a letter-size PDF" style="padding:7px 12px;border-radius:9px;border:1.5px solid #ea580c;background:#fff7ed;color:#9a3412;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🖨 Parent</button>
-      <button onclick="haNbOpen('${k}','student')" title="Quick look at the pages (to print, use 🖨 Print)" style="padding:7px 9px;border-radius:9px;border:1.5px solid var(--border);background:#fff;color:#6b7280;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">👁</button>
+      <button onclick="haNbOpen('${k}','student')" title="Quick look at the pages — printing from here only works in Chrome; on Safari use 🖨 Print" style="padding:7px 9px;border-radius:9px;border:1.5px solid var(--border);background:#fff;color:#6b7280;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">👁</button>
     </div>`;
   }).join("");
 }
@@ -29287,7 +29287,9 @@ function renderNotebook(el){
         '<div style="margin-top:7px;font-size:11.5px;color:var(--muted)">👁 Look first: '+
           '<button onclick="haNbOpen(\''+sel+'\',\'student\')" style="border:none;background:none;padding:0 2px;color:#9a3412;font-size:11.5px;font-weight:700;cursor:pointer;text-decoration:underline;font-family:\'DM Sans\',sans-serif">notebook</button> · '+
           '<button onclick="haNbOpen(\''+sel+'\',\'parent\')" style="border:none;background:none;padding:0 2px;color:#9a3412;font-size:11.5px;font-weight:700;cursor:pointer;text-decoration:underline;font-family:\'DM Sans\',sans-serif">parent guide</button>'+
-          ' <span style="opacity:.8">(a PDF takes a few seconds; on iPad it lands in Files → tap Share → Print)</span></div>'+
+          ' <span style="opacity:.8">(a PDF takes a few seconds; on iPad it lands in Files → tap Share → Print)</span>'+
+          // her ask 2026-10-04: the page view only prints right from Chrome (Safari ignores @page)
+          '<div style="margin-top:3px;color:#9a3412;font-weight:700">⚠️ Printing from Look first only works in Chrome. On Safari (iPad, iPhone, Mac), use 🖨 Print.</div></div>'+
         formHtml+
         xpHtml+
         reviewHtml+
