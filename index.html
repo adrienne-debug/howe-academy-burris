@@ -1967,12 +1967,17 @@ const GRAB_DEFAULT=[
   {emoji:"🪟",label:"Clean glass doors in school room inside and out til no smudges",pts:25,cad:"daily"},
   {emoji:"🪟",label:"Clean glass front door inside and out till no smudgs",pts:15,cad:"daily"}
 ];
-let grabs=[];        // config/grabs (falls back to GRAB_DEFAULT)
+// GRAB_FAMILY_START — GRAB_DEFAULT is the Howe house itself (bunny room door, Bella's chair, the
+// school room glass), so only Howe falls back to it. Any other family with no config/grabs gets an
+// empty pool and the Up for Grabs page asks Mom to add her first job (DeWalt start, 2026-10-07).
+function gbDefault(){ return (typeof HA_IS_HOWE!=="undefined"&&HA_IS_HOWE)?GRAB_DEFAULT:[]; }
+// GRAB_FAMILY_END
+let grabs=[];        // config/grabs (falls back to gbDefault(): GRAB_DEFAULT for Howe, empty for anyone else)
 let grabClaims={};   // grabClaims/{week_day_idx} = {by:kid, done:bool, ts}
 let storeEditOpen=false;   // Mom's stocking editor (collapsed by default)
 let pointRequests={};      // pointRequests/{kid}/{id} = {amount,reason,ts,status}
 let prFormOpen=false;      // the kid's "ask Mom" form
-function gbList(){ return (Array.isArray(grabs)&&grabs.length)?grabs:GRAB_DEFAULT.slice(); }
+function gbList(){ return (Array.isArray(grabs)&&grabs.length)?grabs:gbDefault().slice(); }
 let techGrace={};                   // techGrace/{kid}/{wk}/{day} = true (waived for that day)
 function rtIsMulti(slot){ return RT_ABBR[slot]!==undefined; }
 function rtStepsFor(slot,kid,raw,dayName){
@@ -5693,6 +5698,7 @@ function renderSettings(el,ah){
   // 2026-10-01: other families should not be able to turn pages on and off themselves. renderPagesCard() stays for the record.
   pinHtml+=renderFamilyRulesWrap();   // 🏠 all family-wide rules, one home (2026-10-02)
   pinHtml+=renderAIKeyCard();   // ✨ the family's Claude key (recipes from a paste or a photo, book scans, stories)
+  pinHtml+=renderTtsVoiceCard();   // 🔊 this device's spelling voice (2026-10-07)
   pinHtml+='<div class="rules-wrap">';
   pinHtml+='<div class="rules-hdr">Change PIN</div>';
   pinHtml+='<div class="rules-sub">This PIN is used for Mom mode, Admin, Blockouts, Points, and all locked areas.</div>';
@@ -15181,6 +15187,14 @@ function kitRecipeHTML(mid){
   return h;
 }
 
+// KIT_WKRECIPE_START — in 🗓 This week's dinners, tapping a planned dinner's NAME opens its recipe in the same pop-up the
+// grocery list's 🍽 meal chips use (grMealPop — reused, not a second pop-up). Her ask 2026-10-07. The rest of the row still
+// opens the day picker (stopPropagation keeps the two taps apart). Read-only: nothing is written.
+function kitWkNameHTML(pl){
+  const m=pl&&pl.meal; if(!m) return '';
+  return '<b onclick="event.stopPropagation();grMealPop(\''+pl.mid+'\')" role="button" aria-label="Open the recipe" style="cursor:pointer;text-decoration:underline dotted">'+(m.emoji?esc(m.emoji)+' ':'')+esc(m.name)+'</b>';
+}
+// KIT_WKRECIPE_END
 function renderKitchen(el){
   if(!el){el=document.getElementById("content");if(!el)return;}
   const today=_todayStr();
@@ -15211,7 +15225,7 @@ function renderKitchen(el){
     const dayLbl=(i===0?'Tonight':(i===1?'Tomorrow':d.toLocaleDateString("en-US",{weekday:"short"})))+' · '+(d.getMonth()+1)+'/'+d.getDate();
     const pl=kitPlanFor(iso);
     let what;
-    if(pl&&pl.meal) what='<b>'+(pl.meal.emoji?esc(pl.meal.emoji)+' ':'')+esc(pl.meal.name)+'</b>'+(kitSidesTxt(pl)?' <span style="font-size:11px;color:#6b6560">· '+esc(kitSidesTxt(pl))+'</span>':'');
+    if(pl&&pl.meal) what=kitWkNameHTML(pl)+(kitSidesTxt(pl)?' <span style="font-size:11px;color:#6b6560">· '+esc(kitSidesTxt(pl))+'</span>':'');
     else if(pl&&pl.mid) what='<span style="color:#b91c1c;font-weight:700">(meal removed — tap to re-pick)</span>';
     else if(pl&&pl.txt) what='<b>'+esc(pl.txt)+'</b>'+(kitSidesTxt(pl)?' <span style="font-size:11px;color:#6b6560">· '+esc(kitSidesTxt(pl))+'</span>':'')+' <span style="font-size:10px;color:var(--muted)">(typed)</span>';
     else what='<span style="color:var(--muted)">tap to plan</span>';
@@ -19281,7 +19295,7 @@ function rwCatDel(i){ if(!momHere())return; _rwEnsure(); rewardCatalog.splice(i,
 function rwCatMove(i,d){ if(!momHere())return; _rwEnsure(); var j=i+d; if(j<0||j>=rewardCatalog.length)return; var t=rewardCatalog[i]; rewardCatalog[i]=rewardCatalog[j]; rewardCatalog[j]=t; _rwSave(); renderAll(); }
 function storeSetThreshold(v){ _storeCfgSave({threshold:parseInt(v,10)||0}); }
 function _cadDows(cad){ if(!cad||cad==="daily") return [0,1,2,3,4,5,6]; var m=/^wk:(.+)$/.exec(cad); return m?m[1].split(",").map(Number):[]; }
-function _gbEnsure(){ if(!(Array.isArray(grabs)&&grabs.length)) grabs=GRAB_DEFAULT.map(x=>Object.assign({},x)); }
+function _gbEnsure(){ if(!(Array.isArray(grabs)&&grabs.length)) grabs=gbDefault().map(x=>Object.assign({},x)); }
 function _gbSave(){ if(db) db.ref("config/grabs").set(grabs); }
 function gbSet(i,f,v){ if(!momHere())return; _gbEnsure(); if(!grabs[i])return; grabs[i][f]=(f==="pts")?(parseInt(v,10)||0):v; _gbSave(); renderAll(); }
 function gbAdd(){ if(!momHere())return; _gbEnsure(); grabs.push({emoji:"🎁",label:"New grab chore",pts:20,cad:"daily"}); _gbSave(); renderAll(); }
@@ -19418,6 +19432,10 @@ function gbPool(kid,momView){
 function _grabsHTML(kid,momView){
   const gbDue=gbPool(kid,momView);
   let h='<div class="grab-sec"><div class="grab-hd">🙌 Up for Grabs <span>extra stars · yours once you grab it · resets each week</span></div>';
+  // GRAB_EMPTY_START — a family with no grab list at all (not Howe, nothing saved yet): say so, and give
+  // Mom the existing add button right here. Kids see the line only. (2026-10-07)
+  if(!gbList().length) return h+'<div style="font-size:13px;color:var(--muted);padding:10px 2px">No jobs yet — Mom, add your first one.</div>'+((typeof momHere==="function"&&momHere())?'<button class="se-add" onclick="gbAdd()">+ Add grab chore</button>':'')+'</div>';
+  // GRAB_EMPTY_END
   if(!gbDue.length) return h+'<div style="font-size:12px;color:var(--muted);padding:8px 2px">Nothing up for grabs right now — check back when the next one comes round.</div></div>';
   h+='<div class="grab-grid">';
   gbDue.forEach(({g,i})=>{
@@ -41621,9 +41639,20 @@ function mastPlayDefAudio(src){
   if(!url) return;
   try{ new Audio(url).play(); }catch(e){}
 }
-// TTS fallback: when a flip card has no Mom recording, the browser reads the definition
-// aloud (speechSynthesis is free, offline-capable, and works on iPad behind a tap).
-// Recordings stay the premium voice — this only renders when there's no clip.
+// TTS_START — 🔊 ONE shared speak path for every card (her report 2026-10-07, LG StanbyME: a 🗣 button
+// read the FRONT of a card that was flipped to its BACK, and an All About Spelling word in Lincoln's daily
+// drill said nothing even with the button pressed while other cards in the same drill spoke). The rules:
+//   · every spoken word goes through mastSpeak(text) — no screen builds its own SpeechSynthesisUtterance;
+//   · a flip card's speak button reads the side that's SHOWING at tap time: ttsFlipSay(btn) looks at the
+//     card's flip state and the per-side text the card carries (ttsFlipAttrs), never a word baked into
+//     the button (the study card's back button said the front word);
+//   · the voice list must be loaded before speaking: Chromium / Android / webOS fill getVoices()
+//     asynchronously ("voiceschanged"), and an utterance spoken against an empty list can be dropped —
+//     worse, the old +700 ms check then flagged the device engine-less FOR GOOD (ha_tts_dead), so every
+//     word went to the pre-baked files, and words added after the last bake (the AAS unit, 2026-10-04)
+//     had no file → silence. Voices showing up now clears that flag.
+// Browser speech (speechSynthesis) is free, offline-capable, and works on iPad behind a tap. Mom's
+// recordings stay the premium voice — mastPlayDefAudio plays those; this renders when there's no clip.
 // iPad Safari needs babying: speak() in the same tick as cancel() gets swallowed, an
 // unreferenced utterance gets GC'd mid-speech, and after a tab switch / screen lock the
 // synth wakes up stuck "paused" and queues everything silently until resume() is called.
@@ -41635,11 +41664,14 @@ function mastPlayDefAudio(src){
 function _ttsFileUrl(text){ let h=5381; const s=String(text); for(let i=0;i<s.length;i++){ h=(Math.imul(h,33)^s.charCodeAt(i))>>>0; } return "tts/"+h.toString(16)+".m4a"; }
 // One reused element (TV autoplay policies treat a gesture-primed element more kindly)
 // + loud failure breadcrumbs — a silent .catch() cost us a device-trip to learn nothing.
-function _ttsFilePlay(text){
+// rate: the baked files are at normal speed, so a spelling word plays a touch slower (pitch kept).
+function _ttsFilePlay(text,rate){
   try{
     const a=window._ttsAudio||(window._ttsAudio=new Audio());
-    a.onerror=function(){ try{ dbg("tts file media error code="+(a.error&&a.error.code)+" src="+a.src.slice(-16)); }catch(e){} };
+    a.onerror=function(){ try{ dbg("tts file media error code="+(a.error&&a.error.code)+" src="+a.src.slice(-16)+" text="+String(text).slice(0,30)); }catch(e){} };
     a.src=_ttsFileUrl(text);
+    const pr=(rate&&rate<TTS_RATE)?Math.round(rate/TTS_RATE*100)/100:1;
+    try{ a.preservesPitch=true; a.defaultPlaybackRate=pr; a.playbackRate=pr; }catch(e){}
     const p=a.play();
     if(p&&p.catch) p.catch(function(e){ try{ dbg("tts file play blocked: "+(e&&e.name)+" "+(e&&e.message||"").slice(0,60)); }catch(e2){} });
   }catch(e){ try{ dbg("tts file play threw: "+e); }catch(e2){} }
@@ -41648,11 +41680,104 @@ function _ttsFilePlay(text){
 // plays synchronously inside the gesture (autoplay-safe) from the first word on.
 try{ if(HA_LS.getItem("ha_tts_dead")==="1") window._ttsDead=true; }catch(e){}
 let mastUtter=null;   // module-level ref so Safari can't GC the utterance while it plays
-function mastSpeak(text){
-  if(!text||!window.speechSynthesis) return;
+// ── Voice list ───────────────────────────────────────────────────────────────
+const TTS_VOICE_WAIT_MS=1500;   // longest a tap waits for the voice list before speaking anyway
+let _ttsVoice=null, _ttsWaiters=[], _ttsSeq=0;
+function _ttsVoices(){ try{ return (window.speechSynthesis&&speechSynthesis.getVoices())||[]; }catch(e){ return []; } }
+// TTS_VOICE_START — the CLEAREST natural US-English voice on each device (her report 2026-10-07: the spelling
+// word "grasp" came out sounding like "grass"). The old pick took the device's default English voice, which on
+// a Mac / iPad can be a compact or novelty voice and on Chrome a UK one. Now: Mom's choice for THIS device
+// (Settings ▸ 🔊 Spelling voice, kept in this device's storage — voices differ per device, so it is never
+// synced), else the best-ranked voice below, else any US English, else any English, else the default.
+// Ranked best first; matched on the voice's name.
+const TTS_VOICE_RANK=[
+  /^(Ava|Zoe|Evan|Nathan|Samantha|Allison|Joelle|Noelle|Susan|Tom)\b.*\(Premium\)/i,      // Apple downloadable (iPad/Mac): best
+  /^(Ava|Zoe|Evan|Nathan|Samantha|Allison|Joelle|Noelle|Susan|Tom)\b.*\(Enhanced\)/i,     // Apple downloadable: very good
+  /^Microsoft (Aria|Jenny|Ava|Emma|Andrew|Brian|Guy|Michelle)\b.*Natural/i,                 // Edge / Windows neural
+  /^Google US English$/i,                                                                    // Chrome on a computer
+  /^(Samantha|Ava|Allison|Zoe|Evan|Nathan|Susan|Tom|Nicky|Aaron|Joelle|Noelle)\b/i,         // Apple built-in
+  /^en-us-x-\w+-network$/i,                                                                 // Android / LG (Google speech, online)
+  /^en-us-x-\w+-local$/i,                                                                   // Android / LG (Google speech, offline)
+  /^Microsoft (Zira|David|Mark)\b/i                                                         // Windows classic
+];
+// Apple's joke and robotic voices — never picked on their own (Mom can still choose one).
+const TTS_VOICE_NOVELTY=/^(Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Deranged|Eddy|Flo|Fred|Good News|Grandma|Grandpa|Hysterical|Jester|Junior|Kathy|Organ|Pipe Organ|Ralph|Reed|Rocko|Sandy|Shelley|Superstar|Trinoids|Whisper|Wobble|Zarvox)\b/i;
+const TTS_VOICE_KEY="ha_tts_voice";   // this device's chosen voice (voiceURI), HA_LS only
+function _ttsIsEn(v){ return !!(v&&/^en([-_]|$)/i.test(v.lang||"")); }
+function _ttsScore(v){
+  const lang=String(v.lang||"").replace("_","-");
+  const name=String(v.name||"");
+  let s=/^en-US$/i.test(lang)?1000:(/^en$/i.test(lang)?500:0);
+  if(TTS_VOICE_NOVELTY.test(name)) s-=1500;
+  const r=TTS_VOICE_RANK.findIndex(function(re){ return re.test(name); });
+  if(r>=0) s+=(TTS_VOICE_RANK.length-r)*10;
+  if(v.default) s+=1;
+  return s;
+}
+// English voices, clearest first (the order Mom's picker lists them).
+function _ttsRanked(vs){
+  return vs.filter(_ttsIsEn).map(function(v,i){ return {v:v,s:_ttsScore(v),i:i}; })
+    .sort(function(a,b){ return b.s-a.s||a.i-b.i; }).map(function(x){ return x.v; });
+}
+function _ttsChosen(){ try{ return HA_LS.getItem(TTS_VOICE_KEY)||""; }catch(e){ return ""; } }
+function _ttsPickVoice(vs){
+  const want=_ttsChosen();
+  if(want){ const m=vs.find(function(v){ return v&&(v.voiceURI===want||v.name===want); }); if(m) return m; }
+  return _ttsRanked(vs)[0]||vs.find(function(v){ return v&&v.default; })||vs[0]||null;
+}
+// TTS_VOICE_END
+function _ttsVoicesLoaded(){
+  const vs=_ttsVoices(); if(!vs.length) return false;
+  if(!_ttsVoice||vs.indexOf(_ttsVoice)<0) _ttsVoice=_ttsPickVoice(vs);
+  // Voices listed = this browser HAS an engine. A file-mode flag from an earlier empty-list
+  // moment was a false alarm — clear it so the engine speaks every word, baked or not.
+  if(window._ttsDead){ window._ttsDead=false; try{ HA_LS.removeItem("ha_tts_dead"); }catch(e){} try{ dbg("tts: voices="+vs.length+" — engine found, pre-gen fallback OFF"); }catch(e){} }
+  return true;
+}
+function _ttsFlush(){ const w=_ttsWaiters; _ttsWaiters=[]; w.forEach(function(f){ try{ f(); }catch(e){} }); }
+// Run fn once the voice list is loaded — synchronously when it already is (keeps the tap's
+// gesture), else on "voiceschanged" / a 250 ms re-check, or at TTS_VOICE_WAIT_MS regardless.
+function _ttsWhenVoices(fn){
+  if(_ttsVoicesLoaded()){ fn(); return; }
+  let done=false, iv=null;
+  const run=function(){ if(done) return; done=true; if(iv) clearInterval(iv); fn(); };
+  _ttsWaiters.push(run);
+  iv=setInterval(function(){ if(_ttsVoicesLoaded()) run(); },250);   // some webOS builds never fire voiceschanged
+  setTimeout(run,TTS_VOICE_WAIT_MS);
+}
+// Prime at load, so the list is usually ready before the first tap.
+try{ if(window.speechSynthesis){
+  _ttsVoicesLoaded();
+  const _onV=function(){ if(_ttsVoicesLoaded()){ _ttsFlush(); try{ if(typeof ttsVoiceCardRefresh==="function") ttsVoiceCardRefresh(); }catch(e){} } };
+  if(speechSynthesis.addEventListener) speechSynthesis.addEventListener("voiceschanged",_onV); else speechSynthesis.onvoiceschanged=_onV;
+} }catch(e){}
+// What the engine reads: no markup (rule cards carry <u>/<span>), the AAS one-dot leader read as a period.
+function _ttsClean(text){ return String(text).replace(/<[^>]*>/g," ").replace(/․/g,".").replace(/\s+/g," ").trim(); }
+// ── THE speak function ───────────────────────────────────────────────────────
+// opts.rate (default TTS_RATE); opts.spell = a spelling word, read a little slower (TTS_SPELL_RATE —
+// her ask 2026-10-07, every letter sound has to come through). The pre-baked file is keyed on the RAW
+// text (as gen_tts.js hashes it).
+const TTS_RATE=0.85, TTS_SPELL_RATE=0.75;
+function mastSpeak(text,opts){
+  if(!text) return;
+  text=String(text);
+  const rate=(opts&&opts.rate)||(opts&&opts.spell?TTS_SPELL_RATE:TTS_RATE);
   // One-time per session: leave a breadcrumb of this device's speech engine in _debug,
   // so a silent TV can be diagnosed from the log instead of guessed at.
-  try{ if(!window._ttsProbed){ window._ttsProbed=1; dbg("tts probe: voices="+speechSynthesis.getVoices().length+" ua=…"+navigator.userAgent.slice(-70)); } }catch(e){}
+  try{ if(!window._ttsProbed){ window._ttsProbed=1; dbg("tts probe: voices="+_ttsVoices().length+" ua=…"+navigator.userAgent.slice(-70)); } }catch(e){}
+  if(!window.speechSynthesis){ _ttsFilePlay(text,rate); return; }   // no engine API at all: the baked file is the only voice
+  // Proven engine-less and still no voices: the file plays inside the tap (autoplay-safe).
+  if(window._ttsDead&&!_ttsVoicesLoaded()){ _ttsFilePlay(text,rate); return; }
+  const my=++_ttsSeq;   // a newer tap while the list loads wins — never two words at once
+  _ttsWhenVoices(function(){ if(my===_ttsSeq) _ttsSpeakNow(text,rate); });
+}
+function _ttsUtter(text,rate){
+  const u=new SpeechSynthesisUtterance(_ttsClean(text));
+  u.rate=rate; u.lang=(_ttsVoice&&_ttsVoice.lang)||"en-US";
+  if(_ttsVoice) u.voice=_ttsVoice;
+  mastUtter=u; return u;
+}
+function _ttsSpeakNow(text,rate){
   // The Safari babying below (unconditional resume(), deferred speak after cancel) is
   // for WebKit's engine quirks — but it went SILENT on the LG StanbyME's webOS browser
   // (Chromium), where the simple cancel-then-speak path was proven on the device
@@ -41660,24 +41785,46 @@ function mastSpeak(text){
   // every Chromium engine gets the old proven path.
   const _safari=/safari/i.test(navigator.userAgent)&&!/chrome|chromium|crios|android|web0s|webos/i.test(navigator.userAgent);
   if(!_safari){
-    if(window._ttsDead){ _ttsFilePlay(text); return; }
-    try{ speechSynthesis.cancel(); mastUtter=new SpeechSynthesisUtterance(String(text)); mastUtter.rate=0.85; speechSynthesis.speak(mastUtter); }catch(e){}
-    // Engine-dead detection: if nothing is speaking shortly after speak() AND the voice
-    // list is still empty, this browser has NO speech engine (the LG StanbyME reports
-    // voices=0 forever — LG's own devs confirm webOS TV has none). Flip the session to
+    const hadVoices=_ttsVoices().length>0;
+    try{ speechSynthesis.cancel(); speechSynthesis.speak(_ttsUtter(text,rate)); }catch(e){}
+    // Engine-dead detection — only after the voice list had its full chance to load and
+    // didn't: if nothing is speaking shortly after speak() AND the list is STILL empty,
+    // this browser has NO speech engine (LG's own devs confirm webOS TV has none). Flip to
     // the pre-generated Samantha files — including THIS word, a beat late but heard.
-    // A working engine can't false-trip: either it's speaking at +700ms or its voice
-    // list has populated by then.
-    setTimeout(function(){ try{ if(!speechSynthesis.speaking&&!speechSynthesis.getVoices().length){ if(!window._ttsDead){ window._ttsDead=true; try{HA_LS.setItem("ha_tts_dead","1");}catch(e2){} dbg("tts: no engine — pre-gen audio fallback ON (persisted)"); } _ttsFilePlay(text); } }catch(e){} },700);
+    if(!hadVoices) setTimeout(function(){ try{ if(!speechSynthesis.speaking&&!_ttsVoices().length){ if(!window._ttsDead){ window._ttsDead=true; try{HA_LS.setItem("ha_tts_dead","1");}catch(e2){} dbg("tts: no engine — pre-gen audio fallback ON (persisted)"); } _ttsFilePlay(text,rate); } }catch(e){} },700);
     return;
   }
   try{
     const synth=speechSynthesis, busy=synth.speaking||synth.pending;
     if(busy) synth.cancel();
     synth.resume();
-    mastUtter=new SpeechSynthesisUtterance(String(text)); mastUtter.rate=0.85;
-    if(busy) setTimeout(()=>{ try{ synth.resume(); synth.speak(mastUtter); }catch(e){} },80);
-    else synth.speak(mastUtter);
+    const u=_ttsUtter(text,rate);
+    if(busy) setTimeout(()=>{ try{ synth.resume(); synth.speak(u); }catch(e){} },80);
+    else synth.speak(u);
+  }catch(e){}
+}
+// ── Flip cards: read the side that's SHOWING ─────────────────────────────────
+// The card's .mast-flip-wrap carries what each side says (data-say-front / data-say-back) and,
+// where Mom's recording belongs to a side, its key (data-rec-front / data-rec-back). Every flip
+// card's speak button calls ttsFlipSay(this): the flip state at tap time picks the side.
+function _ttsAttr(s){ return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function ttsFlipAttrs(o){
+  let a=""; o=o||{};
+  [["front","say-front"],["back","say-back"],["recFront","rec-front"],["recBack","rec-back"],["spell","tts-spell"]].forEach(function(p){ if(o[p[0]]) a+=' data-'+p[1]+'="'+_ttsAttr(o[p[0]])+'"'; });
+  return a;
+}
+function ttsFlipSide(el){
+  const wrap=el&&el.closest?el.closest(".mast-flip-wrap"):null;
+  if(!wrap) return null;
+  return wrap.classList.contains("flipped")?"back":"front";
+}
+function ttsFlipSay(el){
+  try{
+    const side=ttsFlipSide(el); if(!side) return;
+    const wrap=el.closest(".mast-flip-wrap");
+    const rec=wrap.getAttribute("data-rec-"+side), say=wrap.getAttribute("data-say-"+side);
+    if(rec&&mastGetDefAudio(masteryKid,rec)) mastPlayDefAudio(rec);
+    else if(say) mastSpeak(say,{spell:wrap.getAttribute("data-tts-spell")==="1"});
   }catch(e){}
 }
 // 🔊 Spell decks (AAS · Spelling You See · Spelling): the word is SAID, never shown —
@@ -41687,15 +41834,55 @@ let mastSpellPeek=null;
 function mastSpellSay(id){
   let items=masteryData[masteryKid]||[]; if(!Array.isArray(items)) items=Object.values(items);
   const it=items.find(x=>x&&x.id===id);
-  if(it&&it.prompt) mastSpeak(String(it.prompt));
+  if(it&&it.prompt) mastSpeak(String(it.prompt),{spell:true});
 }
 function mastSpellPeekToggle(id){ mastSpellPeek=mastSpellPeek===id?null:id; _mastRe(); }
+// What a card's definition side says aloud (mirrored by scripts/gen_tts.js for the baked files).
+function mastItemSpeakText(it,prompt){
+  return mastGetDef(masteryKid,prompt)||(it&&it.answer&&it.answer!==it.prompt?it.answer:"")||(it&&it.definition)||"";
+}
 function mastSpeakItem(prompt){
   let items=masteryData[masteryKid]||[]; if(!Array.isArray(items)) items=Object.values(items);
   const it=items.find(x=>x&&x.prompt===prompt);
-  const txt=mastGetDef(masteryKid,prompt)||(it&&it.answer&&it.answer!==it.prompt?it.answer:"")||(it&&it.definition)||"";
-  mastSpeak(txt);
+  mastSpeak(mastItemSpeakText(it,prompt));
 }
+// TTS_END
+
+// TTS_VOICE_CARD_START — 🔊 Settings ▸ Spelling voice (her ask 2026-10-07, after "grasp" sounded like "grass"):
+// Mom picks or previews the voice THIS device uses for every spoken word. Saved in this device's own storage
+// only (HA_LS "ha_tts_voice") — each iPad / TV / computer has its own voices — so nothing is written to Firebase.
+// "Automatic" = the ranked pick (TTS_VOICE_RANK). The preview says the reported pair at spelling speed.
+const TTS_PREVIEW_TEXT="grasp. grass. Your word is grasp.";
+function _ttsVoiceCardBody(){
+  const _e=function(x){ return String(x).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); };
+  if(!window.speechSynthesis) return '<div style="font-size:12px;color:var(--muted);padding:6px 0">This device has no speech voices — it plays the recorded Samantha files instead (spelling words a little slower).</div>';
+  const vs=_ttsVoices(), ranked=_ttsRanked(vs);
+  if(!ranked.length) return '<div style="font-size:12px;color:var(--muted);padding:6px 0">Loading this device\'s voices… <button onclick="ttsVoiceCardRefresh()" style="margin-left:6px;padding:4px 10px;border-radius:8px;border:1.5px solid var(--border);background:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">Check again</button></div>';
+  const want=_ttsChosen(), auto=_ttsRanked(vs)[0];
+  const has=!!(want&&ranked.some(function(v){ return (v.voiceURI||v.name)===want||v.name===want; }));
+  let h='<div class="rules-row"><div class="rules-label">Voice on this device</div><select id="tts-voice-sel" onchange="ttsVoiceSet(this.value)" style="flex:1;min-width:0;max-width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:\'DM Sans\',sans-serif">';
+  h+='<option value=""'+(has?'':' selected')+'>Automatic — clearest available ('+_e(auto.name)+')</option>';
+  ranked.forEach(function(v){ const id=v.voiceURI||v.name; h+='<option value="'+_e(id)+'"'+(has&&(id===want||v.name===want)?' selected':'')+'>'+_e(v.name)+' · '+_e(v.lang)+(v.localService===false?' · online':'')+'</option>'; });
+  h+='</select></div>';
+  h+='<div class="rules-row"><div class="rules-label"></div><button onclick="ttsVoicePreview()" style="padding:7px 14px;border-radius:9px;border:none;background:#4f46e5;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">🔊 Preview</button><span id="tts-voice-msg" style="font-size:12px;margin-left:10px;color:#16a34a"></span></div>';
+  h+='<div style="font-size:11px;color:var(--muted);padding:6px 0 0;line-height:1.45">Each device keeps its own choice. On an iPad or Mac, clearer voices (marked Enhanced or Premium) can be downloaded in Settings ▸ Accessibility ▸ Spoken Content ▸ Voices ▸ English; then pick one here.</div>';
+  return h;
+}
+function renderTtsVoiceCard(){
+  return '<div class="rules-wrap"><div class="rules-hdr">🔊 Spelling voice</div>'+
+    '<div class="rules-sub">The voice that reads spelling words and every 🔊 button. Spelling words are read a little slower.</div>'+
+    '<div class="rules-card open"><div class="rules-card-body" id="tts-voice-body">'+_ttsVoiceCardBody()+'</div></div></div>';
+}
+function ttsVoiceCardRefresh(){ try{ const el=document.getElementById("tts-voice-body"); if(el) el.innerHTML=_ttsVoiceCardBody(); }catch(e){} }
+function ttsVoiceSet(id){
+  if(!momHere()) return;
+  try{ if(id) HA_LS.setItem(TTS_VOICE_KEY,String(id)); else HA_LS.removeItem(TTS_VOICE_KEY); }catch(e){}
+  _ttsVoice=null; _ttsVoicesLoaded();   // re-pick now
+  const m=document.getElementById("tts-voice-msg"); if(m) m.textContent="✓ Saved for this device";
+  ttsVoicePreview();
+}
+function ttsVoicePreview(){ mastSpeak(TTS_PREVIEW_TEXT,{spell:true}); }
+// TTS_VOICE_CARD_END
 
 // ── "Show me" recognition step (Montessori three-period lesson, period 2) ────────
 // A ⭐ Learning FLASH card that's been shown at least once renders as recognition: the
@@ -41724,8 +41911,75 @@ function _smTileVis(it,noGlyph){
 }
 function mastShowMeTap(key,itemId,tappedId){
   mastShowMe[key]=(tappedId===itemId)?"ok":tappedId;
+  if(tappedId!==itemId&&mastShowMeSpoken[key]) mastSpeak(mastShowMeSpoken[key]);   // SHOWME_CUE: a wrong tap hears the word again
   _mastRe();
 }
+// SHOWME_CUE_START — 👂 what the "Show Me" pick-3 card shows ABOVE its three tiles (her report 2026-10-07:
+// Lucy's sight-word pick-3 printed the target word in small text — "Tap the the!" — so she matched the
+// letters to the same word below instead of reading it). Per-deck Mom setting, <kid>_settings/show_me_cue/<deck>:
+//   "spoken" — the word is never written: it's SAID once when the card comes up, through the one shared
+//              speak path (mastSpeak), and a big 🔊 says it again; a wrong tap says it again too.
+//   "look"   — look away → reveal: the word shows big with no tiles; "🙈 Look away" hides it and brings up
+//              the three tiles, so she picks from memory. "👀 Look again" puts the word back.
+//   "shown"  — the card as it was (word written in the "Tap the ___!" line).
+// A right tap reveals the written word (the existing "You found it! 🎉" face) in every mode.
+// Default: "spoken" for Sight Words (the deck this was asked for); every other deck stays "shown" until
+// Mom picks — Julian's letter/picture decks don't change on their own.
+const SHOWME_CUE_DEFAULT={"Sight Words":"spoken"};
+let mastShowMeLooked={};   // {"itemId|printNum": true} once "Look away" is tapped — session-only, like mastShowMe
+let mastShowMeSaid={};     // {"itemId|printNum": true} once the card's word was spoken on arrival
+let mastShowMeSpoken={};   // {"itemId|printNum": word} — spoken-cue cards, so a wrong tap can say the word again
+function mastShowMeCue(kid,deck){
+  const s=masteryData[(kid||"julian")+"_settings"]||{};
+  const v=s.show_me_cue&&s.show_me_cue[deck];
+  if(v==="spoken"||v==="look"||v==="shown") return v;
+  return SHOWME_CUE_DEFAULT[deck]||"shown";
+}
+function mastSetShowMeCue(kid,deck,v){
+  if(typeof momHere==="function"&&!momHere()) return;
+  if(!kid||!deck||(v!=="spoken"&&v!=="look"&&v!=="shown")) return;
+  const s=masteryData[kid+"_settings"]||(masteryData[kid+"_settings"]={});
+  if(!s.show_me_cue) s.show_me_cue={};
+  s.show_me_cue[deck]=v;
+  if(db&&!_dryRun()) db.ref("mastery/"+kid+"_settings/show_me_cue").update({[deck]:v});   // this deck only — never the whole map
+  try{HA_LS.setItem("ha_mastery",JSON.stringify(masteryData));}catch(e){}
+  _mastRe();
+}
+function mastShowMeLookAway(key,on){ if(on) mastShowMeLooked[key]=true; else delete mastShowMeLooked[key]; _mastRe(); }
+// The cue above the tiles. Returns {html, tiles (show the three tiles?), wrong (the try-again line)}.
+function mastShowMeCueHtml(it,cue,key,state){
+  const w=String((it&&it.prompt)||"");
+  const q=s=>String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");
+  if(cue==="spoken"){
+    mastShowMeSpoken[key]=w;
+    return {tiles:true,wrong:"Almost \u2014 listen again!",
+      html:'<button onclick="event.stopPropagation();mastSpeak(\''+q(w)+'\')" aria-label="Hear the word again" style="margin:14px auto 2px;width:104px;height:104px;border-radius:50%;border:3px solid #c2410c;background:#fff7ed;color:#c2410c;font-size:52px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;position:relative;z-index:2">\u{1F50A}</button>'+
+        '<div style="font-size:16px;font-weight:800;color:#c2410c;margin:4px 0 2px;position:relative;z-index:2">Tap the word you hear!</div>'};
+  }
+  if(cue==="look"){
+    if(!mastShowMeLooked[key]&&!state){
+      const fs=w.length<=4?84:w.length<=8?64:44;
+      return {tiles:false,wrong:"",
+        html:'<div style="font-size:'+fs+'px;font-weight:800;color:#c2410c;margin:14px 0 6px;word-break:break-word">'+w+'</div>'+
+          '<div style="font-size:13px;font-weight:700;color:#9a3412;margin-bottom:8px">Look at the word. Then look away and find it!</div>'+
+          '<button onclick="event.stopPropagation();mastShowMeLookAway(\''+q(key)+'\',true)" style="padding:12px 26px;border-radius:999px;border:2px solid #c2410c;background:#fff7ed;color:#c2410c;font-size:17px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif;position:relative;z-index:2">\u{1F648} Look away</button>'};
+    }
+    return {tiles:true,wrong:"Almost \u2014 try again!",
+      html:'<div style="font-size:17px;font-weight:800;color:#c2410c;margin:14px 0 2px;position:relative;z-index:2">Which word was it?</div>'+
+        '<button onclick="event.stopPropagation();mastShowMeLookAway(\''+q(key)+'\',false)" style="margin-top:4px;padding:4px 12px;border-radius:999px;border:1.5px solid #fed7aa;background:#fff;color:#9a3412;font-size:12px;font-weight:700;cursor:pointer;position:relative;z-index:2">\u{1F440} Look again</button>'};
+  }
+  return {tiles:true,wrong:"Almost \u2014 find the "+w+"!",
+    html:'<div onclick="event.stopPropagation();mastSpeak(\'Tap the '+q(w)+'\')" style="font-size:17px;font-weight:800;color:#c2410c;margin:14px 0 2px;cursor:pointer;position:relative;z-index:2">\u{1F449} Tap the <u>'+w+'</u>! <span style="font-size:12px">\u{1F5E3}</span></div>'};
+}
+// Say a spoken-cue card's word once when it comes up (the 🔊 replays it). Called by the slideshow for
+// the card on screen only — buildSlideCard runs for every card to measure heights, so it can't speak.
+function mastShowMeAutoSay(key){
+  if(!key||!mastShowMeSpoken[key]||mastShowMeSaid[key]||mastShowMe[key]) return false;
+  mastShowMeSaid[key]=true;
+  mastSpeak(mastShowMeSpoken[key]);
+  return true;
+}
+// SHOWME_CUE_END
 
 // ── 🎯 Match game — Quizlet-style pairs, a treat mode ─────────────────────────────
 // Word ↔ picture/meaning pairs against a count-up clock; per-deck personal best stored in
@@ -45509,7 +45763,7 @@ function stStep(d){ if(!stUI) return; stUI.i=Math.max(0,Math.min(stUI.words.leng
 function stToGrade(){ if(stUI){ stUI.view="grade"; stRender(); } }
 function stSet(i,r){ if(!stUI) return; stUI.grades[i]=(stUI.grades[i]===r)?undefined:r; if(stUI.grades[i]===undefined) delete stUI.grades[i]; stRender(); }
 function stSetAll(r){ if(!stUI) return; stUI.words.forEach((w,i)=>{ stUI.grades[i]=r; }); stRender(); }
-function stSpeak(){ try{ if(!stUI) return; const w=stUI.words[stUI.i]; const u=new SpeechSynthesisUtterance(w.name.replace(/․/g,".")+(w.sentence?". "+w.sentence:"")); u.rate=0.85; speechSynthesis.cancel(); speechSynthesis.speak(u); }catch(e){} }
+function stSpeak(){ try{ if(!stUI) return; const w=stUI.words[stUI.i]; mastSpeak(w.name+(w.sentence?". "+w.sentence:""),{spell:true}); }catch(e){} }   // 🔊 TTS: the one shared speak path
 function stRender(){
   if(!stUI){ stClose(); return; }
   let ov=document.getElementById("st-panel");
@@ -46109,7 +46363,7 @@ let wwUI=null;   // {kid,i,mode:"hear"|"gaps",tries,msg,done:{}}
 function wwOpen(kid){ const L=wwList(kid); if(!L.length) return; wwUI={kid,i:0,mode:"hear",tries:0,msg:"",done:{}}; wwRender(); }
 function wwClose(){ wwUI=null; const ov=document.getElementById("ww-panel"); if(ov) ov.remove(); try{ if(typeof _mastRe==="function") _mastRe(); }catch(e){} }
 function wwWord(it){ return String(it.answer||it.prompt||"").replace(/․/g,"."); }
-function wwSay(){ try{ if(!wwUI) return; const it=wwList(wwUI.kid)[wwUI.i]; if(!it) return; const u=new SpeechSynthesisUtterance(wwWord(it)); u.rate=0.8; speechSynthesis.cancel(); speechSynthesis.speak(u); }catch(e){} }
+function wwSay(){ try{ if(!wwUI) return; const it=wwList(wwUI.kid)[wwUI.i]; if(!it) return; mastSpeak(wwWord(it),{spell:true}); }catch(e){} }   // 🔊 TTS: the one shared speak path
 // "together" → "t_g_th_r": vowels become blanks (y stays) — the kid writes the WHOLE word, never just the gaps.
 function wwGaps(w){ return String(w).replace(/[aeiou]/gi,"_"); }
 function wwCheck(){
@@ -46283,7 +46537,7 @@ function mstIsSpellCard(card){ return !!(card&&card.deck&&mastGetCatMode(mastery
 function mstAutoPlayCurrent(session){
   if(!session||session.audio==="off"||!mstState) return;
   try{ const card=mstCurrent(mstState);
-    if(mstIsSpellCard(card)){ if(card.name) mastSpeak(card.name); return; }
+    if(mstIsSpellCard(card)){ if(card.name) mastSpeak(card.name,{spell:true}); return; }
     if(mstIsRuleCard(card)) return;   // language-arts rule cards: no sound   // 🔊 Spell: say the word itself (TTS — recordings are definitions)
     if(card&&mstCardMode(card)!=="rec") return;   // playing the German first would give away a say/type answer
     if(card&&card.name){ if(mastGetDefAudio(masteryKid,card.name)) mastPlayDefAudio(card.name); else mastSpeak(card.name); }
@@ -46296,6 +46550,13 @@ function mstAudioBtn(name,session){
   const esc=mstEscJs(name);
   if(mastGetDefAudio(masteryKid,name)) return '<button onclick="event.stopPropagation();mastPlayDefAudio(\''+esc+'\')" style="margin-top:10px;padding:9px 20px;border-radius:999px;border:2px solid #7c3aed;background:#f5f3ff;color:#7c3aed;font-size:15px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">\u{1F50A} Hear it</button>';
   return '<button onclick="event.stopPropagation();mastSpeak(\''+esc+'\')" style="margin-top:10px;padding:7px 16px;border-radius:999px;border:1.5px solid #c4b5fd;background:#fff;color:#7c3aed;font-size:13px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">\u{1F5E3} Read it</button>';
+}
+// 🔊 TTS: a flip card's speak button — ttsFlipSay reads whichever side is showing when it's tapped.
+// rec = Mom's recording belongs to this side (purple "Hear it"); else the browser reads it ("Read it").
+function mstFlipBtn(session,rec){
+  if(session&&session.audio==="off") return "";
+  if(rec) return '<button onclick="event.stopPropagation();ttsFlipSay(this)" style="margin-top:10px;padding:9px 20px;border-radius:999px;border:2px solid #7c3aed;background:#f5f3ff;color:#7c3aed;font-size:15px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">\u{1F50A} Hear it</button>';
+  return '<button onclick="event.stopPropagation();ttsFlipSay(this)" style="margin-top:10px;padding:7px 16px;border-radius:999px;border:1.5px solid #c4b5fd;background:#fff;color:#7c3aed;font-size:13px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">\u{1F5E3} Read it</button>';
 }
 function mstCardHtml(session,card){
   const name=card.name||"";
@@ -46321,8 +46582,8 @@ function mstCardHtml(session,card){
   }
   if(mstIsSpellCard(card)){
     // 🔊 Spell deck: hear it, spell it out loud, flip to check — the word only on the back.
-    const _say=(big)=>'<button onclick="event.stopPropagation();mastSpeak(\''+mstEscJs(name)+'\')" style="'+(big?'margin:18px 0 6px;padding:18px 34px;border:2.5px solid #4f46e5;font-size:30px':'margin-top:10px;padding:8px 18px;border:2px solid #4f46e5;font-size:15px')+';border-radius:999px;background:#eef2ff;color:#4f46e5;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif;position:relative;z-index:3">\u{1F50A} Hear it</button>';
-    let s='<div class="mast-slide"><div class="mast-flip-wrap'+(mstFlipped?" flipped":"")+'" onclick="mstFlip()"><div class="mast-flip-inner">';
+    const _say=(big)=>'<button onclick="event.stopPropagation();ttsFlipSay(this)" style="'+(big?'margin:18px 0 6px;padding:18px 34px;border:2.5px solid #4f46e5;font-size:30px':'margin-top:10px;padding:8px 18px;border:2px solid #4f46e5;font-size:15px')+';border-radius:999px;background:#eef2ff;color:#4f46e5;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif;position:relative;z-index:3">\u{1F50A} Hear it</button>';
+    let s='<div class="mast-slide"><div class="mast-flip-wrap'+(mstFlipped?" flipped":"")+'"'+ttsFlipAttrs({front:name,back:name,spell:1})+' onclick="mstFlip()"><div class="mast-flip-inner">';
     s+='<div class="mast-flip-front"><div class="mast-slide-cat">'+mstEsc(card.deck||session.name||"")+_lrn+'</div>';
     s+=_say(true);
     s+='<div style="font-size:14px;color:#4f46e5;font-weight:700">\u{1F3A4} spell it out loud, letter by letter</div>';
@@ -46349,21 +46610,24 @@ function mstCardHtml(session,card){
     return t+'</div></div></div></div>';
   }
   if(mode==="say"){
-    let y='<div class="mast-slide"><div class="mast-flip-wrap'+(mstFlipped?" flipped":"")+'" onclick="mstFlip()"><div class="mast-flip-inner">';
+    let y='<div class="mast-slide"><div class="mast-flip-wrap'+(mstFlipped?" flipped":"")+'"'+ttsFlipAttrs({back:name,recBack:name})+' onclick="mstFlip()"><div class="mast-flip-inner">';
     y+='<div class="mast-flip-front"><div class="mast-slide-cat">'+mstEsc(card.deck||session.name||"")+_lrn+'</div>'+_chip("say");
     y+='<div class="mast-flip-def">'+mstEsc(def)+'</div>';
     y+='<div class="mast-flip-hint">\u{1F4A1} say it, then tap to check</div></div>';
-    y+='<div class="mast-flip-back"><div class="mast-slide-name">'+mstEsc(name)+'</div>'+mstAudioBtn(name,session);
+    y+='<div class="mast-flip-back"><div class="mast-slide-name">'+mstEsc(name)+'</div>'+mstFlipBtn(session,!!mastGetDefAudio(masteryKid,name));
     y+='<div class="mast-flip-hint">\u{1F4A1} did you say it right?</div></div>';
     return y+'</div></div></div>';
   }
-  let c='<div class="mast-slide"><div class="mast-flip-wrap'+(mstFlipped?" flipped":"")+'" onclick="mstFlip()"><div class="mast-flip-inner">';
+  // 🔊 TTS (her report 2026-10-07): the front reads the word, the back reads the definition (or plays
+  // Mom's recording of it) — the back button used to say the FRONT word.
+  const _rec=!!mastGetDefAudio(masteryKid,name);
+  let c='<div class="mast-slide"><div class="mast-flip-wrap'+(mstFlipped?" flipped":"")+'"'+ttsFlipAttrs({front:name,back:def,recBack:name})+' onclick="mstFlip()"><div class="mast-flip-inner">';
   c+='<div class="mast-flip-front">';
   c+='<div class="mast-slide-cat">'+mstEsc(card.deck||session.name||"")+((card.kind==="new"||card.kind==="learning")?' <span style="font-size:9px;color:#9a3412;font-weight:600">\u{2B50} Learning</span>':"")+'</div>';
-  c+='<div class="mast-slide-name">'+mstEsc(name)+'</div>'+mstAudioBtn(name,session);
+  c+='<div class="mast-slide-name">'+mstEsc(name)+'</div>'+mstFlipBtn(session,false);
   c+='<div class="mast-flip-hint">\u{1F4A1} tap to flip</div></div>';
   c+='<div class="mast-flip-back">';
-  c+='<div class="mast-flip-def">'+(def?mstEsc(def):'<span style="color:#a78bfa;font-size:16px">no definition yet</span>')+'</div>'+mstAudioBtn(name,session);
+  c+='<div class="mast-flip-def">'+(def?mstEsc(def):'<span style="color:#a78bfa;font-size:16px">no definition yet</span>')+'</div>'+((def||_rec)?mstFlipBtn(session,_rec):"");
   c+='<div class="mast-flip-hint">\u{1F4A1} tap to flip back</div></div>';
   return c+'</div></div></div>';
 }
@@ -47604,6 +47868,17 @@ function _mhqDeckSettings(kid,deck){
       h+='<div style="display:flex;align-items:center;gap:8px;padding:0 0 9px;flex-wrap:wrap">';
       h+='<div style="flex:1;min-width:130px"><div style="font-size:13px;font-weight:700">Which side first</div></div>';
       h+='<button onclick="mastToggleCatFace(\''+esc+'\')" style="height:34px;padding:0 14px;border-radius:999px;border:1.5px solid var(--border);background:var(--card);font-size:12px;font-weight:700;cursor:pointer">'+(face==="name"?"word → meaning":"meaning → word")+'</button></div>';
+    }
+    // SHOWME_CUE: what the "Show Me" pick-3 card shows above its tiles — saves straight away, per deck
+    if((mode==="flash"||mode==="flip")&&typeof mastShowMeCue==="function"&&typeof momHere==="function"&&momHere()){
+      const cue=mastShowMeCue(kid,deck), kEsc=mhqArgEsc(kid);
+      h+='<div style="display:flex;align-items:center;gap:8px;padding:0 0 9px;flex-wrap:wrap">';
+      h+='<div style="flex:1;min-width:130px"><div style="font-size:13px;font-weight:700">“Show Me” word</div><div style="font-size:10px;color:var(--muted)">the tap-the-right-one card · saves straight away</div></div>';
+      h+='<div style="display:flex;gap:5px;flex-wrap:wrap">';
+      [["spoken","\u{1F50A} Spoken"],["look","\u{1F648} Look away"],["shown","\u{1F440} Written"]].forEach(function(m){
+        h+='<button onclick="mastSetShowMeCue(\''+kEsc+'\',\''+esc+'\',\''+m[0]+'\')" style="height:34px;padding:0 12px;border-radius:999px;border:1.5px solid '+(cue===m[0]?"var(--header)":"var(--border)")+';background:'+(cue===m[0]?"var(--header)":"var(--card)")+';color:'+(cue===m[0]?"#fff":"var(--text)")+';font-size:12px;font-weight:700;cursor:pointer">'+m[1]+'</button>';
+      });
+      h+='</div></div>';
     }
     // Bank order is the teaching order (a session introduces new cards down this list), so the
     // reorder handle belongs here — it used to sit in the database header this page hides.
@@ -49597,7 +49872,7 @@ function _renderMasteryInner(el){
     const _learnFlip=isIntro&&_catMode==="quiz"&&!!_vocabDef;
     // 🔊 Spell: the front only SAYS the word (hear it, spell it out loud); flip to check.
     const _isSpell=_catMode==="spell";
-    const _spBtn='<button onclick="event.stopPropagation();mastSpellSay(\''+String(it.id).replace(/'/g,"\\'")+'\')" style="padding:18px 34px;border-radius:999px;border:2.5px solid #4f46e5;background:#eef2ff;color:#4f46e5;font-size:30px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif;position:relative;z-index:3">\u{1F50A} Hear it</button>';
+    const _spBtn='<button onclick="event.stopPropagation();ttsFlipSay(this)" style="padding:18px 34px;border-radius:999px;border:2.5px solid #4f46e5;background:#eef2ff;color:#4f46e5;font-size:30px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif;position:relative;z-index:3">\u{1F50A} Hear it</button>';
     if(_catMode==="flip"||_isRule||_learnFlip||_isSpell){
       // Reversed deck (Admin → Restart reversed): definition on the FRONT, word on the
       // back — the second pass of a mastered flip deck. The word's visual moves to the
@@ -49606,16 +49881,23 @@ function _renderMasteryInner(el){
       // Voice of the definition — rides whichever side SHOWS the definition
       // (stopPropagation so the tap plays instead of flipping). Mom's recording wins;
       // with no clip, the browser reads it aloud (🗣 TTS fallback).
+      // 🔊 TTS (her report 2026-10-07): the button calls ttsFlipSay, which reads the side SHOWING at tap
+      // time from the card's per-side text (_ttsSide below) — a 🇬🇧→🇩🇪 card's back used to read the
+      // English definition from the front instead of the German word it shows.
+      const _hasRec=!!mastGetDefAudio(masteryKid,it.prompt), _sayDef=mastItemSpeakText(it,it.prompt);
+      const _ttsSide=_isSpell?{front:it.prompt,back:it.prompt,spell:1}
+        :_faceRev?{front:_sayDef,recFront:(it.dir!=="prod"?it.prompt:""),back:it.prompt,recBack:(it.dir==="prod"?it.prompt:"")}
+        :_faceName?{back:it.prompt}   // "guess the name": the back shows only the name
+        :{front:it.prompt,back:_sayDef,recBack:it.prompt};
       let _audBtn='';
       {
-        const _apEsc=it.prompt.replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");
-        if(mastGetDefAudio(masteryKid,it.prompt)){
-          _audBtn='<button onclick="event.stopPropagation();mastPlayDefAudio(\''+_apEsc+'\')" style="margin-top:10px;padding:9px 20px;border-radius:999px;border:2px solid #7c3aed;background:#f5f3ff;color:#7c3aed;font-size:15px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif;position:relative;z-index:3">\u{1F50A} Hear it</button>';
+        if(_hasRec&&!_faceName){
+          _audBtn='<button onclick="event.stopPropagation();ttsFlipSay(this)" style="margin-top:10px;padding:9px 20px;border-radius:999px;border:2px solid #7c3aed;background:#f5f3ff;color:#7c3aed;font-size:15px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif;position:relative;z-index:3">\u{1F50A} Hear it</button>';
         } else if(_backText){
-          _audBtn='<button onclick="event.stopPropagation();mastSpeakItem(\''+_apEsc+'\')" style="margin-top:10px;padding:7px 16px;border-radius:999px;border:1.5px solid #c4b5fd;background:#fff;color:#7c3aed;font-size:13px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;position:relative;z-index:3">\u{1F5E3} Read it</button>';
+          _audBtn='<button onclick="event.stopPropagation();ttsFlipSay(this)" style="margin-top:10px;padding:7px 16px;border-radius:999px;border:1.5px solid #c4b5fd;background:#fff;color:#7c3aed;font-size:13px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;position:relative;z-index:3">\u{1F5E3} Read it</button>';
         }
       }
-      c+='<div class="mast-flip-wrap'+(mastFlipped?" flipped":"")+'" onclick="mastFlip()">';
+      c+='<div class="mast-flip-wrap'+(mastFlipped?" flipped":"")+'"'+ttsFlipAttrs(_ttsSide)+' onclick="mastFlip()">';
       c+='<div class="mast-flip-inner">';
       c+='<div class="mast-flip-front">';
       if(_isSpell){
@@ -49676,9 +49958,10 @@ function _renderMasteryInner(el){
           if(_d2.id===_d1.id) _d2=_pool[(_seed+2)%_pool.length];
           let _tiles=[it,_d1,_d2];
           const _rot=_seed%3; _tiles=_tiles.slice(_rot).concat(_tiles.slice(0,_rot));
-          const _pEsc=it.prompt.replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");
           const _kEsc=(it.id+"|"+pn).replace(/'/g,"\\'");
-          c+='<div onclick="event.stopPropagation();mastSpeak(\'Tap the '+_pEsc+'\')" style="font-size:17px;font-weight:800;color:#c2410c;margin:14px 0 2px;cursor:pointer;position:relative;z-index:2">\u{1F449} Tap the <u>'+it.prompt+'</u>! <span style="font-size:12px">\u{1F5E3}</span></div>';
+          const _cue=mastShowMeCueHtml(it,mastShowMeCue(masteryKid,cat),_smKey,_smState);   // SHOWME_CUE: spoken / look away / shown
+          c+=_cue.html;
+          if(_cue.tiles){
           c+='<div style="display:flex;gap:10px;justify-content:center;align-items:center;margin:12px 0;flex-wrap:wrap;position:relative;z-index:2">';
           _tiles.forEach(tt=>{
             const _wrong=_smState===tt.id&&tt.id!==it.id;
@@ -49686,7 +49969,8 @@ function _renderMasteryInner(el){
             c+='<div onclick="event.stopPropagation();mastShowMeTap(\''+_kEsc+'\',\''+it.id.replace(/'/g,"\\'")+'\',\''+tt.id.replace(/'/g,"\\'")+'\')" style="width:100px;height:100px;display:flex;align-items:center;justify-content:center;border-radius:16px;border:3px solid '+(_wrong?'#dc2626':_reveal?'#16a34a':'#fed7aa')+';background:#fff;cursor:pointer'+(_reveal?';animation:spinPulse 1.2s ease-in-out infinite':'')+'">'+_smTileVis(tt)+'</div>';
           });
           c+='</div>';
-          if(_smState) c+='<div style="font-size:12px;font-weight:700;color:#dc2626;margin-bottom:4px">Almost — find the '+it.prompt+'!</div>';
+          if(_smState) c+='<div style="font-size:12px;font-weight:700;color:#dc2626;margin-bottom:4px">'+_cue.wrong+'</div>';
+          }
           _smDone=true;
         }
       }
@@ -49743,6 +50027,7 @@ function _renderMasteryInner(el){
     h+='<div style="padding:10px 14px">';
     if(typeof deckInstrStripHtml==="function") h+=deckInstrStripHtml(masteryKid,(slideList[mastSlideIdx]||{}).subject);   // DECKINSTR: strip follows the card on screen (every arrow/score re-renders)
     h+=mastSlideCardsHtml[mastSlideIdx];
+    if(slideList[mastSlideIdx]&&mastSlideIdx<_slBase) mastShowMeAutoSay(slideList[mastSlideIdx].id+"|"+pn);   // SHOWME_CUE: say the word once as the card comes up
 
     h+='<div class="mast-slide-nav">';
     h+='<button class="mast-slide-arrow" onclick="mastSlidePrev()"'+(mastSlideIdx<=0?' disabled':'')+'>\u{2190}</button>';
@@ -53718,8 +54003,10 @@ function retrTodayQueue(kid){
         const u=(unitStudies||{})[track.unitId]; if(!u) return;
         const rounds=unitSprintRounds(u,kid).filter(r=>r.unlocked);
         const never=rounds.filter(r=>unitSprintBest(kid,r.logLabel)==null);
-        if(never.length) out.push({pri:3,kind:"unit",track,label:track.icon+" "+never[0].label+" round — never run",go:"units"});
-        else if(rounds.length) out.push({pri:4,kind:"treat",track,label:track.icon+" beat a "+track.label.replace(/ rounds$/,"")+" PB",go:"units"});
+        // RETRUNITRUN: carry the round + enrollment so the queue row can launch it (see retrPlanCardHtml)
+        const enr=!!((u.enrolled||{})[kid]);
+        if(never.length) out.push({pri:3,kind:"unit",track,round:never[0],enrolled:enr,label:track.icon+" "+never[0].label+" round — never run",go:"units"});
+        else if(rounds.length) out.push({pri:4,kind:"treat",track,enrolled:enr,label:track.icon+" beat a "+track.label.replace(/ rounds$/,"")+" PB",go:"units"});
       }catch(e){}
       return;
     }
@@ -54066,7 +54353,17 @@ function retrPlanCardHtml(color){
       h+='<div style="display:flex;align-items:center;gap:7px;padding:2px 0">';
       h+='<span style="font-size:10px;font-weight:800;color:#a8a29e;width:12px">'+(i+1)+'</span>';
       h+='<span style="font-size:11.5px;font-weight:'+(i===0?'800':'600')+';color:'+(it.pri===1?'#b45309':'#1f2937')+';flex:1">'+esc(it.label)+'</span>';
-      if(it.go==="units") h+='<span style="font-size:10px;color:var(--muted)">Units tab →</span>';
+      // RETRUNITRUN_START — a unit round in Today's queue gets a real ▶ Run (live 2026-10-07: Lincoln's Sprint Plan
+      // said "👑 Normandy round — never run" with only a plain "Units tab →" label, so nothing on the page could start it).
+      // Same deep link as the Units tab's 🏃 chip (unitGoSprint): Sprint view, Unit source, that round loaded. A PB-chase
+      // row opens the unit's round picker. Not enrolled → no Unit source to land on, so the old label stays. No writes.
+      if(it.go==="units"){
+        if(it.enrolled&&it.track&&it.track.unitId){
+          const _rk=(it.round&&it.round.key)?esc(it.round.key).replace(/'/g,"\\'"):"";
+          h+='<button onclick="unitGoSprint(\''+kid+'\',\''+esc(it.track.unitId)+'\','+(_rk?'\''+_rk+'\'':'null')+')" style="padding:3px 10px;border-radius:8px;border:1.5px solid '+color+';background:#fff;color:'+color+';font-size:10px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">▶ Run</button>';
+        } else h+='<span style="font-size:10px;color:var(--muted)">Units tab →</span>';
+      }
+      // RETRUNITRUN_END
       else if(it.go==="match") h+='<button onclick="mastSetView(\'match\')" style="padding:3px 10px;border-radius:8px;border:1.5px solid '+color+';background:#fff;color:'+color+';font-size:10px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">▶ Play</button>';
       else if(it.kind==="recheck") h+='<button onclick="retrApplyRecheck(\''+kid+'\',\''+it.track.key+'\',\''+esc(it.stage.key).replace(/'/g,"\\'")+'\')" style="padding:3px 10px;border-radius:8px;border:none;background:#b45309;color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">▶ Run</button>';
       else if(it.kind==="focus"){
@@ -54604,7 +54901,7 @@ function msSetPosition(kid,book,cur,why){
 // one run: records the sheet + result; a met sheet passes the sprint and moves the kid on; the 4th run of the day
 // checks off today's Math Sprints card
 function msRecordRun(kid,met){
-  if(!momHere()) return null; const st=msState(kid); if(!st||!st.cur) return null;
+  if(!momHere()) return null; if(typeof msMarkLocked==="function"&&msMarkLocked()) return null; /* ⏱ MSBUZZ: a tap at 0:00 can't mark */ const st=msState(kid); if(!st||!st.cur) return null;
   const n=st.cur, sheet=msNextSheet(kid,n); if(!sheet) return null;
   const runs=msRuns(kid,n); const run={d:msTodayISO(),ts:nowTs(),sheet:sheet.k,met:!!met};
   st.log=st.log||{}; st.log[n]=st.log[n]||{}; const arr=runs.concat([run]); st.log[n].runs=arr;
@@ -54633,13 +54930,73 @@ function msIsCard(t){ return !!(t&&(t.subjectKey==="math_sprints"||/math sprints
 function msEnabled(kid){ return !!(msState(kid)||momHere()); }
 function msOpenFor(kid){ masteryKid=kid; mastView="sprint"; sprintSource="book"; mastLogMode=false; mastScoreItemId=null; showTab('mastery'); }
 // ── the 60-second timer ──
-function msTimerReset(){ if(msTimer){ clearInterval(msTimer); msTimer=null; } msTimerLeft=0; msTimerDone=false; }
+// MSBUZZ_START — ⏱ the end of the minute is EXACT and the buzzer is instant (her report 2026-10-07: "the end-of-time
+// sound is slow to start, which gives the kid an extra second"). Three causes, three fixes:
+//  1. the count was 60 × setInterval(1000), which drifts late → it now counts to a fixed end time and ends on ONE
+//     setTimeout aimed at that moment, so 0:00, the buzzer and the lock land together;
+//  2. the end sound was bbChime — three soft sine notes, the first one fading in, ~1 s long → msBuzz is one short,
+//     loud square-wave buzz (two notes a third apart: sharp, not scary) at full volume from its first millisecond;
+//  3. a speaker that has been silent for 60 s takes a moment to wake (tablets, Bluetooth) → an inaudible keep-alive
+//     tone runs on the same unlocked context for the whole minute, so the output is already awake at 0:00.
+// Input LOCKS the moment time ends: Start can't be re-tapped mid-run or after 0:00 (a re-tap used to restart the
+// clock), the screen says "Pencils down", and a tap that lands in the first moment after 0:00 can't hit Met / Not.
+let msTimerEndAt=0, msTimerEndedAt=0, msTimerEndTo=null, msKeepAlive=null;
+const MS_RUN_MS=60000, MS_LOCK_MS=900;
+function msNow(){ try{ if(typeof performance!=="undefined"&&performance&&typeof performance.now==="function") return performance.now(); }catch(e){} return Date.now(); }
+function msLeftSec(){ return msTimerEndAt?Math.max(0,Math.ceil((msTimerEndAt-msNow())/1000)):0; }
+function msFmt(sec){ return Math.floor(sec/60)+":"+String(sec%60).padStart(2,"0"); }
+function msKeepAliveStart(){
+  msKeepAliveStop();
+  try{
+    const ctx=bbAlarmCtx; if(!ctx) return;
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.frequency.value=40; g.gain.value=0.0001;   // far below hearing — it only keeps the output path open
+    o.connect(g); g.connect(ctx.destination); o.start();
+    msKeepAlive={o:o,g:g};
+  }catch(e){ msKeepAlive=null; }
+}
+function msKeepAliveStop(){ if(msKeepAlive){ try{ msKeepAlive.o.stop(); }catch(e){} try{ msKeepAlive.o.disconnect(); msKeepAlive.g.disconnect(); }catch(e){} msKeepAlive=null; } }
+function msBuzz(){
+  try{
+    if(!bbAlarmCtx||bbAlarmCtx.state==="closed") bbAlarmCtx=new (window.AudioContext||window.webkitAudioContext)();
+    const ctx=bbAlarmCtx;
+    if(ctx.state==="suspended"){ try{ ctx.resume().catch(function(){}); }catch(e){} }
+    const t0=ctx.currentTime, dur=0.55;
+    const g=ctx.createGain(); g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.5,t0);                          // full volume at once — no fade-in
+    g.gain.setValueAtTime(0.5,t0+dur-0.015);
+    g.gain.linearRampToValueAtTime(0.0001,t0+dur);          // a hard stop (15 ms, just enough to avoid a click)
+    [523,659].forEach(function(f){ const o=ctx.createOscillator(); o.type="square"; o.frequency.value=f; o.connect(g); o.start(t0); o.stop(t0+dur+0.02); });
+  }catch(e){}
+}
+function msPaint(){
+  const left=msTimerDone?0:msLeftSec();
+  const el=document.getElementById("ms-timer"); if(el){ el.textContent=msFmt(left); if(el.style) el.style.color=msTimerDone?"#dc2626":"#1c1917"; }
+  const bar=document.getElementById("ms-timer-bar"); if(bar) bar.style.width=Math.round(100*(60-left)/60)+"%";
+}
+function msTimerEnd(){
+  if(!msTimer&&!msTimerEndAt) return;
+  if(msTimer){ clearInterval(msTimer); msTimer=null; } if(msTimerEndTo){ clearTimeout(msTimerEndTo); msTimerEndTo=null; }
+  msTimerDone=true; msTimerLeft=0; msTimerEndedAt=msNow();
+  try{ msBuzz(); }catch(e){}
+  msKeepAliveStop();
+  msPaint();
+  const b=document.getElementById("ms-start"); if(b){ b.disabled=true; b.style.display="none"; }
+  const p=document.getElementById("ms-pencils"); if(p) p.style.display="block";
+  const m=document.getElementById("ms-mark"); if(m) m.style.display="flex";
+}
+function msMarkLocked(){ return !!(msTimerEndedAt&&msNow()-msTimerEndedAt<MS_LOCK_MS); }
+// MSBUZZ_END
+function msTimerReset(){ if(msTimer){ clearInterval(msTimer); msTimer=null; } if(msTimerEndTo){ clearTimeout(msTimerEndTo); msTimerEndTo=null; } msKeepAliveStop(); msTimerLeft=0; msTimerDone=false; msTimerEndAt=0; msTimerEndedAt=0; }
 function msTimerStart(){
-  msTimerReset(); msTimerLeft=60; try{ if(typeof bbAudioUnlock==="function") bbAudioUnlock(); }catch(e){}
-  const paint=()=>{ const el=document.getElementById("ms-timer"); if(el) el.textContent=(msTimerLeft>0?("0:"+String(msTimerLeft).padStart(2,"0")):"0:00"); const bar=document.getElementById("ms-timer-bar"); if(bar) bar.style.width=Math.round(100*(60-msTimerLeft)/60)+"%"; };
-  paint();
-  msTimer=setInterval(()=>{ msTimerLeft--; paint(); if(msTimerLeft<=0){ clearInterval(msTimer); msTimer=null; msTimerDone=true; try{ bbChime(); }catch(e){} const m=document.getElementById("ms-mark"); if(m) m.style.display="flex"; const b=document.getElementById("ms-start"); if(b) b.style.display="none"; } },1000);
-  const m=document.getElementById("ms-mark"); if(m) m.style.display="none"; const b=document.getElementById("ms-start"); if(b) b.textContent="⏱ Running…";
+  if(msTimer||msTimerDone) return;   // ⏱ MSBUZZ: locked mid-run and after 0:00 — a re-tap no longer restarts the clock
+  msTimerReset(); try{ if(typeof bbAudioUnlock==="function") bbAudioUnlock(); }catch(e){}
+  msKeepAliveStart();
+  msTimerEndAt=msNow()+MS_RUN_MS; msTimerLeft=60;
+  msPaint();
+  msTimer=setInterval(()=>{ msTimerLeft=msLeftSec(); if(msTimerLeft<=0) msTimerEnd(); else msPaint(); },200);
+  msTimerEndTo=setTimeout(msTimerEnd,MS_RUN_MS);   // the exact end — 0:00, buzzer and lock in one moment
+  const m=document.getElementById("ms-mark"); if(m) m.style.display="none"; const b=document.getElementById("ms-start"); if(b){ b.textContent="⏱ Running…"; b.disabled=true; }
 }
 // ── book editor: count + titles, saved to the library list everyone reads ──
 function msBookEditOpen(bookId){ if(!momHere()) return; msEditBook=bookId; if(typeof _mastRe==="function") _mastRe(); }
@@ -54712,9 +55069,10 @@ function buildSprintBookHtml(color){
   else if(sheet){
     h+='<div style="display:inline-block;padding:4px 12px;border-radius:12px;background:#eef2ff;color:#3730a3;font-size:13px;font-weight:800;margin-bottom:6px">Sheet '+esc_(sheet.l)+'</div>';
     h+='<div style="font-size:11.5px;color:#78716c;margin-bottom:12px">Goal — '+esc_(sheet.goal)+'</div>';
-    h+='<div style="font-family:\'Fraunces\',serif;font-size:56px;font-weight:800;color:#1c1917" id="ms-timer">'+(msTimer?("0:"+String(msTimerLeft).padStart(2,"0")):(msTimerDone?"0:00":"1:00"))+'</div>';
-    h+='<div style="height:8px;border-radius:4px;background:#eee;overflow:hidden;margin:8px auto 12px;max-width:320px"><div id="ms-timer-bar" style="height:100%;width:'+(msTimer||msTimerDone?Math.round(100*(60-msTimerLeft)/60):0)+'%;background:'+color+';transition:width 1s linear"></div></div>';
-    h+='<button id="ms-start" onclick="msTimerStart()" style="'+(msTimerDone?'display:none;':'')+'padding:14px 28px;border-radius:14px;border:none;background:'+color+';color:#fff;font-size:16px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">'+(msTimer?"⏱ Running…":"▶ Start 60 seconds")+'</button>';
+    h+='<div style="font-family:\'Fraunces\',serif;font-size:56px;font-weight:800;color:'+(msTimerDone?'#dc2626':'#1c1917')+'" id="ms-timer">'+(msTimer?msFmt(msLeftSec()):(msTimerDone?"0:00":"1:00"))+'</div>';
+    h+='<div id="ms-pencils" style="display:'+(msTimerDone?'block':'none')+';font-size:18px;font-weight:800;color:#dc2626;margin:-2px 0 6px">✋ Time! Pencils down.</div>';
+    h+='<div style="height:8px;border-radius:4px;background:#eee;overflow:hidden;margin:8px auto 12px;max-width:320px"><div id="ms-timer-bar" style="height:100%;width:'+(msTimer||msTimerDone?Math.round(100*(60-(msTimerDone?0:msLeftSec()))/60):0)+'%;background:'+color+';transition:width 1s linear"></div></div>';
+    h+='<button id="ms-start" onclick="msTimerStart()"'+(msTimer||msTimerDone?' disabled':'')+' style="'+(msTimerDone?'display:none;':'')+'padding:14px 28px;border-radius:14px;border:none;background:'+color+';color:#fff;font-size:16px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">'+(msTimer?"⏱ Running…":"▶ Start 60 seconds")+'</button>';
     h+='<div id="ms-mark" style="display:'+(msTimerDone?'flex':'none')+';gap:10px;justify-content:center;margin-top:6px">'+
       (mom?'<button onclick="msRecordRun(\''+kid+'\',true)" style="flex:1;max-width:180px;padding:14px;border-radius:14px;border:none;background:#16a34a;color:#fff;font-size:15px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">Met ✓</button><button onclick="msRecordRun(\''+kid+'\',false)" style="flex:1;max-width:180px;padding:14px;border-radius:14px;border:2px solid #ef4444;background:#fff;color:#ef4444;font-size:15px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">Not ✗</button>':'<span style="font-size:12px;color:#78716c">Mom marks met / not</span>')+'</div>';
     if(!mom) h+='<div style="font-size:11px;color:#78716c;margin-top:8px">Mom marks met / not after the timer.</div>';
