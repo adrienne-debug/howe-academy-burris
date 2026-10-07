@@ -1789,7 +1789,10 @@ const SL_STIM  = {morning:"10:00 AM – 1:00 PM",afternoon:"After school work",c
 // Per-kid routines seeded from the family's Skylight. (1b makes these Mom-editable via config.)
 // Morning steps are pure routine — no ⭐ (stars stay in afternoon/chores). Completing ALL of a
 // kid's steps flips the derived Morning slot, unlocking that kid's schedule via isScheduleUnlocked.
-const MORNING_STEPS_DEFAULT = {
+// HOWE_HOUSE_DEFAULTS (2026-10-07): these routine lists are the Howe house itself (rabbit, Chloe, the
+// dogs, reptile lights, the school room), so only Howe falls back to them — another family starts empty and
+// Mom builds her own lists in the routine editor. Same rule as gbDefault() / KIT_ROT_DEFAULT.
+const MORNING_STEPS_DEFAULT = (typeof HA_IS_HOWE!=="undefined"&&!HA_IS_HOWE)?{}:{
   lincoln:[{label:"Brush Teeth",emoji:"🦷"},{label:"Take vitamins",emoji:"💊"},{label:"Feed rabbit",emoji:"🐰"},{label:"Give hay to rabbit",emoji:"🌾"},{label:"Check / refill rabbit water",emoji:"💧"},{label:"Change rabbit litter box",emoji:"🧹"},{label:"Get clothes on",emoji:"👕"},{label:"Change underwear & socks",emoji:"🧦"}],
   ellis:[{label:"Brush Teeth",emoji:"🦷"},{label:"Take vitamins",emoji:"💊"},{label:"Feed sunny greens",emoji:"🥬"},{label:"Water sunny",emoji:"💧"},{label:"Change underwear & socks",emoji:"🧦"},{label:"Put clothes on",emoji:"👕"}],
   lucy:[{label:"Brush Teeth",emoji:"🦷"},{label:"Take vitamins",emoji:"💊"},{label:"Let Chloe out",emoji:"🐕"},{label:"Change underwear & socks",emoji:"🧦"},{label:"Put clothes on",emoji:"👕"},{label:"Brush hair",emoji:"💁‍♀️"}],
@@ -1898,7 +1901,7 @@ function mrIndividualHTML(kid){
 // always open) and carry star values (chips shown now; points wired in a later slice). Completing
 // every step flips the derived slot in slState so choresGateDone / the grid stay correct.
 // Mom-editable via config/routines (editor = next increment).
-const RT_DEFAULT = {
+const RT_DEFAULT = (typeof HA_IS_HOWE!=="undefined"&&!HA_IS_HOWE)?{morning:{},afternoon:{},chores:{},evening:{}}:{   // HOWE_HOUSE_DEFAULTS: Howe-only, see above
   get morning(){ const o={}; Object.keys(MORNING_STEPS_DEFAULT).forEach(k=>{ o[k]=MORNING_STEPS_DEFAULT[k].map(st=>Object.assign({pts:0,cad:"daily"},st)); }); return o; },
   afternoon:{
     // rot:"downstairs" — the three downstairs pickups CYCLE daily among the three big
@@ -16042,7 +16045,7 @@ function mwToast(msg){
 
 
 // ── SUPPLIES ──────────────────────────────────────────────────────
-let SUP_DEFAULT=[
+let SUP_DEFAULT=(typeof HA_IS_HOWE!=="undefined"&&!HA_IS_HOWE)?[]:[   // HOWE_HOUSE_DEFAULTS: Howe's school-room supplies (her kids, Maggie's days) — Howe only
   {id:"s1",name:"AAS Level 1 Book",detail:"Lincoln spelling — every school day",days:["monday","tuesday","wednesday","thursday","friday"],cat:"Books and Workbooks"},
   {id:"s2",name:"Letter Tiles (AAS)",detail:"Tile review and word building daily",days:["monday","tuesday","wednesday","thursday","friday"],cat:"Books and Workbooks"},
   {id:"s3",name:"Singapore Math 5A",detail:"Lincoln Ch.3 this week",days:["monday","tuesday","wednesday","thursday","friday"],cat:"Books and Workbooks"},
@@ -16099,6 +16102,7 @@ function renderSupplies(el){
     }
     h+='</div>';
   });
+  if(!SUP.length) h+='<div style="padding:18px 14px;text-align:center;color:var(--muted);font-size:13px">No supplies list yet.</div>';   // HOWE_HOUSE_DEFAULTS: another family's empty start
   h+='</div>';
   con.innerHTML=h;
 }
@@ -25277,8 +25281,46 @@ function famRowHTML(t,done,viewKid){
     txt=gave?('⭐ Stars sent'+(wait.length?' — waiting for '+wait.join(' & '):'')):('⭐ Up to '+mx+' ⭐ · when you’re done, tap to rate '+famSiblings(t).map(function(s){ return esc(cap(s.who)); }).join(' & '));
   }
   else txt=(mx>0?'⭐ Up to '+mx+' ⭐ · ':'')+'\u{1F469} Mom checks this off for everyone';
-  return (_ls?'<div style="margin-top:3px;font-size:12px;font-weight:800;color:#3b0764">\u{1F4DA} '+esc(_ls)+'</div>':'')+'<div style="margin-top:4px;font-size:11px;font-weight:700;color:#6d28d9">'+txt+'</div>';
+  return (_ls?'<div style="margin-top:3px;font-size:12px;font-weight:800;color:#3b0764">\u{1F4DA} '+esc(_ls)+'</div>':'')+'<div style="margin-top:4px;font-size:11px;font-weight:700;color:#6d28d9">'+txt+'</div>'+
+    ((!done&&typeof famDrillBtnHTML==="function")?famDrillBtnHTML(t,me):'');
 }
+// FAM_DRILLS_START — 🧠 a family-time item can open each kid's own drills (her ask 2026-10-04: "linked to their
+// shared time … with a button to point them to the right drills"). DeWalt's Fact Review block: Andrew + Kenzie
+// quiz each other — Andrew's card opens his ➕ fact study session, Kenzie's her ✖️ one. Per item, per kid:
+// items[i].study[kid] = "drill" (the whole Drills view) or "s:<sid>" (that study session). Mom sets it in
+// Settings ▸ Family time; kids just tap. A session that no longer exists falls back to Drills.
+function _fdJ(x){ return String(x).replace(/\\/g,"\\\\").replace(/'/g,"\\'"); }   // quote-safe for onclick args
+function famDrillPick(t){ const it=(typeof famItemOf==="function")?famItemOf(t):null; const v=it&&it.study&&it.study[t.who]; return (typeof v==="string"&&v)?v:""; }
+function famDrillSess(kid,v){ if(!v||v.indexOf("s:")!==0||typeof mstSessions!=="function") return null; const sid=v.slice(2); return mstSessions(kid).find(function(s){ return s&&s.sid===sid; })||null; }
+function famDrillBtnHTML(t,me){
+  const v=famDrillPick(t); if(!v) return "";
+  const s=famDrillSess(t.who,v);
+  const lbl=s?((s.emoji||"\u{1F4DA}")+" "+esc(s.name||"study cards")):(me?"my drills":esc(cap(t.who))+"\u2019s drills");
+  return '<button onclick="event.stopPropagation();famOpenDrills(\''+_fdJ(t.famBlock)+'\',\''+_fdJ(t.famItem)+'\',\''+_fdJ(t.who)+'\')" style="margin-top:6px;padding:6px 12px;border-radius:10px;border:none;background:#6d28d9;color:#fff;font-size:12px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">\u{1F9E0} Open '+lbl+'</button>';
+}
+function famOpenDrills(block,item,kid){
+  const v=famDrillPick({famBlock:block,famItem:item,who:kid}); if(!v||typeof retrSchedGo!=="function") return;
+  const s=famDrillSess(kid,v);
+  if(s) retrSchedGo(kid,"study",s.sid); else retrSchedGo(kid,"drill");
+}
+function famItemStudy(id,i,kid,val){
+  const its=famItems(id); if(!its[i]) return;
+  famWrite(id+"/items/"+i+"/study/"+kid,(val==="drill"||/^s:/.test(String(val||"")))?val:null);   // one leaf
+}
+function famDrillEditorHTML(id,it,i,ed,kidsOf){
+  if(!kidsOf.length) return "";
+  let h='<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-top:5px"><span style="font-size:10px;color:var(--muted);margin-right:2px">\u{1F9E0} Opens drills</span>';
+  kidsOf.forEach(function(k){
+    const cur=(it.study&&it.study[k])||"";
+    const ss=(typeof mstSessions==="function")?mstSessions(k):[];
+    if(!ed){ const s=famDrillSess(k,cur); h+='<span style="font-size:11px;font-weight:700">'+esc(cap(k))+': '+(cur?(s?esc((s.emoji||"")+" "+(s.name||"")):"Drills"):"—")+'</span>'; return; }
+    h+='<label style="font-size:11px;font-weight:700;color:#374151">'+esc(cap(k))+' <select onchange="famItemStudy(\''+_fdJ(id)+'\','+i+',\''+_fdJ(k)+'\',this.value)" style="padding:3px 6px;border:1.5px solid var(--border);border-radius:7px;font-size:11.5px;font-family:\'DM Sans\',sans-serif">'+
+      '<option value=""'+(cur?'':' selected')+'>— none</option><option value="drill"'+(cur==="drill"?' selected':'')+'>Drills (all decks)</option>'+
+      ss.map(function(s){ const v="s:"+s.sid; return '<option value="'+esc(v)+'"'+(cur===v?' selected':'')+'>'+esc((s.emoji||"\u{1F4DA}")+" "+(s.name||s.sid))+'</option>'; }).join('')+'</select></label>';
+  });
+  return h+'</div>';
+}
+// FAM_DRILLS_END
 
 // ── Settings ▸ Family rules ▸ 👨‍👩‍👧 Family time (Mom-only edits, targeted writes under config/rules/familyBlocks) ──
 const FAM_DAYS=["Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -25419,6 +25461,7 @@ function famBlockEditorHTML(id,b,collapsible){
     h+='<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;padding-top:5px"><span style="font-size:10px;color:var(--muted);margin-right:2px">\u2B50 Points</span>'+
       (ed?'<input type="number" min="0" max="500" step="5" value="'+(ipts||'')+'" placeholder="none" onchange="famItemSet(\''+J(id)+'\','+i+',\'pts\',this.value)" style="width:62px;padding:3px 6px;border:1.5px solid var(--border);border-radius:7px;font-size:12px">':'<b style="font-size:12px">'+(ipts||'none')+'</b>')+
       (ipts?'<span style="font-size:10px;color:var(--muted);margin:0 2px 0 6px">decided by</span>'+_famChip(!ieach,'\u{1F469} Mom',ed?"famItemSet('"+J(id)+"',"+i+",'rate','mom')":"",true)+(iks.length>1?_famChip(ieach,'Each other',ed?"famItemSet('"+J(id)+"',"+i+",'rate','each')":"",true):''):'')+'</div>';
+    try{ if(typeof famDrillEditorHTML==="function") h+=famDrillEditorHTML(id,it,i,ed,it.from?Object.keys(it.from):iks); }catch(e){}   // 🧠
     h+='<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;padding-top:5px"><span style="font-size:10px;color:var(--muted);margin-right:2px">'+(idays.length?'Only on':'Every family-time day · or only on')+'</span>'+
       FAM_DAYS.filter(function(d){ return !days.length||days.indexOf(d)>=0; }).map(function(d){ return _famChip(idays.indexOf(d)>=0,d,ed?"famItemDay('"+J(id)+"',"+i+",'"+d+"')":"",true); }).join('')+'</div>';
     h+='</div>';
@@ -27614,9 +27657,18 @@ function cascadeIntraWeek(sweepTodayElapsed){
       // Snap-back self-heal: a pre-guard sweep (or a flag clicked after one) left this
       // displaced — put the unchecked copy back on its own day, missed as it should be.
       if(t.cascadedFrom&&t.cascadedFrom!==t.day){
+        // 📌 SNAPGUARD (live 2026-10-07, DeWalt): a 📌 lesson-day sitting is day-bound only because of its pin — WHICH
+        // day each sitting sits on is the lesson sequence's job (seqfill / the 📌 rule), not a stale "came from" note.
+        // Snapping it back put Andrew's + Kenzie's Wednesday spelling lessons on Monday, then their day-2 cards on
+        // Tuesday — days already over. For those, drop the stale note and leave the card where it is.
+        if(typeof ldPinnedTask==="function"&&ldPinnedTask(t)){
+          dbg("noCarry snap-back skipped (📌 lesson day): "+t.id+" stays "+t.day+" (note said "+t.cascadedFrom+")");
+          delete t.cascadedFrom; _healMoved=true; _healUpd[t.id+"/cascadedFrom"]=null;
+        } else {
         dbg("noCarry snap-back: "+t.id+" "+t.day+" → "+t.cascadedFrom);
         t.day=t.cascadedFrom; delete t.cascadedFrom; _healMoved=true;
         _healUpd[t.id+"/day"]=t.day; _healUpd[t.id+"/cascadedFrom"]=null;
+        }
       }
       // A day-bound task can never "carry to next week" — clear (and persist clearing)
       // any parked flag an older sweep left on it (week14: Sprints in the Mom box).
@@ -28301,7 +28353,7 @@ function cascadeIntraWeek(sweepTodayElapsed){
       occ.forEach(t=>{ if(_isNote(t)) return; const k=t.who+"|"+taskSubject(t); subjCount[k]=(subjCount[k]||0)+1; });
       const laneIv=lane=>occ.filter(t=>_laneOf(t)===lane).map(t=>[toMin(t.time),toMin(t.time)+(t.dur||20),t]);
       const kidIv=who=>occ.filter(t=>t.who===who).map(t=>[toMin(t.time),toMin(t.time)+(t.dur||20),t]);
-      occ.filter(t=>!checked[t.id]&&!_isNote(t)&&t.mom!=="required"&&subjCount[t.who+"|"+taskSubject(t)]===1)
+      occ.filter(t=>!checked[t.id]&&!_isNote(t)&&t.mom!=="required"&&!t.famBlock&&subjCount[t.who+"|"+taskSubject(t)]===1)   // 👨‍👩‍👧 family time is pinned at its block time — never floated kid by kid
         .sort((a,b)=>toMin(a.time)-toMin(b.time))
         .forEach(t=>{
           const d=t.dur||20, lane=_laneOf(t), cur=toMin(t.time);
@@ -42541,7 +42593,9 @@ function mastRecUI(){
 // the definitions map. When such an entry is pulled, the item becomes a recite card whose
 // `answer` holds the rule, so it flips to the rule with no definitions-map entry needed.
 function mastCustomDef(kid,cat,name){
-  const cust=masteryData[kid+"_custom_items"]; if(!Array.isArray(cust)) return "";
+  // DRILLSWEEP 3: Firebase hands a sparse list back as an object (mastFullBank already reads both) — the
+  // array-only check dropped every bank rule, so a rule card pulled then had "no rule yet" on its back.
+  let cust=masteryData[kid+"_custom_items"]; if(cust&&!Array.isArray(cust)) cust=Object.values(cust); if(!Array.isArray(cust)) return "";
   const e=cust.find(c=>c&&c.cat===cat&&c.name===name); return (e&&e.def)||"";
 }
 // ── RS4K_GATE_START ── chapter-gated decks ─────────────────────────────────────────────
@@ -42552,7 +42606,7 @@ function mastCustomDef(kid,cat,name){
 // a surprise can never silently starve a deck. Mom's explicit pull (mastPullItem) is NOT gated.
 // The ladder is untouched: this only narrows which bank names the existing mint paths may pick.
 function mastCustomCh(kid,cat,name){
-  const cust=masteryData[kid+"_custom_items"]; if(!Array.isArray(cust)) return null;
+  let cust=masteryData[kid+"_custom_items"]; if(cust&&!Array.isArray(cust)) cust=Object.values(cust); if(!Array.isArray(cust)) return null;   // DRILLSWEEP 3
   const e=cust.find(c=>c&&c.cat===cat&&c.name===name);
   return (e&&e.ch!=null&&e.ch!=="")?Number(e.ch):null;
 }
@@ -42590,7 +42644,38 @@ function mastBankEligible(kid,cat){
 }
 // ── RS4K_GATE_END ──
 let mastFlipped=false;
-function mastFlip(){ mastFlipped=!mastFlipped; _mastRe(); }
+function mastFlip(){ mastFlipped=!mastFlipped; mastFlipKey=mastSlideKeyNow; _mastRe(); }
+// DRILLSWEEP_START — Mastery drill card sweep (her ask 2026-10-07: "cards that can show the answer to the
+// kid … buttons that act on the wrong card … cards that can't be finished").
+// 1 · A flip belongs to ONE card. mastFlipped was a bare true/false, reset only by the arrows and the score
+//     buttons — so a card flipped in practice opened card 1 of the Log already flipped (answer showing), and
+//     switching kids opened the other kid's card on its answer side. The flip now remembers which card it was
+//     (kid · practice/log · position · card id); any other card on screen opens on its front.
+let mastFlipKey="", mastSlideKeyNow="";
+function mastSlideKey(kid,logMode,idx,it){ return String(kid)+"|"+(logMode?"log":"look")+"|"+idx+"|"+((it&&it.id)||""); }
+function mastFlipSync(key){ mastSlideKeyNow=key; if(mastFlipped&&mastFlipKey!==key) mastFlipped=false; return mastFlipped; }
+// 2 · "Show me" pick-3: the two wrong tiles. A deck with exactly two other picture cards picked the SAME card
+//     twice (the fallback index wrapped back onto the first pick), and two cards with the same name (a 🇬🇧→🇩🇪
+//     twin) drew identical tiles. Distractors are now two different cards with two different names; the
+//     choice stays seeded from card + print number, so it doesn't reshuffle on a re-render.
+//     Returns the three tiles in their seeded order, or null when the deck can't make a fair pick-3.
+function mastShowMeTiles(it,items,pn){
+  const seen={}; seen[it.prompt]=1;
+  const pool=(items||[]).filter(x=>x&&x.id!==it.id&&x.subject===it.subject&&!seen[x.prompt]&&_smTileVis(x)&&(seen[x.prompt]=1));
+  if(pool.length<2) return null;
+  const seed=_smHash(it.id+"|"+pn);
+  const i1=seed%pool.length, d1=pool[i1];
+  let d2=pool[(seed+1+(seed%7))%pool.length];
+  if(d2.id===d1.id) d2=pool[(seed+2)%pool.length];
+  if(d2.id===d1.id) d2=pool[(i1+1)%pool.length];
+  const tiles=[it,d1,d2], rot=seed%3;
+  return tiles.slice(rot).concat(tiles.slice(0,rot));
+}
+// 5 · Save Results counted every score in the session, including a card that left the drill mid-session
+//     (deleted or parked on another device) — "6 / 5 scored" and Save never turned on. Only the cards
+//     actually in today's drill count.
+function mastLogScoredCount(due,scores){ return (due||[]).filter(i=>i&&scores&&scores[i.id]).length; }
+// DRILLSWEEP_END
 function mastBankStatus(kidArg){
   const kid=kidArg||masteryKid||"julian";
   let items=masteryData[kid]||[];
@@ -46601,9 +46686,14 @@ function mstRestoreSitting(sid){
 function mstClearPersist(sid){ sid=sid||mstSid; if(!sid) return; try{ HA_LS.removeItem(mstStorageKey(masteryKid,sid)); }catch(e){} }
 // The card's direction for THIS showing. Say/type need the meaning to show on the front —
 // a card with no definition falls back to the normal German-first card.
+function mstCardDef(card){
+  if(!card) return "";
+  const name=card.name||"";
+  return ((!card.id&&card.deck&&typeof mastCustomDef==="function")?mastCustomDef(masteryKid,card.deck,name):"")||mastGetDef(masteryKid,name)||mstItemAnswer(card.id);
+}
 function mstCardMode(card){
   const m=(card&&card.mode)||"rec"; if(m==="rec") return m;
-  try{ const def=mastGetDef(masteryKid,card.name||"")||mstItemAnswer(card.id); return def?m:"rec"; }catch(e){ return "rec"; }
+  try{ const def=mstCardDef(card); return def?m:"rec"; }catch(e){ return "rec"; }
 }
 // Language-arts RULE cards (Capitalization, Punctuation, Articles, Grammar, and every recite card
 // whose answer is a rule — Nouns, Plurals, Verb Tenses, Subject-Verb, Spelling Rules): the same set
@@ -46644,7 +46734,10 @@ function mstFlipBtn(session,rec){
 }
 function mstCardHtml(session,card){
   const name=card.name||"";
-  const def=mastGetDef(masteryKid,name)||mstItemAnswer(card.id);
+  // DRILLSWEEP 4: a NEW card (straight from the bank, no id yet) carries its rule/answer in the bank entry's
+  // def — the same text mastMintFromBank gives the card when it's saved. Without it a new Capitalization /
+  // Punctuation card showed "no rule yet" on its back the first day.
+  const def=mstCardDef(card);
   const mode=mstCardMode(card);
   const _lrn=(card.kind==="new"||card.kind==="learning")?' <span style="font-size:9px;color:#9a3412;font-weight:600">\u{2B50} Learning</span>':"";
   if(mstIsRuleCard(card)){
@@ -49890,6 +49983,7 @@ function _renderMasteryInner(el){
     if(slideItems.length){
     if(mastSlideIdx<0) mastSlideIdx=0;
     if(mastSlideIdx>=slideList.length) mastSlideIdx=slideList.length-1;
+    mastFlipSync(mastSlideKey(masteryKid,mastLogMode,mastSlideIdx,slideList[mastSlideIdx]));   // DRILLSWEEP 1: a flip never carries onto another card
 
     // One card's full HTML. Factored out so ALL cards can be built and measured invisibly
     // up front (mastLockSlideHeight) — the slideshow locks to the tallest card BEFORE the
@@ -50029,19 +50123,14 @@ function _renderMasteryInner(el){
       if(_smElig){
         const _smKey=it.id+"|"+pn;
         const _smState=mastShowMe[_smKey];
-        const _pool=items.filter(x=>x&&x.id!==it.id&&x.subject===it.subject&&x.prompt!==it.prompt&&_smTileVis(x));
+        const _smTiles=mastShowMeTiles(it,items,pn);   // DRILLSWEEP 2: two different wrong tiles
         if(_smState==="ok"){
           c+='<div class="mast-slide-img">'+bigVis+'</div>';
           c+='<div class="mast-slide-name">'+it.prompt+' \u{1F389}</div>';
           c+='<div style="font-size:12px;font-weight:700;color:#16a34a;margin-bottom:4px">You found it! Say it out loud.</div>';
           _smDone=true;
-        } else if(_pool.length>=2){
-          const _seed=_smHash(it.id+"|"+pn);
-          const _d1=_pool[_seed%_pool.length];
-          let _d2=_pool[(_seed+1+(_seed%7))%_pool.length];
-          if(_d2.id===_d1.id) _d2=_pool[(_seed+2)%_pool.length];
-          let _tiles=[it,_d1,_d2];
-          const _rot=_seed%3; _tiles=_tiles.slice(_rot).concat(_tiles.slice(0,_rot));
+        } else if(_smTiles){
+          const _tiles=_smTiles;
           const _kEsc=(it.id+"|"+pn).replace(/'/g,"\\'");
           const _cue=mastShowMeCueHtml(it,mastShowMeCue(masteryKid,cat),_smKey,_smState);   // SHOWME_CUE: spoken / look away / shown
           c+=_cue.html;
@@ -50190,7 +50279,7 @@ function _renderMasteryInner(el){
 
     // ── BOTTOM BAR ──
     if(mastLogMode){
-      const scored=Object.keys(mastLogScores).length;
+      const scored=mastLogScoredCount(due,mastLogScores);   // DRILLSWEEP 5: only cards still in today's drill
       const allScored=scored===due.length;
       h+='<div class="mast-save-bar"><span class="mast-save-count">'+scored+' / '+due.length+' scored</span>';
       h+='<button class="mast-save-btn" onclick="mastSaveResults()"'+(allScored?'':' disabled')+'>Save Results</button></div>';
@@ -59064,7 +59153,8 @@ function seqFillSlots(input){
     if(!want){ drop.push({id:t.id,lid:t.lid||null,text:t.title||"",day:t.day,time:t.time}); continue; }
     const newId=(planId&&kid)?(kid+"_"+planId+"_"+want.lid):t.id;
     assign.push({oldId:t.id,newId:newId,lid:want.lid,text:want.text,day:t.day,time:t.time,
-                 from:t.lid||null,changed:(t.lid!==want.lid)});
+                 from:t.lid||null,changed:(t.lid!==want.lid),
+                 _eowOverflow:t._eowOverflow||undefined});   // 📦 a box slot still sorts LAST in the order check below (2026-10-02)
   }
 
   // Does the week actually read in order once filled? A locked card holding a lesson later than
@@ -59122,6 +59212,12 @@ function seqFillNormalize(tasks,reason){
   const locked=t=>{
     if(checked&&checked[t.id]) return true;
     if(typeof claimed!=="undefined"&&claimed&&claimed[t.id]) return true;
+    // 📦 A carry-over box card (_eowOverflow) is the unscheduled tail, not a sitting — the day it is
+    // parked on is never shown to the kid, so that day passing must not freeze it. Frozen, it kept a
+    // stale lesson: Ellis' MR box read pp. 17–20, 21–24, 49–52 (six lessons skipped) after the 10/1
+    // end-date rebuild renumbered his plan, and the pass logged "⚠ locked card out of sequence"
+    // (her ask 2026-10-02). Unchecked + unclaimed box cards stay slots and refill in order.
+    if(t._eowOverflow) return false;
     const iso=isoOf(t); if(!iso||!todayISO) return true;          // unknown date -> treat as fixed, never move it
     if(iso<todayISO) return true;
     if(iso===todayISO) return ((typeof toMin==="function")?toMin(t.time):0)<=nowMin;
@@ -59135,7 +59231,7 @@ function seqFillNormalize(tasks,reason){
     // 🧩 a merged page card HOLDS its lessons — not a slot to re-stamp, and its lessons are spoken for
     if(Array.isArray(t.lids)&&t.lids.length>1){ const k=t.who+"|"+t.subjectKey; (takenBy[k]=takenBy[k]||[]).push.apply(takenBy[k],t.lids); return; }
     (groups[t.who+"|"+t.subjectKey]=groups[t.who+"|"+t.subjectKey]||[]).push(t); });
-  let changed=0; const notes=[];
+  let changed=0; const notes=[]; const boxNotes=[];   // 📦 box watch (her ask 2026-10-02): one line per box refill
   Object.keys(groups).forEach(key=>{
     const kid=key.split("|")[0], sk=key.split("|")[1];
     let ids=null,doneSet=null,subj=null;
@@ -59161,6 +59257,8 @@ function seqFillNormalize(tasks,reason){
     res.assign.forEach(a=>{
       if(!a.changed) return;
       const t=byId[a.oldId]; if(!t) return;
+      if(t._eowOverflow){ const _ot=String(t.title||""), _oi=_ot.lastIndexOf(" — ");
+        boxNotes.push(key+" "+(_oi>=0?_ot.slice(_oi+3):(a.from||"?"))+" → "+a.text+" (filed under "+String(t.day||"?")+")"); }
       t.lid=a.lid; t.title=_seqFillTitle(t.title,a.text);
       if(typeof lessonDayStamp==="function") lessonDayStamp(t,subj);   // 👩 Mom on set days
       if(a.newId&&a.newId!==t.id&&!live.has(a.newId)){ live.delete(t.id); live.add(a.newId); t.id=a.newId; }
@@ -59171,6 +59269,8 @@ function seqFillNormalize(tasks,reason){
     if(!res.ascending) notes.push(key+" ⚠ locked card out of sequence");
   });
   if(changed&&typeof dbg==="function") dbg("seqfill ("+(reason||"?")+"): re-stamped "+changed+" slot"+(changed!==1?"s":"")+" — "+notes.join(" | "));
+  // 📦 BOX WATCH — a separate, greppable line so the families dashboard can track the box fix for a week
+  if(boxNotes.length&&typeof dbg==="function") dbg("📦 box refill: "+boxNotes.join(" | "));
   return {changed:changed,notes:notes};
 }
 // SEQFILL_END
@@ -59342,6 +59442,22 @@ function wkHandoverTo(wn,tasksObj,meta){
   try{ gwCommit(); dbg("handed over to week"+wn+" (was already built)"); }
   finally{ _wkHandingOver=false; }
 }
+// 📅 REGENTS (live 2026-10-07): a check-off time is stored like "09:13 AM Oct 5" — no year. Safari can't read that
+// (NaN → the 7-day cutoff never fired), but Chrome-based browsers (the LG StanbyME, Android, Chrome) read it as the
+// year 2001, so a regenerate from one of them dropped every check made this week and laid the cards again unchecked.
+// Read it as this year (last year if that lands more than a day in the future — a December check seen in January).
+function gwCheckTsMs(ts){
+  const s=String(ts==null?"":ts), MON=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+  const md=/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2})\b/i.exec(s);
+  const yr=/\b(19|20)\d\d\b/.exec(s);
+  if(!md||yr){ const t=new Date(s).getTime(); return isNaN(t)?NaN:t; }   // full dates / ISO keep the browser's own reading
+  const tm=/(\d{1,2}):(\d{2})\s*(AM|PM)?/i.exec(s); let h=tm?parseInt(tm[1],10):0; const mi=tm?parseInt(tm[2],10):0;
+  if(tm&&tm[3]){ const pm=tm[3].toUpperCase()==="PM"; if(pm&&h!==12) h+=12; if(!pm&&h===12) h=0; }
+  const now=new Date(), mo=MON.indexOf(md[1].slice(0,3).toLowerCase()), d=parseInt(md[2],10);
+  let t=new Date(now.getFullYear(),mo,d,h,mi).getTime();
+  if(t>now.getTime()+864e5) t=new Date(now.getFullYear()-1,mo,d,h,mi).getTime();
+  return t;
+}
 function gwCommit(){
   if(!gwResult) return;
   // Build a fake file-load event to reuse loadJson's write logic
@@ -59388,7 +59504,7 @@ function gwCommit(){
       const key=(t.title||"")+"|"+(t.who||"")+"|"+(t.day||"");
       if(!snapChecked[t.id]) return;
       const ts=snapChecked[t.id];
-      const tsMs=(typeof ts==="number")?ts:new Date(ts).getTime();
+      const tsMs=(typeof ts==="number")?ts:gwCheckTsMs(ts);   // 📅 REGENTS: "09:13 AM Oct 5" has no year — Chrome/webOS read it as 2001
       if(tsMs<weekCutoff) return;
       const rec={ts:ts,oldId:t.id};
       oldLookup[key]=rec;
