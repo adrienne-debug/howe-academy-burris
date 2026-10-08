@@ -3812,6 +3812,7 @@ function initFb() {
       Object.keys(v).forEach(k=>{ laundryData[k]=v[k]; });
       try{HA_LS.setItem('ha_laundry',JSON.stringify(laundryData));}catch(e){}
       if(tab==="moms-plan"){const el=document.getElementById("content");if(el)renderMomsPlan(el);}
+      else if(tab==="schedule"&&kid==="mom") renderAll();   // MOMSCHED_LAUNDRY
     });
     db.ref("momChores").on("value",s=>{
       const v=s.val()||{};
@@ -3923,10 +3924,13 @@ function initFb() {
     });
     db.ref("config/helpers").on("value",s=>{ helpersOnValue(s.val()); });
     db.ref("settings/laundryTimes").on("value",s=>{ if(typeof laundryTimesOnValue==="function") laundryTimesOnValue(s.val()); });   // 🧺 LAUNDRYTIMES
+    db.ref("settings/laundryBlockMins").on("value",s=>{ if(typeof laundryBlockMinsOnValue==="function") laundryBlockMinsOnValue(s.val()); });   // 🧺 MOMSCHED_LAUNDRY
+    db.ref("momBlocks/"+mwTodayIso()).on("value",s=>{ if(typeof momBlocksOnValue==="function") momBlocksOnValue(s.val()); if(tab==="schedule") renderAll(); });   // 🧺 MOMSCHED_LAUNDRY: everyone's Mom cards lay around her block
     db.ref("settings/momTips").on("value",s=>{ if(typeof momTipsOnValue==="function") momTipsOnValue(s.val()); });   // 👋 Mom how-to banners she has closed
     db.ref("settings/whatsNewSeen").on("value",s=>{ if(typeof whatsNewOnValue==="function") whatsNewOnValue(s.val()); });   // ✨ the What's new she has read
     db.ref("famProgress").on("value",s=>{ if(typeof famProgOnValue==="function") famProgOnValue(s.val()); });   // 📚 family subjects' shared place-in-book   // 🙋 helper profiles
     try{ db.ref("helperDays").orderByKey().limitToLast(3).on("value",s=>{ helperDaysOnValue(s.val()); }); }catch(e){}   // 🙋 who is here today
+    try{ db.ref("helpRequests").orderByKey().limitToLast(60).on("value",s=>{ hrOnValue(s.val()); }); }catch(e){}   // 🙋 NEEDMOM: kids asking for Mom
     db.ref("worksheets").on("value",s=>{ wsOnValue(s.val()); });   // 📋 worksheets from Adrienne
     db.ref("messages").on("value",s=>{ msgOnValue(s.val()); });     // ✉ Mom's messages to Adrienne (text only — photos load on demand)
     db.ref("config/rules").on("value",s=>{
@@ -6660,6 +6664,247 @@ function msgOnValue(v){
   if(key!==msgKey){ msgKey=key; try{ renderAll(); }catch(e){} }
 }
 // ── WORKSHEETS_END ──
+// ── NEEDMOM_START ── 🙋 "I need Mom" — a kid asks for help from their own schedule (ask 2026-10-07) ──────────
+// Her ask 10/7: a "🙋 I need Mom" button on a kid's own schedule view (kid device). Tapping it asks
+// "What do you need help with?" (optional short note + which card), saves a request, and shows it on Mom's side —
+// Mom's Day and the Mom-mode schedule — as an item she marks "✓ Helped". The kid's schedule keeps going: nothing
+// pauses, no card is touched. Works for every family (roster names/colours, no family gate).
+// v2 (her ask 10/7, same evening): "it needs to have a pop up so they see it and ask to help now or schedule next
+// (if working with another kid)". A new ask pops up on Mom's side — every Mom-mode device, and any device with
+// Mom's Day open — with 🙋 Help now / ⏭ Help next. Her picks: "next" goes INTO THE MOM LOOP; pop-up on Mom mode +
+// Mom's Day.
+//   · Help now  → the loop shows Mom helping that kid right now. A started session with another kid keeps its
+//                 hold (her rule 9/01 "once checked, who has it has it") — it resumes after ✓ Helped.
+//   · Help next → the kid is next in the loop: if Mom is mid-session with another kid (the loop's hold), the
+//                 help turn starts when that Mom card is checked (the hold is NOT re-pointed at that kid's next
+//                 Mom card); with no session running it starts now.
+//   · ✓ Helped  → the help turn ends; the loop carries on exactly where it was (the cursor never moves — a help
+//                 turn, like a borrowed turn, costs nobody their place).
+// The help turn is a LAYER over the loop's decision (mlNow), never inside it: mlNow also drives the day's lay
+// (_mlQueueLayCore puts now.kid's Mom block first), and a kid asking about a non-Mom card must not drag their
+// Mom block forward. So cards never move because of an ask; the strip, the kid banners, early-finish's "is Mom
+// free" and the hold hand-off read hrLoopTurn().
+// Data (each family's own DB): helpRequests/<id> =
+//   {kid, at, cardId?, cardTitle?, note?, status:"open"|"now"|"next"|"helped", decidedAt?, helpedAt?}
+//   id = "hr_<ms>_<rand>" so keys sort by time; the listener keeps the newest 60.
+//   Asking = ONE new record (set at its own id); Help now/next = ONE update {status, decidedAt}; ✓ Helped = ONE
+//   update {status:"helped", helpedAt}. Asks older than 12 h drop off Mom's side.
+const HR_MAX_NOTE=140, HR_SHOW_MS=12*3600*1000;
+let hrData={}, hrKey="", hrPopSeen={};   // hrPopSeen: asks this device's pop-up was closed on ("Later") — per device, not stored
+function hrOpenList(kidId,now){
+  now=now||Date.now();
+  return Object.entries(hrData||{})
+    .filter(([id,r])=>r&&(r.status==="open"||r.status==="now"||r.status==="next")&&r.kid&&(now-(r.at||0))<HR_SHOW_MS&&(!kidId||r.kid===kidId))
+    .sort((a,b)=>(a[1].at||0)-(b[1].at||0));
+}
+function hrTime(ms){ try{ return new Date(ms).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}); }catch(e){ return ""; } }
+function hrKidName(k){ return (typeof KID_NAME!=="undefined"&&KID_NAME&&KID_NAME[k])||cap(k); }
+// ── the loop layer ──
+// → {id, kid, mode:"now"|"next", active, after?} for the help turn, or null. "now" asks go first (oldest decision
+// first); then "next" asks, which wait (active:false) while Mom's started session with ANOTHER kid is still held.
+function hrLoopTurn(){
+  try{
+    const by=(x,y)=>((x[1].decidedAt||0)-(y[1].decidedAt||0))||((x[1].at||0)-(y[1].at||0));
+    const live=hrOpenList().filter(([id,r])=>r.status==="now"||r.status==="next");
+    if(!live.length) return null;
+    const nowQ=live.filter(([id,r])=>r.status==="now").sort(by);
+    if(nowQ.length) return {id:nowQ[0][0],kid:nowQ[0][1].kid,mode:"now",active:true};
+    const nx=live.sort(by)[0];
+    const n=(typeof mlNow==="function")?mlNow():null;
+    if(n&&n.held&&n.kid&&n.kid!==nx[1].kid) return {id:nx[0],kid:nx[1].kid,mode:"next",active:false,after:n.kid};
+    return {id:nx[0],kid:nx[1].kid,mode:"next",active:true};
+  }catch(e){ return null; }
+}
+// Mom said help now/next to a DIFFERENT kid → don't lock (or re-point) a session on this one: the loop hands her over.
+function hrBlocksHold(kid){
+  return hrOpenList().some(([id,r])=>(r.status==="now"||r.status==="next")&&r.kid!==kid);
+}
+// The Mom loop strip's help line (MOMLOOP mlStripHTML).
+function hrStripLineHTML(){
+  const t=hrLoopTurn(); if(!t) return "";
+  const r=(hrData||{})[t.id]||{};
+  const what=r.cardTitle?(' — '+esc(r.cardTitle)):'';
+  return '<div style="font-size:12px;font-weight:800;color:#92400e;background:#fffbeb;border-radius:8px;padding:4px 8px;margin:0 0 6px">🙋 '+
+    (t.active?('Helping <span style="color:#b45309">'+esc(hrKidName(t.kid))+'</span>'+what+(t.mode==="now"?' (help now)':' (help next)'))
+      :('Next: <span style="color:#b45309">'+esc(hrKidName(t.kid))+'</span>'+what+' — after this card with '+esc(hrKidName(t.after))))+
+    ' <button onclick="hrHelpedTap(\''+esc(t.id)+'\')" style="margin-left:4px;border:none;background:#16a34a;color:#fff;border-radius:7px;padding:2px 8px;font-size:11px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">✓ Helped</button></div>';
+}
+// The kid who has Mom in the loop, while she is off helping someone else (MOMLOOP mlBannerHTML).
+function hrAwayBannerHTML(t){
+  return '<div style="background:#fffbeb;border-left:4px solid #f59e0b;border-radius:0 10px 10px 0;padding:10px 12px;margin:0 0 8px;display:flex;align-items:center;gap:9px">'+
+    '<span style="font-size:19px">🙋</span><div><div style="font-size:12.5px;font-weight:800;color:#92400e">Mom is helping '+esc(hrKidName(t.kid))+' for a minute</div>'+
+    '<div style="font-size:10.5px;color:#b45309">Keep going on your own work — she\'ll be right back.</div></div></div>';
+}
+// ── the kid's side ──
+// The kid's button shows on their OWN view: Kids' Corner / the kiosk's My Day, or a kid's Schedule page when Mom
+// isn't here (momHereCards = Mom mode outside Kids' Corner, i.e. Mom looking at a kid's page — she doesn't ask herself).
+function hrKidCanAsk(k){
+  if(!k||k==="all"||k==="mom"||(typeof ROSTER!=="undefined"&&ROSTER.indexOf(k)<0)) return false;
+  return !(typeof momHereCards==="function"&&momHereCards());
+}
+function hrKidButtonHTML(k){
+  if(!hrKidCanAsk(k)) return "";
+  const col=(typeof KID_COLOR!=="undefined"&&KID_COLOR[k])||"#2B7A78";
+  const mine=hrOpenList(k), turn=hrLoopTurn();
+  let h='<div style="margin:0 0 10px">'+
+    '<button onclick="hrAskOpen(\''+esc(k)+'\')" style="width:100%;padding:11px 14px;border-radius:12px;border:2px solid '+col+';background:#fff;color:'+col+';font-size:15px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">🙋 I need Mom</button>';
+  mine.forEach(([id,r])=>{
+    const what=r.cardTitle?' — '+esc(r.cardTitle):'';
+    let msg;
+    if(r.status==="now"&&turn&&turn.id===id) msg='🙋 Mom is coming to help you now!';
+    else if(r.status==="now"||r.status==="next") msg='⏭ Mom will help you next'+what+'. Keep going with another card until she comes.';
+    else msg='⏳ You asked Mom at '+esc(hrTime(r.at))+what+'. Keep going with your next card!';
+    h+='<div style="margin-top:6px;padding:7px 11px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a;font-size:12.5px;font-weight:700;color:#92400e">'+msg+'</div>';
+  });
+  return h+'</div>';
+}
+// Today's cards still to do, for "which card?" (the same lay the kid's page shows).
+function hrKidCards(k){
+  let cards=[]; try{ cards=_kcTodayCards(k); }catch(e){}
+  const ck=(typeof checked!=="undefined"&&checked)||{};
+  return cards.filter(t=>t&&t.id&&!ck[t.id]&&!/^(break|brain break)$/i.test(t.title||""));
+}
+function hrAskOpen(k){
+  if(!hrKidCanAsk(k)) return;
+  let ov=document.getElementById("hr-panel"); if(ov) ov.remove();
+  ov=document.createElement("div"); ov.id="hr-panel"; ov.dataset.kid=k;
+  ov.style.cssText="position:fixed;inset:0;z-index:10050;background:rgba(15,23,42,.45);overflow:auto;font-family:'DM Sans',sans-serif;padding:18px 12px";
+  ov.onclick=function(e){ if(e.target===ov) hrAskClose(); };
+  const cards=hrKidCards(k);
+  ov.innerHTML='<div style="max-width:440px;margin:40px auto 0;background:#fff;border-radius:16px;padding:18px 16px 18px;box-shadow:0 10px 40px rgba(0,0,0,.25)">'+
+    '<div style="font-family:\'Fraunces\',serif;font-size:20px;font-weight:800;color:#0f172a;margin-bottom:4px">🙋 What do you need help with?</div>'+
+    '<div style="font-size:12.5px;color:#64748b;margin-bottom:12px">Mom will see it. You can keep going with another card while you wait.</div>'+
+    '<label style="display:block;font-size:12px;font-weight:800;color:#334155;margin-bottom:4px">Which card? (optional)</label>'+
+    '<select id="hr-card" style="width:100%;box-sizing:border-box;padding:9px 10px;border:1.5px solid #cbd5e1;border-radius:10px;font-size:14px;font-family:\'DM Sans\',sans-serif;margin-bottom:10px;background:#fff">'+
+      '<option value="">Something else</option>'+
+      cards.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.title||"Card")+'</option>').join("")+
+    '</select>'+
+    '<label style="display:block;font-size:12px;font-weight:800;color:#334155;margin-bottom:4px">Tell Mom (optional)</label>'+
+    '<textarea id="hr-note" maxlength="'+HR_MAX_NOTE+'" placeholder="A few words, like &quot;stuck on number 4&quot;" style="width:100%;box-sizing:border-box;min-height:58px;padding:8px 10px;border:1.5px solid #cbd5e1;border-radius:10px;font-size:14px;font-family:\'DM Sans\',sans-serif"></textarea>'+
+    '<div style="display:flex;gap:8px;margin-top:12px">'+
+      '<button onclick="hrAskClose()" style="flex:1;padding:11px;border-radius:11px;border:1.5px solid #cbd5e1;background:#fff;font-weight:800;font-size:14px;cursor:pointer;font-family:\'DM Sans\',sans-serif">Cancel</button>'+
+      '<button onclick="hrAskSend()" style="flex:2;padding:11px;border-radius:11px;border:none;background:#2B7A78;color:#fff;font-weight:800;font-size:15px;cursor:pointer;font-family:\'DM Sans\',sans-serif">Send to Mom</button>'+
+    '</div></div>';
+  document.body.appendChild(ov);
+}
+function hrAskClose(){ const ov=document.getElementById("hr-panel"); if(ov) ov.remove(); }
+function hrBuild(k,cardId,note,now){
+  now=now||Date.now();
+  const r={kid:k,at:now,status:"open"};
+  const n=String(note||"").trim().slice(0,HR_MAX_NOTE); if(n) r.note=n;
+  if(cardId){ const t=hrKidCards(k).find(x=>x.id===cardId); if(t){ r.cardId=t.id; r.cardTitle=String(t.title||"").slice(0,80); } }
+  return r;
+}
+function hrAskSend(){
+  const ov=document.getElementById("hr-panel"); if(!ov) return;
+  const k=ov.dataset.kid; if(!hrKidCanAsk(k)) { hrAskClose(); return; }
+  const r=hrBuild(k,(document.getElementById("hr-card")||{}).value||"",(document.getElementById("hr-note")||{}).value||"");
+  const id="hr_"+r.at+"_"+Math.random().toString(36).slice(2,7);
+  hrData=Object.assign({},hrData,{[id]:r});
+  hrPopSeen[id]=1;   // the asking device is the kid's — never pop it back at them
+  if(db&&!_dryRun()) db.ref("helpRequests/"+id).set(r);
+  hrAskClose();
+  try{ renderAll(); }catch(e){}
+  if(typeof gwShowToast==="function") gwShowToast("🙋 Mom knows! Keep going with your next card.");
+}
+// ── Mom's side — Mom's Day card and the Mom-mode schedule: oldest ask first ──
+function _hrBtn(fn,id,label,bg){ return '<button onclick="'+fn+'(\''+esc(id)+'\')" style="flex:none;padding:7px 11px;border-radius:9px;border:none;background:'+bg+';color:#fff;font-size:12.5px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">'+label+'</button>'; }
+function hrMomRowsHTML(kidId){
+  const turn=hrLoopTurn();
+  return hrOpenList(kidId).map(([id,r])=>{
+    const col=(typeof KID_COLOR!=="undefined"&&KID_COLOR[r.kid])||"#64748b";
+    const tag=(turn&&turn.id===id)?(turn.active?' <span style="font-size:11px;font-weight:800;color:#16a34a">· helping now</span>':' <span style="font-size:11px;font-weight:800;color:#7c3aed">· next</span>')
+      :(r.status==="now"||r.status==="next")?' <span style="font-size:11px;font-weight:800;color:#7c3aed">· waiting</span>':'';
+    const btns=(r.status==="open"?_hrBtn("hrNowTap",id,"🙋 Help now","#2B7A78")+_hrBtn("hrNextTap",id,"⏭ Help next","#7c3aed"):"")+_hrBtn("hrHelpedTap",id,"✓ Helped","#16a34a");
+    return '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 11px;border-radius:11px;border:1.5px solid #fcd34d;background:#fffbeb;margin-top:8px">'+
+      '<span style="width:10px;height:10px;border-radius:50%;background:'+col+';flex:none"></span>'+
+      '<div style="flex:1;min-width:140px"><div style="font-weight:800;font-size:14px;color:#0f172a">'+esc(hrKidName(r.kid))+
+        ' <span style="font-weight:600;font-size:12px;color:#64748b">· '+esc(hrTime(r.at))+'</span>'+tag+'</div>'+
+        (r.cardTitle?'<div style="font-size:12.5px;color:#334155;font-weight:700">'+esc(r.cardTitle)+'</div>':'')+
+        (r.note?'<div style="font-size:12.5px;color:#475569">“'+esc(r.note)+'”</div>':'')+
+        (!r.cardTitle&&!r.note?'<div style="font-size:12.5px;color:#475569">Needs you</div>':'')+'</div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">'+btns+'</div></div>';
+  }).join("");
+}
+// where:"md" = Mom's Day — leaves a marker so the pop-up knows Mom's Day is open on this device.
+function hrMomCardHTML(kidId,where){
+  const mark=(where==="md")?'<span id="hr-md-mark" style="display:none"></span>':'';
+  try{ setTimeout(hrPopMaybe,0); }catch(e){}   // after the page paints (Mom's Day marker in place)
+  const rows=hrMomRowsHTML(kidId); if(!rows) return mark;
+  return mark+'<div id="hr-mom-card" style="background:#fff;border-radius:12px;box-shadow:0 4px 20px rgba(43,122,120,0.13);padding:11px 14px 13px;border-left:4px solid #f59e0b">'+
+    '<div style="font-weight:800;font-size:13px;color:#92400e">🙋 '+(hrOpenList(kidId).length===1?'A kid needs you':'Kids need you')+'</div>'+rows+'</div>';
+}
+// ── the pop-up (v2): a new ask nobody has answered yet, on Mom-mode devices and any device showing Mom's Day ──
+function hrPopWhere(){ return (typeof momHere==="function"&&momHere())||!!(typeof document!=="undefined"&&document.getElementById("hr-md-mark")); }
+function hrPopNext(){ return hrOpenList().find(([id,r])=>r.status==="open"&&!hrPopSeen[id])||null; }
+function hrPopMaybe(){
+  if(typeof document==="undefined") return;
+  const cur=document.getElementById("hr-pop");
+  const nx=hrPopWhere()?hrPopNext():null;
+  if(!nx){ if(cur) cur.remove(); return; }
+  if(cur&&cur.dataset.id===nx[0]) return;   // already showing this one
+  if(cur) cur.remove();
+  const [id,r]=nx;
+  const n=(typeof mlNow==="function")?mlNow():null;
+  const busy=(n&&n.kid&&n.kid!==r.kid)?n.kid:null;
+  const ov=document.createElement("div"); ov.id="hr-pop"; ov.dataset.id=id;
+  ov.style.cssText="position:fixed;inset:0;z-index:10060;background:rgba(15,23,42,.45);overflow:auto;font-family:'DM Sans',sans-serif;padding:18px 12px";
+  ov.innerHTML='<div style="max-width:420px;margin:60px auto 0;background:#fff;border-radius:16px;padding:18px 16px;box-shadow:0 10px 40px rgba(0,0,0,.3);border-top:6px solid #f59e0b">'+
+    '<div style="font-family:\'Fraunces\',serif;font-size:21px;font-weight:800;color:#0f172a">🙋 '+esc(hrKidName(r.kid))+' needs you</div>'+
+    '<div style="font-size:12px;color:#64748b;margin:2px 0 10px">Asked at '+esc(hrTime(r.at))+'</div>'+
+    (r.cardTitle?'<div style="font-size:14px;font-weight:800;color:#334155">'+esc(r.cardTitle)+'</div>':'')+
+    (r.note?'<div style="font-size:14px;color:#475569;margin-top:2px">“'+esc(r.note)+'”</div>':'')+
+    (busy?'<div style="font-size:12px;color:#7c3aed;font-weight:700;margin-top:10px">You\'re with '+esc(hrKidName(busy))+' right now.</div>':'')+
+    '<div style="display:flex;gap:8px;margin-top:14px">'+
+      '<button onclick="hrNowTap(\''+esc(id)+'\')" style="flex:1;padding:12px;border-radius:11px;border:none;background:#2B7A78;color:#fff;font-weight:800;font-size:15px;cursor:pointer;font-family:\'DM Sans\',sans-serif">🙋 Help now</button>'+
+      '<button onclick="hrNextTap(\''+esc(id)+'\')" style="flex:1;padding:12px;border-radius:11px;border:none;background:#7c3aed;color:#fff;font-weight:800;font-size:15px;cursor:pointer;font-family:\'DM Sans\',sans-serif">⏭ Help next'+(busy?'<div style="font-size:11px;font-weight:700;opacity:.9">after '+esc(hrKidName(busy))+'\'s card</div>':'')+'</button>'+
+    '</div>'+
+    '<button onclick="hrPopLater(\''+esc(id)+'\')" style="display:block;margin:10px auto 0;border:none;background:none;color:#64748b;font-size:12.5px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">Later — keep it on my list</button></div>';
+  document.body.appendChild(ov);
+}
+function hrPopLater(id){ hrPopSeen[id]=1; const p=document.getElementById("hr-pop"); if(p) p.remove(); hrPopMaybe(); }
+// Help now / next / ✓ Helped are Mom's: outside Mom mode they ask for the Mom PIN first (the recipe gate, own words).
+function _hrMomGate(fn){
+  if(typeof momHere==="function"&&momHere()){ fn(); return; }
+  if(typeof kitPinGate!=="function") return;
+  kitPinGate(fn,"Answering a help request is for Mom.");
+}
+function hrNowTap(id){ _hrMomGate(()=>hrDecide(id,"now")); }
+function hrNextTap(id){ _hrMomGate(()=>hrDecide(id,"next")); }
+function hrHelpedTap(id){ _hrMomGate(()=>hrHelped(id)); }
+function hrDecide(id,mode){
+  const r=(hrData||{})[id]; if(!r||(mode!=="now"&&mode!=="next")) return;
+  const ts=Date.now();
+  hrData=Object.assign({},hrData,{[id]:Object.assign({},r,{status:mode,decidedAt:ts})});
+  hrPopSeen[id]=1;
+  if(db&&!_dryRun()) db.ref("helpRequests/"+id).update({status:mode,decidedAt:ts});
+  const p=document.getElementById("hr-pop"); if(p) p.remove();
+  try{ renderAll(); }catch(e){}
+  hrPopMaybe();
+}
+function hrHelped(id){
+  const r=(hrData||{})[id]; if(!r) return;
+  const ts=Date.now();
+  hrData=Object.assign({},hrData,{[id]:Object.assign({},r,{status:"helped",helpedAt:ts})});
+  hrPopSeen[id]=1;
+  if(db&&!_dryRun()) db.ref("helpRequests/"+id).update({status:"helped",helpedAt:ts});
+  const p=document.getElementById("hr-pop"); if(p&&p.dataset.id===id) p.remove();
+  try{ renderAll(); }catch(e){}
+  hrPopMaybe();
+}
+// Listener: repaint only when an ask arrives, is answered or is done, and never while a box is being typed in
+// (the kid's own ask popup lives outside the page, so a repaint can't eat it). Then the pop-up check.
+function hrOnValue(v){
+  hrData=(v&&typeof v==="object")?v:{};
+  const key=hrOpenList().map(([id,r])=>id+":"+r.status).join(",");
+  if(key!==hrKey){
+    hrKey=key;
+    const ae=(typeof document!=="undefined")&&document.activeElement;
+    if(!(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))&&typeof renderAll==="function"){ try{ renderAll(); }catch(e){} }
+  }
+  hrPopMaybe();
+}
+// ── NEEDMOM_END ──
 // ── HELPERS_START ── 🙋 helpers: Grandma, Dad, a sitter — people who can take some of Mom's school tasks ──
 // Her ask 2026-10-03 (Dewalt: Grandma comes Wed 9:30–12 and does Andrew's phonics + the spelling tests).
 // Slice 1 = the PROFILES only: config/helpers/<id> = {name, icon, pick, help:{kid:{subjectKey:true}},
@@ -7338,10 +7583,12 @@ function momAgendaHtml(dayTasks){
   const _mReq=t=>t.mom==="required"||(typeof famIsMomCard==="function"&&famIsMomCard(t));   // 🏡 family time she leads = Mom Needed
   const req=dayTasks.filter(_mReq);
   const may=dayTasks.filter(t=>t.mom==="maybe");
-  if(!req.length&&!may.length)
+  const _lau=(typeof momSchedLaundry==="function")?momSchedLaundry(day,dayTasks):[];   // 🧺 MOMSCHED_LAUNDRY
+  if(!req.length&&!may.length&&!_lau.length)
     return '<div style="padding:28px 16px;text-align:center;color:var(--muted);font-size:13px">No Mom-needed work scheduled this day. 🎉</div>';
   const byTime={};
-  dayTasks.forEach(t=>{ const m=toMin(t.time); if(m==null)return; if(!byTime[m])byTime[m]={req:[],may:[]}; (_mReq(t)?byTime[m].req:byTime[m].may).push(t); });
+  dayTasks.forEach(t=>{ const m=toMin(t.time); if(m==null)return; if(!byTime[m])byTime[m]={req:[],may:[],lau:[]}; (_mReq(t)?byTime[m].req:byTime[m].may).push(t); });
+  _lau.forEach(x=>{ if(!byTime[x.m])byTime[x.m]={req:[],may:[],lau:[]}; byTime[x.m].lau.push(x); });
   const mins=Object.keys(byTime).map(Number).sort((a,b)=>a-b);
   let h='<div class="mom-agenda">';
   h+='<div class="mom-agenda-row mom-agenda-head"><div></div><div class="mom-h req">🔴 Mom Needed</div><div class="mom-h may">🟡 May Need Mom</div></div>';
@@ -7352,7 +7599,7 @@ function momAgendaHtml(dayTasks){
     const c=byTime[m];
     const _tp=fromMin(m).split(' ');
     h+='<div class="mom-agenda-row"><div class="time-pill">'+_tp[0]+'<span class="ampm">'+(_tp[1]||'')+'</span></div>';
-    h+='<div class="mom-col">'+(c.req.length?c.req.map(tk=>taskCard(tk)).join(''):'<div class="mom-empty">—</div>')+'</div>';
+    h+='<div class="mom-col">'+((c.req.length||c.lau.length)?c.lau.map(x=>x.html).join('')+c.req.map(tk=>taskCard(tk)).join(''):'<div class="mom-empty">—</div>')+'</div>';
     h+='<div class="mom-col">'+(c.may.length?c.may.map(tk=>taskCard(tk)).join(''):'<div class="mom-empty">—</div>')+'</div>';
     h+='</div>';
   });
@@ -7759,6 +8006,8 @@ function renderSchedule(el){
   if(day===_todayDay){ try{ h+=mlStripHTML(); }catch(e){} }
   // Stage 2: the kid's own "Mom's ready for you" banner — their page only, today only.
   if(day===_todayDay&&kid!=="all"&&kid!=="mom"){ try{ h+=mlBannerHTML(kid); }catch(e){} }
+  if(day===_todayDay&&kid!=="all"&&kid!=="mom"){ try{ h+=hrKidButtonHTML(kid); }catch(e){} }   // 🙋 NEEDMOM: the kid's own page (hidden when Mom is here)
+  if(day===_todayDay&&momHere()){ try{ const _hr=hrMomCardHTML((kid!=="all"&&kid!=="mom")?kid:null); if(_hr) h+='<div style="margin:0 0 10px">'+_hr+'</div>'; }catch(e){} }   // 🙋 NEEDMOM: who asked for Mom → ✓ Helped
   if(momHere()&&schedDayOffOpen) h+=schedRenderDayOffPicker(day);
 
   if(CONSTRAINT[day]){
@@ -8355,6 +8604,7 @@ function _efMomFree(kid){
   try{
     if(typeof mlMomOff==="function"&&mlMomOff()) return false;
     const now=(typeof mlNow==="function")?mlNow():null;
+    { const _hr=(typeof hrLoopTurn==="function")?hrLoopTurn():null; if(_hr&&_hr.active&&_hr.kid!==kid) return false; }   // 🙋 NEEDMOM: Mom is helping another kid
     return !now||!now.kid||now.kid===kid;
   }catch(e){ return false; }
 }
@@ -10656,6 +10906,7 @@ function laundryAdd(){
 }
 function laundryAdvance(id){
   const l=laundryData[id]; if(!l) return;
+  try{ if(typeof laundryBlockDone==="function") laundryBlockDone(id,l.stage); }catch(e){}   // MOMSCHED_LAUNDRY: ends that stage's block
   const i=LAUNDRY_STAGES.indexOf(l.stage);
   if(i<0||i===LAUNDRY_STAGES.length-1){
     delete laundryData[id]; // put away — load complete
@@ -10666,6 +10917,7 @@ function laundryAdvance(id){
     if(typeof db!=='undefined'&&db) db.ref('laundry/'+id).set(l);
   }
   try{HA_LS.setItem('ha_laundry',JSON.stringify(laundryData));}catch(e){}
+  if(typeof tab!=='undefined'&&tab==="schedule"&&typeof renderAll==='function'){ renderAll(); return; }   // MOMSCHED_LAUNDRY: tapped on the schedule
   const el=document.getElementById('content'); if(el) renderMomsPlan(el);
 }
 function laundryDel(id){
@@ -10682,6 +10934,112 @@ function laundryAdvanceLabel(stage){
 function laundrySince(ts){
   try{ return new Date(ts).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}); }catch(e){ return ""; }
 }
+// MOMSCHED_LAUNDRY_START — laundry on the Mom-mode schedule (her ask 2026-10-07; "b real block" + "allow her to put how long
+// she needs" + "if the next open kid comes up and she ignores it change the after lucys math to it and dont hold up anything till
+// she decides", all 2026-10-07). Loads live in laundry/ and only Mom's Day read them, so the schedule never showed one.
+//   · 🫧 started marker at the time the load went into the washer / dryer (information only)
+//   · ✅ done marker when it finishes (✎ Times) asking: block out time to move it / fold it? How long (her minutes, remembered
+//     per step) · [Now] [After <the first unchecked Mom card on her list — re-read every render>] [Not now]
+//   · unanswered holds NOTHING. Once she picks, the block is REAL: _mlQueueLayCore lays her Mom cards around it (they step over
+//     it like lunch) while the kids keep doing their own work. → Dryer / → Fold (from the block or Mom's Day) ends it.
+// Stored per day: momBlocks/<iso>/<load>_<stage> {iso,load,stage,label,mins,at:"now"|"after"|"skip",startMin,afterId,done,doneMin}
+let momBlocks={}, laundryBlockMins={}, _mlBlkLaid={};
+try{ const _mb=JSON.parse(HA_LS.getItem('ha_momblocks')||"null"); if(_mb&&_mb.iso===mwTodayIso()) momBlocks=_mb.v||{}; }catch(e){}
+try{ laundryBlockMins=JSON.parse(HA_LS.getItem('ha_laundry_block_mins')||"{}")||{}; }catch(e){}
+function _lbWrite(){ return typeof db!=='undefined'&&db&&!(typeof _dryRun==="function"&&_dryRun()); }
+function momBlocksOnValue(v){ momBlocks=v||{}; try{ HA_LS.setItem('ha_momblocks',JSON.stringify({iso:mwTodayIso(),v:momBlocks})); }catch(e){} }
+function laundryBlockMinsOnValue(v){ laundryBlockMins=v||{}; try{ HA_LS.setItem('ha_laundry_block_mins',JSON.stringify(laundryBlockMins)); }catch(e){} }
+function laundryBlockStep(stage){ return stage==="dryer"?"fold":"move"; }
+function laundryBlockDefault(stage){ const k=laundryBlockStep(stage), v=parseInt((laundryBlockMins||{})[k],10); return (v>0&&v<=240)?v:(k==="fold"?15:5); }
+function momBlockKey(id,stage){ return String(id).replace(/[.#$\[\]\/]/g,"_")+"_"+stage; }
+function momBlockFor(id,stage){ const b=(momBlocks||{})[momBlockKey(id,stage)]; return (b&&b.iso===mwTodayIso())?b:null; }
+// The blocks that hold Mom's time right now: picked (Now/After), not done, and the load still in that machine.
+function momBlockOpen(){
+  const out=[];
+  Object.keys(momBlocks||{}).forEach(function(k){
+    const b=momBlocks[k]; if(!b||b.iso!==mwTodayIso()||b.done||(b.at!=="now"&&b.at!=="after")) return;
+    const l=laundryData[b.load]; if(!l||l.stage!==b.stage) return;
+    const m=parseInt(b.mins,10); if(!(m>0)) return;
+    out.push({key:k,at:b.at,startMin:+b.startMin||0,afterId:b.afterId||"",mins:m});
+  });
+  return out;
+}
+function _lbMin(ts){ const mid=new Date(); mid.setHours(0,0,0,0); return Math.floor((ts-mid.getTime())/60000); }
+function _lbNowMin(){ return (typeof _mlNowMin==="function")?_mlNowMin():_lbMin(Date.now()); }
+function _lbQ(v){ return String(v).replace(/\\/g,"\\\\").replace(/'/g,"\\'"); }
+// "After Lucy's Math" — the first unchecked Mom-needed card on her laid list (she is probably in the middle of it).
+function momSchedNextMom(dayTasks){
+  const ck=(typeof checked!=="undefined"&&checked)||{};
+  const open=(dayTasks||[]).filter(function(t){ return t&&t.mom==="required"&&!ck[t.id]&&toMin(t.time)!=null; })
+    .sort(function(a,b){ return toMin(a.time)-toMin(b.time); });
+  return open[0]||null;
+}
+function _lbCardName(t){ const who=(typeof KID_NAME!=="undefined"&&KID_NAME[t.who])||cap(t.who||""); return who+"'s "+String(t.title||"card").split(" — ")[0]; }
+function laundryBlockSet(id,stage,at,afterId){
+  if(typeof momHere==="function"&&!momHere()) return;
+  const l=laundryData[id]; if(!l||l.stage!==stage) return;
+  const key=momBlockKey(id,stage);
+  let mins=laundryBlockDefault(stage);
+  try{ const inp=document.getElementById('lb-min-'+key); const v=parseInt(inp&&inp.value,10); if(v>0&&v<=240) mins=v; }catch(e){}
+  const rec={iso:mwTodayIso(),load:id,stage:stage,label:l.label||"",mins:mins,at:at,startMin:_lbNowMin(),ts:Date.now()};
+  if(at==="after"&&afterId) rec.afterId=afterId;
+  momBlocks[key]=rec; momBlocksOnValue(momBlocks);
+  if(_lbWrite()) db.ref('momBlocks/'+rec.iso+'/'+key).set(rec);
+  if(at!=="skip"){ laundryBlockMins[laundryBlockStep(stage)]=mins; laundryBlockMinsOnValue(laundryBlockMins); if(_lbWrite()) db.ref('settings/laundryBlockMins/'+laundryBlockStep(stage)).set(mins); }
+  if(typeof renderAll==="function") renderAll();
+}
+function laundryBlockMinsEdit(key,v){
+  if(typeof momHere==="function"&&!momHere()) return;
+  const b=(momBlocks||{})[key]; const m=parseInt(v,10); if(!b||!(m>0&&m<=240)) return;
+  b.mins=m; momBlocksOnValue(momBlocks);
+  if(_lbWrite()) db.ref('momBlocks/'+b.iso+'/'+key).update({mins:m});
+  laundryBlockMins[laundryBlockStep(b.stage)]=m; laundryBlockMinsOnValue(laundryBlockMins); if(_lbWrite()) db.ref('settings/laundryBlockMins/'+laundryBlockStep(b.stage)).set(m);
+  if(typeof renderAll==="function") renderAll();
+}
+// → Dryer / → Fold ends that stage's block (Mom's Day or the schedule).
+function laundryBlockDone(id,stage){
+  const key=momBlockKey(id,stage), b=momBlockFor(id,stage); if(!b||b.done||b.at==="skip") return;
+  b.done=true; b.doneMin=_lbNowMin(); momBlocksOnValue(momBlocks);
+  if(_lbWrite()) db.ref('momBlocks/'+b.iso+'/'+key).update({done:true,doneMin:b.doneMin});
+}
+function _lbBox(bg,bd,inner){ return '<div class="ml-laundry" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 10px;background:'+bg+';border-left:3px solid '+bd+';border-radius:8px">'+inner+'</div>'; }
+function _lbBtn(id,stage){ return '<button onclick="laundryAdvance(\''+_lbQ(id)+'\')" style="padding:4px 10px;border-radius:8px;border:none;background:#2563eb;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">'+laundryAdvanceLabel(stage)+'</button>'; }
+function _lbQBtn(label,on,solid){ return '<button onclick="'+on+'" style="padding:5px 11px;border-radius:8px;border:'+(solid?'none':'1.5px solid #93c5fd')+';background:'+(solid?'#2563eb':'#fff')+';color:'+(solid?'#fff':'#1d4ed8')+';font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap">'+label+'</button>'; }
+// Today's laundry rows for the Mom agenda: [{m, html}] in minute order (started → done/question → block).
+function momSchedLaundry(dayName,dayTasks){
+  if(typeof _todayDay!=="string"||dayName!==_todayDay) return [];
+  const nowM=_lbNowMin(), out=[];
+  const place=function(m,ord,html){ if(m<0) m=nowM; if(m>=24*60) return; out.push({m:m,o:ord,html:html}); };   // from an earlier day → now; tomorrow → not today's
+  const next=momSchedNextMom(dayTasks);
+  Object.keys(laundryData||{}).forEach(function(id){
+    const l=laundryData[id]; if(!l||(l.stage!=="washer"&&l.stage!=="dryer")) return;
+    const dry=l.stage==="dryer", key=momBlockKey(id,l.stage), lbl='<b>'+esc(l.label||"Load")+'</b>';
+    const sm=_lbMin(l.ts||0);
+    if(sm>=0) place(sm,0,_lbBox('#f8fafc','#94a3b8','<span style="flex:1;font-size:12.5px;color:#475569">'+(dry?'🌀 ':'🫧 ')+lbl+' — '+(dry?'in the dryer':'in the washer')+' · started '+laundrySince(l.ts)+'</span>'));
+    const da=laundryDoneAt(l); if(!da) return;
+    const b=momBlockFor(id,l.stage), doneTxt='✅ '+lbl+' is done in the '+(dry?'dryer':'washer');
+    if(!b){
+      place(_lbMin(da),1,_lbBox('#ecfdf5','#16a34a',
+        '<span style="flex:1 1 100%;font-size:13px">'+doneTxt+'. Block out time to '+(dry?'fold it':'move it to the dryer')+'?</span>'
+        +'<label style="font-size:12px;color:#334155;font-weight:700">How long? <input id="lb-min-'+key+'" type="number" min="1" max="240" value="'+laundryBlockDefault(l.stage)+'" style="width:54px;padding:4px 6px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:12px"> min</label>'
+        +_lbQBtn('Now',"laundryBlockSet('"+_lbQ(id)+"','"+l.stage+"','now')",true)
+        +(next?_lbQBtn('After '+esc(_lbCardName(next)),"laundryBlockSet('"+_lbQ(id)+"','"+l.stage+"','after','"+_lbQ(next.id)+"')",false):'')
+        +_lbQBtn('Not now',"laundryBlockSet('"+_lbQ(id)+"','"+l.stage+"','skip')",false)));
+      return;
+    }
+    if(b.at==="skip"){ place(_lbMin(da),1,_lbBox('#ecfdf5','#16a34a','<span style="flex:1;font-size:13px">'+doneTxt+'</span>'+_lbBtn(id,l.stage))); return; }
+    place(_lbMin(da),1,_lbBox('#ecfdf5','#16a34a','<span style="flex:1;font-size:13px">'+doneTxt+'</span>'));
+    const bm=(_mlBlkLaid&&_mlBlkLaid[key]!==undefined)?_mlBlkLaid[key]:(+b.startMin||nowM);
+    place(bm,2,_lbBox('#eff6ff','#2563eb','<span style="flex:1;font-size:13px">🧺 '+(dry?'Fold: ':'Move to the dryer: ')+lbl
+      +' · <input type="number" min="1" max="240" value="'+(parseInt(b.mins,10)||laundryBlockDefault(l.stage))+'" onchange="laundryBlockMinsEdit(\''+key+'\',this.value)" style="width:48px;padding:2px 5px;border:1.5px solid #bfdbfe;border-radius:6px;font-size:12px"> min</span>'+_lbBtn(id,l.stage)));
+  });
+  Object.keys(momBlocks||{}).forEach(function(k){   // finished blocks stay on today's timeline where they ended
+    const b=momBlocks[k]; if(!b||b.iso!==mwTodayIso()||!b.done||b.at==="skip") return;
+    place(+b.doneMin||0,3,_lbBox('#f8fafc','#94a3b8','<span style="flex:1;font-size:12.5px;color:#64748b">✓ '+(b.stage==="dryer"?'Folded: ':'Moved to the dryer: ')+'<b>'+esc(b.label||"Load")+'</b></span>'));
+  });
+  return out.sort(function(a,b2){ return (a.m-b2.m)||(a.o-b2.o); });
+}
+// MOMSCHED_LAUNDRY_END
 // KIDLAUNDRY_START — a kid starting a load tells Mom (her ask 2026-10-04, Taylor's "Start a load of laundry").
 // Checking off a chore that STARTS a load drops "Taylor started laundry" onto Mom's 🧺 card in the washer, timed
 // from the check — the same 90-min "move it" nudge Mom gets for her own loads. The kid taps nothing extra.
@@ -11449,6 +11807,7 @@ function renderMomsDay(el){
   // FIRST on the page: this is the one card that is hers rather than about the kids,
   // and it was ninth — below Now, Order day, Today, Star Bank, her schedule, the
   // weigh-in, Win of the day and Use soon. Her own day should not need scrolling to.
+  try{ h+=hrMomCardHTML(null,"md"); }catch(e){}   // 🙋 NEEDMOM: a kid asked for Mom → ✓ Helped (first: it's happening now)
   try{ h+=momDayStripHTML(iso,today); }catch(e){}
   try{ h+=wsTaskHTML(); }catch(e){}   // 📋 From Adrienne — tap to answer, ✓ once sent
   try{ if(typeof stPendingHTML==="function") h+=stPendingHTML(); }catch(e){}   // 📝 spelling tests waiting to be graded
@@ -19246,7 +19605,7 @@ function storeClosedReason(kid){
   if((m==="time"||m==="both")&&(new Date().getHours())<((c.hour!=null?c.hour:16))) return "⏰ Opens at "+_storeFmtHour(c.hour!=null?c.hour:16);
   return "";
 }
-function _storeCfgSave(patch){ if(!momHere()) return; storeCfg=Object.assign({threshold:100,open:true,mode:"always",hour:16,closedFor:{}},storeCfg,patch); if(db) db.ref("config/storeCfg").update(patch); renderAll(); }
+function _storeCfgSave(patch){ if(!storeEditCan()) return; storeCfg=Object.assign({threshold:100,open:true,mode:"always",hour:16,closedFor:{}},storeCfg,patch); if(db) db.ref("config/storeCfg").update(patch); renderAll(); }
 function storeToggleOpen(){ _storeCfgSave({open: storeCfg.open===false}); }        // flip global sign
 function storeToggleKid(kid){ var cf=Object.assign({},storeCfg.closedFor||{}); cf[kid]=!cf[kid]; _storeCfgSave({closedFor:cf}); }
 function storeSetMode(m){ _storeCfgSave({mode:m}); }
@@ -19374,13 +19733,45 @@ function gbClaim(kid,i){ var s=gbCur(i); if(s&&s.by&&s.by!==kid) return;
   _gbWrite(i,{by:kid,done:false,ts:nowTs()}); renderAll(); }
 function gbMarkDone(kid,i){ var s=gbCur(i); if(!s||s.by!==kid||s.done) return; _gbWrite(i,{by:kid,done:true,ts:nowTs()}); _gbStampDone(i,kid); _gbEarn(i,kid); renderAll(); if(typeof gwShowToast==="function") gwShowToast("Done! +"+((gbList()[i]||{}).pts||0)+" ⭐"); }
 function gbLetGo(kid,i){ var s=gbCur(i); if(!s||s.by!==kid||s.done) return; _gbWrite(i,null); renderAll(); }
+// STORELOCK_START — 🔒 Star Store edits need the Mom PIN EVERY time (her ask 2026-10-07: Kenzie set a reward to "$5 for 1 star"
+// on a tablet where Mom mode had been left on — UNIMOM keeps Mom mode on a device, so momHere() alone let her in). Adding,
+// renaming, re-pricing, deleting or moving a reward, the Ask-Mom threshold, and the store settings (open/closed, opens when/at)
+// now wait for the PIN typed into THIS pop-up; it holds until the pop-up closes. Kids' Corner never shows the editor or
+// settings at all, even with Mom mode on (same idea as KIDCARDS 10/6). Viewing and buying are unchanged.
+let storeEditPinOk=false;
+function storeKidPage(){ return typeof tab!=="undefined"&&tab==="kids"; }
+function storeMomView(momView){ return !!momView&&!storeKidPage(); }
+function storeEditCan(){ return storeEditPinOk&&!storeKidPage(); }
+function storeEditLock(){ storeEditPinOk=false; storeEditOpen=false; }
+function storePinGate(then){
+  if(storeEditCan()){ then(); return; }
+  if(storeKidPage()) return;
+  window._storePinThen=then;
+  let w=document.getElementById("store-pin-wrap"); if(!w){ w=document.createElement("div"); w.id="store-pin-wrap"; document.body.appendChild(w); }
+  w.innerHTML='<div onclick="if(event.target===this)storePinClose()" style="position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;padding:20px">'
+    +'<div style="background:#fff;border-radius:16px;padding:22px 20px;width:100%;max-width:300px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35)">'
+    +'<div style="font-size:34px">🔒</div><div style="font-weight:800;font-size:15px;margin:4px 0 2px">Mom PIN</div>'
+    +'<div style="font-size:12px;color:#64748b;margin-bottom:12px">Changing the Star Store is for Mom.</div>'
+    +'<input id="store-pin-input" type="password" inputmode="numeric" maxlength="4" placeholder="PIN" autocomplete="off" oninput="storePinCheck(this.value)" style="width:120px;text-align:center;padding:10px;border:1.5px solid #cbd5e1;border-radius:10px;font-size:18px;font-weight:700;letter-spacing:8px;font-family:\'DM Sans\',sans-serif">'
+    +'<div id="store-pin-err" style="font-size:11px;color:#b5394a;margin-top:6px;min-height:14px"></div>'
+    +'<button onclick="storePinClose()" style="margin-top:4px;border:none;background:none;color:#64748b;font-size:12px;cursor:pointer">Cancel</button></div></div>';
+  setTimeout(()=>{ const i=document.getElementById("store-pin-input"); if(i) i.focus(); },50);
+}
+function storePinClose(){ const w=document.getElementById("store-pin-wrap"); if(w) w.innerHTML=""; window._storePinThen=null; }
+function storePinCheck(v){
+  if(String(v).length<4) return;
+  if(pinOk(v)){ storeEditPinOk=true; const t=window._storePinThen; storePinClose(); if(typeof t==="function") t(); }
+  else { const e=document.getElementById("store-pin-err"), i=document.getElementById("store-pin-input"); if(e) e.textContent="Incorrect PIN"; if(i){ i.value=""; } }
+}
+function storeUnlockEdit(){ storePinGate(function(){ renderAll(); }); }
+// STORELOCK_END
 // ── Mom's stocking editor — materialize defaults into the config on first edit, then persist ──
 function _rwEnsure(){ if(!(Array.isArray(rewardCatalog)&&rewardCatalog.length)) rewardCatalog=RW_DEFAULT.map(x=>Object.assign({},x)); }
 function _rwSave(){ if(db) db.ref("config/rewards").set(rewardCatalog); }
-function rwCatSet(i,f,v){ if(!momHere())return; _rwEnsure(); if(!rewardCatalog[i])return; rewardCatalog[i][f]=(f==="cost")?(parseInt(v,10)||0):v; _rwSave(); renderAll(); }
-function rwCatAdd(){ if(!momHere())return; _rwEnsure(); rewardCatalog.push({emoji:"🎁",label:"New reward",cost:25}); _rwSave(); renderAll(); }
-function rwCatDel(i){ if(!momHere())return; _rwEnsure(); rewardCatalog.splice(i,1); _rwSave(); renderAll(); }
-function rwCatMove(i,d){ if(!momHere())return; _rwEnsure(); var j=i+d; if(j<0||j>=rewardCatalog.length)return; var t=rewardCatalog[i]; rewardCatalog[i]=rewardCatalog[j]; rewardCatalog[j]=t; _rwSave(); renderAll(); }
+function rwCatSet(i,f,v){ if(!storeEditCan())return; _rwEnsure(); if(!rewardCatalog[i])return; rewardCatalog[i][f]=(f==="cost")?(parseInt(v,10)||0):v; _rwSave(); renderAll(); }
+function rwCatAdd(){ if(!storeEditCan())return; _rwEnsure(); rewardCatalog.push({emoji:"🎁",label:"New reward",cost:25}); _rwSave(); renderAll(); }
+function rwCatDel(i){ if(!storeEditCan())return; _rwEnsure(); rewardCatalog.splice(i,1); _rwSave(); renderAll(); }
+function rwCatMove(i,d){ if(!storeEditCan())return; _rwEnsure(); var j=i+d; if(j<0||j>=rewardCatalog.length)return; var t=rewardCatalog[i]; rewardCatalog[i]=rewardCatalog[j]; rewardCatalog[j]=t; _rwSave(); renderAll(); }
 function storeSetThreshold(v){ _storeCfgSave({threshold:parseInt(v,10)||0}); }
 function _cadDows(cad){ if(!cad||cad==="daily") return [0,1,2,3,4,5,6]; var m=/^wk:(.+)$/.exec(cad); return m?m[1].split(",").map(Number):[]; }
 function _gbEnsure(){ if(!(Array.isArray(grabs)&&grabs.length)) grabs=gbDefault().map(x=>Object.assign({},x)); }
@@ -19389,7 +19780,7 @@ function gbSet(i,f,v){ if(!momHere())return; _gbEnsure(); if(!grabs[i])return; g
 function gbAdd(){ if(!momHere())return; _gbEnsure(); grabs.push({emoji:"🎁",label:"New grab chore",pts:20,cad:"daily"}); _gbSave(); renderAll(); }
 function gbDel(i){ if(!momHere())return; _gbEnsure(); grabs.splice(i,1); _gbSave(); renderAll(); }
 function gbCadToggle(i,dow){ if(!momHere())return; _gbEnsure(); var g=grabs[i]; if(!g)return; var d=_cadDows(g.cad||"daily"); var k=d.indexOf(dow); if(k>=0)d.splice(k,1); else d.push(dow); d.sort((a,b)=>a-b); g.cad=(d.length>=7?"daily":(d.length?("wk:"+d.join(",")):"daily")); _gbSave(); renderAll(); }
-function storeToggleEdit(){ if(!momHere())return; storeEditOpen=!storeEditOpen; renderAll(); }
+function storeToggleEdit(){ if(!storeEditCan()){ storePinGate(storeToggleEdit); return; } storeEditOpen=!storeEditOpen; renderAll(); }
 function _storeEditorHTML(){
   var DOW=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
   var h='<div class="store-ed">';
@@ -19549,12 +19940,12 @@ function _grabsHTML(kid,momView){
 // renderAll — which repaints an open pop-up (see the hook in renderAll), so nothing
 // goes stale behind the overlay.
 let popView=null, popKid=null, popSlot=null;   // popView: "store" | "grabs" | "list" (+popSlot)
-function popOpen(kid,view){ popKid=kid; popView=view; _popPaint(); }
+function popOpen(kid,view){ if(typeof storeEditLock==="function") storeEditLock(); popKid=kid; popView=view; _popPaint(); }
 // 📋 One routine list as a pop-up (her ask 2026-09-05): the SAME list the Chores panel and the
 // Schedule day render — gates (afternoon after school / 4 PM, evening hour) and check-offs
 // included — so a tap on "Morning 3 of 6" on their Today card lets them finish it right there.
 function kcOpenList(kid,slot){ popSlot=slot; try{ day=_todayDay; }catch(e){} popOpen(kid,"list"); }
-function popClose(){ popView=null; popKid=null; const o=document.getElementById("kid-pop"); if(o) o.remove(); }
+function popClose(){ if(typeof storeEditLock==="function") storeEditLock(); popView=null; popKid=null; const o=document.getElementById("kid-pop"); if(o) o.remove(); }
 function _popPaint(){
   if(!popView||!popKid) return;
   const momView=momModeActive;
@@ -19564,7 +19955,7 @@ function _popPaint(){
   try{
     if(popView==="list") body='<div id="sl-individual" style="display:block;padding:0">'+((popSlot==="morning"&&typeof mrIndividualHTML==="function")?mrIndividualHTML(popKid):rtSlotHTML(popSlot,popKid))+'</div>';
     else if(popView==="bank") body=_bankCardHTML(popKid,momView);
-    else body=(popView==="grabs")?_grabsHTML(popKid,momView):_storeCardHTML(popKid,momView);
+    else body=(popView==="grabs")?_grabsHTML(popKid,momView):_storeCardHTML(popKid,storeMomView(momView));
   }catch(e){ body='<div style="padding:20px">Could not open that just now.</div>'; }
   o.innerHTML='<div class="dlg-box" style="max-width:620px;width:94%;max-height:86vh;overflow-y:auto;text-align:left">'+
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'+
@@ -19609,7 +20000,9 @@ function _storeCardHTML(kid,momView){
     h+='<div class="si-buy">'+(!afford?((it.cost-bal)+' more ⭐'):(!isOpen?'closed':(ask?'Ask Mom':'Tap to buy')))+'</div></div>';
   });
   h+='</div>'; // close .store-shelf
-  if(momView){
+  if(momView&&!storeEditCan()){
+    h+='<div style="text-align:center;margin-top:10px"><button class="se-toggle" onclick="storeUnlockEdit()">🔒 Change the store (Mom PIN)</button></div>';
+  } else if(momView){
     const c=storeCfg||{}, closedKid=!!(c.closedFor&&c.closedFor[kid]), mode=c.mode||"always", hour=(c.hour!=null?c.hour:16);
     h+='<div class="store-set"><div class="ss-hd">⚙️ Store settings (Mom)</div>';
     h+='<div class="ss-row"><span class="ss-lbl">Store</span>'+
@@ -26861,6 +27254,7 @@ function kcSchoolHTML(k){
     const times=Object.keys(tmap).sort(function(a,b){ return toMin(a)-toMin(b); });
     let h='<div style="padding:12px 12px 0">';
     try{ h+=mlBannerHTML(k); }catch(e){}
+    try{ h+=hrKidButtonHTML(k); }catch(e){}   // 🙋 NEEDMOM: ask Mom for help — nothing pauses
     const _noDayWork=!mine.length;   // 📭 no school cards today — no lock, no Brain Break (same rule as the Schedule tab, 2026-10-03)
     try{ if(!_noDayWork||bbActive(k)||(bbMomDraft&&bbMomDraft.kid===k)) h+=bbBlock(k); }catch(e){}
     const _lookAhead=!_noDayWork&&gateLookAhead(k,dn);
@@ -51166,6 +51560,7 @@ function mlStripHTML(){
       +(now.kid?('now with <span style="color:#16a34a">'+cap(now.kid)+'</span>'+(function(){ var nc=mlNextCard(now.kid); return nc?(' <span style="font-weight:700;color:#0f766e">&rarr; '+esc(nc.title)+'</span>'):""; })()
         +(now.borrowed?' <span style="font-weight:600;color:#7c3aed">('+esc(now.why)+')</span>':(now.held?' <span style="font-weight:600;color:#16a34a">(started)</span>':'')))
         :('<span style="color:#b45309">'+esc(now.why)+'</span>'))+'</div>';
+    try{ if(typeof hrStripLineHTML==="function") h+=hrStripLineHTML(); }catch(e){}   // 🙋 NEEDMOM: Mom helping a kid / who's next
     h+='<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">';
     st.forEach(function(x,i){
       const c=CH[x.state]||CH.waiting;
@@ -51283,6 +51678,7 @@ function _mlLanePass(list){
 }
 function mlQueueLay(tasks){ return _mlLanePass(_mlQueueLayCore(tasks)); }
 function _mlQueueLayCore(tasks){
+  _mlBlkLaid={};   // 🧺 MOMSCHED_LAUNDRY: where this lay put her blocks
   try{
     if(!Array.isArray(tasks)||!tasks.length) return tasks;
     const _mr=function(t){ return !!t&&t.mom==="required"&&!(typeof helperHolds==="function"&&helperHolds(t)); };   // 🙋 Mom work = not a helper's
@@ -51441,16 +51837,28 @@ function _mlQueueLayCore(tasks){
       if(now&&now.held&&now.kid===k0&&fixedOf(k0).length){ let _le=0; fixedOf(k0).forEach(function(iv){ if(iv[1]>_le) _le=iv[1]; }); t=Math.max(_mlKidFloor(k0),_le); }
       if(_mlMorn(first0)){ const _nb=_bufLanding(k0); if(_nb) t=Math.max(t,_nb.end); }   // 📓 the held session still waits for the notebook
     }
+    // 🧺 MOMSCHED_LAUNDRY (her "b real block" 2026-10-07): Mom is at the machines for the minutes she picked — her Mom cards
+    // step over that window like lunch, the kids' own work keeps going. "Now" = from her tap; "After <card>" = laid right
+    // behind that card in the chain below (from its check-off once it is done; from her tap if it left the day). A question
+    // she hasn't answered is not in momBlockOpen() — it holds nothing.
+    const _blkIv=[], _blkAfter={};
+    try{ if(typeof momBlockOpen==="function") momBlockOpen().forEach(function(b){
+      const x=(b.at==="after"&&b.afterId)?tasks.find(function(y){ return y&&y.id===b.afterId; }):null;
+      if(x&&seq.some(function(e){ return e.cards.some(function(c){ return c.id===x.id; }); })){ (_blkAfter[x.id]=_blkAfter[x.id]||[]).push(b); return; }
+      let st=b.startMin; if(x&&typeof checked!=="undefined"&&checked&&checked[x.id]){ const c=_mlCkAt(x); st=(c!==null)?c:_ckEnd(x); }
+      _blkIv.push([st,st+b.mins]); _mlBlkLaid[b.key]=st;
+    }); }catch(e){}
     const newTimes={}; const momWait={};
     Object.keys(_famLay).forEach(function(id){ newTimes[id]=_famLay[id]; });   // LIVINGDAY_FAM
     seq.forEach(function(e){
-      const Ls=lunchOf(e.kid).concat(fixedOf(e.kid));
+      const Ls=lunchOf(e.kid).concat(fixedOf(e.kid)).concat(_blkIv);   // 🧺 MOMSCHED_LAUNDRY
       t=Math.max(t,_mlKidFloor(e.kid));   // 🏫 a co-op kid's block waits until they are home
       if(!(now&&now.held&&now.kid===e.kid)||_mlMorn(mine[e.kid][0])){ const bl=_bufLanding(e.kid); if(bl&&t<bl.end&&t+((e.cards[0]||{}).dur||20)>bl.start) t=bl.end; }   // 📓 notebook first: never lay the block ON the buffer (a held kid's too, when it is the Morning Notebook)
       e.cards.forEach(function(c){
         const d=c.dur||20; let moved=true;
         while(moved){ moved=false; Ls.forEach(function(iv){ if(t<iv[1]&&t+d>iv[0]){ t=iv[1]; moved=true; } }); }
         newTimes[c.id]=t; t+=d;
+        if(_blkAfter[c.id]) _blkAfter[c.id].forEach(function(b){ _mlBlkLaid[b.key]=t; _blkIv.push([t,t+b.mins]); t+=b.mins; });   // 🧺 MOMSCHED_LAUNDRY
       });
     });
     // Each kid's OTHER movable cards re-pack around their Mom block: the in-flight buffer
@@ -51598,6 +52006,7 @@ function mlBannerHTML(kid){
         +'<div style="font-size:10.5px;color:#6d28d9">Keep going on your own work &mdash; your Mom cards are waiting at the end of your day.</div></div></div>';
     }
     const now=mlNow(); if(!now||now.kid!==kid) return "";
+    { const _hr=(typeof hrLoopTurn==="function")?hrLoopTurn():null; if(_hr&&_hr.active&&_hr.kid!==kid) return hrAwayBannerHTML(_hr); }   // 🙋 NEEDMOM: Mom is off helping another kid
     const nxt=mlNextCard(kid); if(!nxt) return "";
     return '<div style="background:#ecfdf5;border-left:4px solid #16a34a;border-radius:0 10px 10px 0;padding:10px 12px;margin:0 0 8px;display:flex;align-items:center;gap:9px">'
       +'<span style="font-size:19px">&#128105;</span>'
@@ -51624,6 +52033,7 @@ function _mlStayWith(t){
   try{
     if(!t||!t.who||_mlDayOf(t)!==_todayDay) return;
     if(mlDone(t.who)||mlPaused(t.who)||mlOff(t.who)) return;
+    if(typeof hrBlocksHold==="function"&&hrBlocksHold(t.who)) return;   // 🙋 NEEDMOM: Mom said "help next" to another kid — they go after this card
     const now=mlNow(); if(!now||now.kid!==t.who||now.held) return;
     const nxt=mlNextCard(t.who); if(!nxt||nxt.id===t.id) return;
     momHold={kid:t.who,id:nxt.id,day:_todayDay};
@@ -51646,6 +52056,7 @@ function mlOnCheck(t){
         &&!(typeof checked!=="undefined"&&checked&&checked[x.id]);
     });
     if(mineLeft.some(function(x){ return toMin(x.time)<toMin(t.time); })) return;  // not the buffer
+    if(typeof hrBlocksHold==="function"&&hrBlocksHold(t.who)) return;   // 🙋 NEEDMOM: Mom is helping / helping next another kid — no new session lock
     momHold={kid:t.who,id:nxt.id,day:_todayDay};
     if(db) db.ref(WK+"/momHold").set(momHold);
   }catch(e){}
@@ -55043,7 +55454,7 @@ function sprintDrillGridPillsHtml(color,poolLen){
 // that sprint starts over at A 1st next time (repeat until met). Mom marks (Mom-required); the kid sees the
 // sheet and the timer. Sprint titles come from the library lists (library/scans/<book>, editable here: count +
 // titles). Data: mathSprints/<kid> = {book, cur, moves[], log{<n>:{runs[], passed}}}. Targeted writes; dry-run inert.
-let mathSprints={}, lbScansMS={}, msTimer=null, msTimerLeft=0, msTimerDone=false, msEditBook=null;
+let mathSprints={}, lbScansMS={}, msTimer=null, msTimerLeft=0, msTimerDone=false, msEditBook=null, msPosEdit=false;
 const MS_BOOKS=[{id:"sm-sprints-1",label:"Sprints 1",base:100},{id:"sm-sprints-2",label:"Sprints 2",base:200},{id:"sm-sprints-3",label:"Sprints 3",base:300},
   {id:"sm-sprints-4",label:"Sprints 4",base:400},{id:"sm-sprints-5",label:"Sprints 5",base:500},{id:"math-sprints-6",label:"Math Sprints 6",base:600}];
 const MS_SHEETS=[{k:"a1",l:"A · 1st half",goal:"Standard: at least half the problems done in 60 s, 80% of those right"},
@@ -55072,6 +55483,7 @@ function msSetPosition(kid,book,cur,why){
   st.book=book; st.cur=cur; st.moves=st.moves||[]; const mv={at:Date.now(),ts:nowTs(),from:from,to:{book:book,cur:cur},why:why||"set by Mom"}; st.moves.push(mv);
   if(db&&!_dryRun()){ const u={}; u["book"]=book; u["cur"]=cur; u["moves/"+(st.moves.length-1)]=mv; db.ref("mathSprints/"+kid).update(u); }
   dbg("🔢 sprint position "+kid+" → "+book+" #"+cur+" ("+(why||"set")+")");
+  msPosEdit=false;   // ✎ MSEDIT: the edit toggle closes after a move
   if(typeof _mastRe==="function") _mastRe();
 }
 // one run: records the sheet + result; a met sheet passes the sprint and moves the kid on; the 4th run of the day
@@ -55079,7 +55491,7 @@ function msSetPosition(kid,book,cur,why){
 function msRecordRun(kid,met){
   if(!momHere()) return null; if(typeof msMarkLocked==="function"&&msMarkLocked()) return null; /* ⏱ MSBUZZ: a tap at 0:00 can't mark */ const st=msState(kid); if(!st||!st.cur) return null;
   const n=st.cur, sheet=msNextSheet(kid,n); if(!sheet) return null;
-  const runs=msRuns(kid,n); const run={d:msTodayISO(),ts:nowTs(),sheet:sheet.k,met:!!met};
+  const runs=msRuns(kid,n); const run={d:msTodayISO(),ts:nowTs(),at:Date.now(),sheet:sheet.k,met:!!met};
   st.log=st.log||{}; st.log[n]=st.log[n]||{}; const arr=runs.concat([run]); st.log[n].runs=arr;
   const u={}; u["log/"+n+"/runs/"+(arr.length-1)]=run;
   let advanced=null;
@@ -55087,10 +55499,55 @@ function msRecordRun(kid,met){
   if(db&&!_dryRun()) db.ref("mathSprints/"+kid).update(u);
   dbg("🔢 sprint run "+kid+" #"+n+" "+sheet.k+" "+(met?"MET":"miss")+(advanced?" → #"+advanced:""));
   msTimerReset();
-  if(msTodayRuns(kid)>=4){ try{ msCheckCard(kid); }catch(e){} if(typeof gwShowToast==="function") gwShowToast("🔢 Sprint session done — 4 runs"); }
+  const todayN=msTodayRuns(kid);
+  if(todayN>=4){ try{ msCheckCard(kid); }catch(e){} if(todayN===4&&typeof gwShowToast==="function") gwShowToast("🔢 Sprint session done — 4 runs"); }   // ✅ MSEDIT: extra runs don't re-announce
   if(typeof _mastRe==="function") _mastRe();
   return {n:n,sheet:sheet.k,met:!!met,advanced:advanced};
 }
+// MSEDIT_START — ✎ fix a wrong Met / Not tap (her ask 2026-10-07: "Mom can edit or undo a run recorded today").
+// Only the LATEST run recorded today can be changed or undone — undo again to step back through today's runs one at
+// a time. An earlier run can't be flipped in place: each run is a result for the sheet the kid really did, so
+// changing an early one can't re-sort the later ones. Changing / undoing puts the sprint, its passed state and the
+// position back exactly as the corrected tap would have left them, and the next sheet keeps following the run
+// history (run 2 still starts where yesterday left off). Targeted writes to mathSprints/<kid>; dry-run inert.
+// The Math Sprints card is NOT un-checked by an undo (that is schedule data — Mom unchecks it herself if she wants).
+function msLastTodayRun(kid){
+  const st=msState(kid); if(!st||!st.log) return null; const d=msTodayISO(); let best=null;
+  Object.keys(st.log).forEach(k=>{ const n=+k, runs=msRuns(kid,n), r=runs[runs.length-1];
+    if(r&&r.d===d){ const key=[r.at||0,n]; if(!best||key[0]>best.key[0]||(key[0]===best.key[0]&&n>best.n)) best={n:n,i:runs.length-1,run:r,key:key}; } });
+  return best?{n:best.n,i:best.i,run:best.run}:null;
+}
+// put sprint n's pass + the position back to what a run with result `met` leaves (the run is already in the log)
+function _msApplyResult(kid,n,met,ts,u){
+  const st=msState(kid); st.log[n]=st.log[n]||{};
+  if(met){ st.log[n].passed=ts; u["log/"+n+"/passed"]=ts; const nx=msNextSprintN(kid,n); if(nx){ st.cur=nx; u["cur"]=nx; } else { st.cur=n; u["cur"]=n; st.done=true; u["done"]=true; } }
+  else { delete st.log[n].passed; u["log/"+n+"/passed"]=null; st.cur=n; u["cur"]=n; if(st.done){ delete st.done; u["done"]=null; } }
+}
+function msEditRun(kid,met){
+  if(!momHere()) return null; const L=msLastTodayRun(kid); if(!L) return null; met=!!met;
+  if(!!L.run.met===met) return {n:L.n,sheet:L.run.sheet,met:met,changed:false};
+  const st=msState(kid); const r=Object.assign({},L.run,{met:met,editedTs:nowTs()});
+  const runs=msRuns(kid,L.n).slice(); runs[L.i]=r; st.log[L.n].runs=runs;
+  const u={}; u["log/"+L.n+"/runs/"+L.i+"/met"]=met; u["log/"+L.n+"/runs/"+L.i+"/editedTs"]=r.editedTs;
+  _msApplyResult(kid,L.n,met,r.ts,u);
+  if(db&&!_dryRun()) db.ref("mathSprints/"+kid).update(u);
+  dbg("🔢 sprint run EDITED "+kid+" #"+L.n+" "+r.sheet+" → "+(met?"MET":"miss"));
+  if(typeof _mastRe==="function") _mastRe();
+  return {n:L.n,sheet:r.sheet,met:met,changed:true,cur:st.cur};
+}
+function msUndoRun(kid){
+  if(!momHere()) return null; const L=msLastTodayRun(kid); if(!L) return null;
+  const st=msState(kid); const runs=msRuns(kid,L.n).slice(0,L.i); st.log[L.n].runs=runs;
+  const u={}; u["log/"+L.n+"/runs/"+L.i]=null;
+  if(L.run.met) _msApplyResult(kid,L.n,false,null,u);   // the run that passed it is gone → not passed, back on that sprint
+  if(db&&!_dryRun()) db.ref("mathSprints/"+kid).update(u);
+  dbg("🔢 sprint run UNDONE "+kid+" #"+L.n+" "+L.run.sheet+" "+(L.run.met?"MET":"miss"));
+  msTimerReset();
+  if(typeof _mastRe==="function") _mastRe();
+  return {n:L.n,sheet:L.run.sheet,met:!!L.run.met,cur:st.cur};
+}
+function msPosEditToggle(){ if(!momHere()) return; msPosEdit=!msPosEdit; if(typeof _mastRe==="function") _mastRe(); }
+// MSEDIT_END
 // today's open Math Sprints card for the kid checks itself off (same as EIC)
 function msCheckCard(kid){
   try{
@@ -55213,14 +55670,17 @@ function buildSprintBookHtml(color){
     const meta=msBookMeta(st.book)||{label:st.book}; const L=msBookList(st.book); const cur=L.find(x=>x.n===st.cur);
     h+='<div style="font-size:12px;color:#78716c;margin-bottom:10px">'+esc_(meta.label)+' · on <b>Sprint '+st.cur+'</b>'+(cur&&cur.title?' · '+esc_(cur.title):'')+' · '+L.filter(x=>msPassed(kid,x.n)).length+' of '+L.length+' passed</div>';
   }
-  if(mom){
+  if(mom&&st&&!msPosEdit) h+='<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px"><button onclick="msPosEditToggle()" style="padding:7px 11px;border-radius:9px;border:1.5px solid #e2ddd6;background:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">✎ Edit</button><span style="font-size:11px;color:#78716c">change the book or sprint</span></div>';   // ✎ MSEDIT: no accidental bumps
+  if(mom&&(!st||msPosEdit)){
     const book=(st&&st.book)||"sm-sprints-4"; const L=msBookList(book);
     h+='<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">';
     h+='<select id="ms-pos-book" onchange="msSetPosFromForm(\''+kid+'\')" style="padding:7px 9px;border:1.5px solid #e2ddd6;border-radius:9px;font-size:13px;font-family:\'DM Sans\',sans-serif">'+MS_BOOKS.map(b=>'<option value="'+b.id+'"'+(b.id===book?' selected':'')+'>'+b.label+' ('+msBookList(b.id).length+')</option>').join("")+'</select>';
     h+='<select id="ms-pos-cur" onchange="msSetPosFromForm(\''+kid+'\')" style="padding:7px 9px;border:1.5px solid #e2ddd6;border-radius:9px;font-size:13px;font-family:\'DM Sans\',sans-serif;max-width:260px">'+(L.length?L.map(x=>'<option value="'+x.n+'"'+(st&&st.cur===x.n?' selected':'')+'>'+x.n+(x.title?' · '+esc_(x.title.slice(0,40)):'')+(msPassed(kid,x.n)?' ✓':'')+'</option>').join(""):'<option value="">— no list yet —</option>')+'</select>';
     if(!st) h+='<button onclick="msSetPosFromForm(\''+kid+'\')" style="padding:8px 14px;border-radius:9px;border:none;background:'+color+';color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">Set</button>';
     h+='<button onclick="msBookEditOpen(\''+book+'\')" style="padding:7px 11px;border-radius:9px;border:1.5px solid #e2ddd6;background:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">✎ Edit book</button>';
+    if(st) h+='<button onclick="msPosEditToggle()" style="padding:7px 11px;border-radius:9px;border:none;background:#f3f4f6;color:#374151;font-size:12px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">Done</button>';
     h+='</div>';
+    if(st) h+='<div style="font-size:11px;color:#78716c;margin-bottom:4px">Pick a book or sprint above, or tap a sprint in the list below.</div>';
     if(st&&st.moves&&st.moves.length) h+='<div style="font-size:10.5px;color:#78716c;margin-bottom:4px">Moves: '+st.moves.slice(-4).map(m=>esc_((m.to&&(msBookMeta(m.to.book)||{}).label)||"")+' #'+(m.to&&m.to.cur)+' · '+esc_(m.ts||"")).join(" → ")+'</div>';
   }
   h+='</div>';
@@ -55239,7 +55699,8 @@ function buildSprintBookHtml(color){
   // ── today's run ──
   const L=msBookList(st.book), cur=L.find(x=>x.n===st.cur), sheet=msNextSheet(kid,st.cur), today=msTodayRuns(kid), runs=msRuns(kid,st.cur);
   h+='<div style="background:#fff;border:1px solid #e2ddd6;border-radius:14px;padding:16px;margin-bottom:14px;text-align:center">';
-  h+='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#78716c">Run '+Math.min(today+1,4)+' of 4 today'+(today>=4?' · session done':'')+'</div>';
+  if(today>=4) h+='<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:8px 10px;font-size:14px;font-weight:800;color:#15803d;margin-bottom:6px">✅ Today\'s 4 are done — run more?</div><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#78716c">Extra run '+(today-3)+'</div>';   // ✅ MSEDIT
+  else h+='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#78716c">Run '+(today+1)+' of 4 today</div>';
   h+='<div style="font-family:\'Fraunces\',serif;font-size:22px;font-weight:800;color:'+color+';margin:6px 0 2px">Sprint '+st.cur+'</div>';
   if(cur&&cur.title) h+='<div style="font-size:14px;font-weight:600;color:#1c1917;margin-bottom:8px">'+esc_(cur.title)+'</div>';
   if(st.done) h+='<div style="font-size:13px;color:#16a34a;font-weight:700">🏁 Book finished — pick the next book above.</div>';
@@ -55255,13 +55716,18 @@ function buildSprintBookHtml(color){
     if(!mom) h+='<div style="font-size:11px;color:#78716c;margin-top:8px">Mom marks met / not after the timer.</div>';
   }
   if(runs.length) h+='<div style="font-size:11.5px;color:#78716c;margin-top:12px">This sprint: '+runs.map(r=>'<span style="color:'+(r.met?"#16a34a":"#b91c1c")+';font-weight:700">'+esc_(r.sheet.toUpperCase())+(r.met?" ✓":" ✗")+'</span>').join(" · ")+(msPassed(kid,st.cur)?' — PASSED':'')+'</div>';
+  const lastR=mom?msLastTodayRun(kid):null;   // ✎ MSEDIT: fix the latest tap
+  if(lastR){ const r=lastR.run;
+    h+='<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:center;margin-top:10px;padding-top:10px;border-top:1px dashed #e2ddd6;font-size:12px;color:#57534e">Last run: Sprint '+lastR.n+' · '+esc_(String(r.sheet||"").toUpperCase())+' <b style="color:'+(r.met?"#16a34a":"#b91c1c")+'">'+(r.met?"Met ✓":"Not ✗")+'</b>'+
+      '<button onclick="msEditRun(\''+kid+'\','+(!r.met)+')" style="padding:5px 10px;border-radius:8px;border:1.5px solid #e2ddd6;background:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">✎ Change to '+(r.met?"Not ✗":"Met ✓")+'</button>'+
+      '<button onclick="if(confirm(\'Undo the last run (Sprint '+lastR.n+' · '+esc_(String(r.sheet||"").toUpperCase())+')?\'))msUndoRun(\''+kid+'\')" style="padding:5px 10px;border-radius:8px;border:1.5px solid #e2ddd6;background:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">↶ Undo</button></div>'; }
   h+='</div>';
   // ── the book ──
   h+='<div style="background:#fff;border:1px solid #e2ddd6;border-radius:14px;padding:12px 14px;margin-bottom:14px">';
   h+='<div style="font-family:\'Fraunces\',serif;font-size:14px;font-weight:700;margin-bottom:6px">'+esc_((msBookMeta(st.book)||{label:st.book}).label)+'</div>';
   if(!L.length) h+='<div style="font-size:12px;color:#78716c">No sprint list for this book yet — ✎ Edit book to type it in.</div>';
   L.forEach(x=>{ const p=msPassed(kid,x.n), isCur=x.n===st.cur, r=msRuns(kid,x.n);
-    h+='<div '+(mom?'onclick="msSetPosition(\''+kid+'\',\''+st.book+'\','+x.n+',\'tapped in list\')" style="cursor:pointer;"':'style="')+'display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:8px;background:'+(isCur?'#eef2ff':'transparent')+'">'+
+    h+='<div '+(mom&&msPosEdit?'onclick="msSetPosition(\''+kid+'\',\''+st.book+'\','+x.n+',\'tapped in list\')" style="cursor:pointer;"':'style="')+'display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:8px;background:'+(isCur?'#eef2ff':'transparent')+'">'+
       '<span style="width:20px;text-align:center;font-weight:800;color:'+(p?"#16a34a":isCur?color:"#c4c0b8")+'">'+(p?"✓":isCur?"▶":"·")+'</span>'+
       '<span style="flex:1;min-width:0;font-size:12.5px;'+(isCur?'font-weight:800;':'')+'color:'+(p||isCur?"#1c1917":"#78716c")+'">'+x.n+(x.title?' · '+esc_(x.title):'')+'</span>'+
       (r.length?'<span style="font-size:10.5px;color:#78716c">'+r.map(q=>q.sheet.toUpperCase()+(q.met?"✓":"✗")).join(" ")+'</span>':'')+
