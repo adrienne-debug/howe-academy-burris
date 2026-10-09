@@ -2609,10 +2609,10 @@ let calPreviewMonth=null; // YYYY-MM for calendar preview (null = current)
 // day sheet acts through the same functions the other screens use (kitMarkEaten etc.), so
 // nothing here is a second copy that could drift.
 let calDaySel=null;                       // ISO of the open day sheet (null = closed)
-const CAL_LAYERS=[["breaks","\u{1F3D6} Breaks"],["coops","\u{1F3EB} Co-ops"],["events","\u{1F389} Events"],["meals","\u{1F37D} Meals"],["dad","\u{1F468} Dad"]];
+const CAL_LAYERS=[["breaks","\u{1F3D6} Breaks"],["coops","\u{1F3EB} Co-ops"],["events","\u{1F389} Events"],["meals","\u{1F37D} Meals"],["dad","\u{1F468} Dad"],["school","\u{1F4DA} School"]];   // 📚 CALSCHOOL (her ask 2026-10-08)
 let calLayers=null;
 function _calLayersLoad(){ if(calLayers) return; try{ calLayers=JSON.parse((typeof HA_LS!=="undefined"?HA_LS:localStorage).getItem("ha_cal_layers")||"null"); }catch(e){} if(!calLayers||typeof calLayers!=="object") calLayers={}; }
-function calLayerOn(k){ _calLayersLoad(); return calLayers[k]!==false; }
+function calLayerOn(k){ _calLayersLoad(); if(k==="school") return calLayers[k]===true; return calLayers[k]!==false; }   // 📚 School starts OFF — it's an option
 function calLayerToggle(k){ _calLayersLoad(); calLayers[k]=!calLayerOn(k); try{ (typeof HA_LS!=="undefined"?HA_LS:localStorage).setItem("ha_cal_layers",JSON.stringify(calLayers)); }catch(e){} renderAll(); }
 // Breaks on a date: the holiday / vacation records whose range covers it.
 function calBreaksOn(iso){
@@ -2714,7 +2714,8 @@ let pnwPendingWeek=null;
 let currViewKid=FIRST_KID;
 let currViewWeek=null;
 let adminPinUnlocked=false;
-var momSchedView=false, _msvPrevKid=null;   // 👩 MSV: Mom's Day ▸ Schedule is showing the Schedule page (declared early: showTab/renderSchedule read it)
+var momSchedView=false, _msvPrevKid=null;
+var momDayIn=false;   // 🔒 MOMGATE (her rule 2026-10-08): true only while Mom is INSIDE Mom's Day (code entered at its door this visit)   // 👩 MSV: Mom's Day ▸ Schedule is showing the Schedule page (declared early: showTab/renderSchedule read it)
 // 👩 UNIMOM (her rules 2026-10-05/06: "mom mode should be universal for wherever it is turned on and can be turned off with clicking mom
 // mode on schedule" · "and stays on that device"): ONE switch behind every Mom door. Any code typed (Mom button, Admin, Notebook, Units,
 // Mastery, Blockouts, Plan next week, the kitchen/grocery prompts) turns it on; the Mom button lights; it is remembered on THIS device
@@ -4288,6 +4289,9 @@ function renderSkylight(){
 // ── TAB ROUTING ───────────────────────────────────────────────────
 function showTab(t,keepMsv){
   if(!keepMsv&&typeof msvExit==="function") msvExit();   // 👩 MSV: tapping any tab leaves Mom's Day ▸ Schedule
+  // 🔒 MOMGATE (her rule 2026-10-08): leaving Mom's Day turns Mom mode off; coming back asks for the code. Moving between
+  // Mom's Day's own tabs (incl. ▸ 🗓 Schedule, which is keepMsv) never counts as leaving. Dad's side never trips this.
+  if(!keepMsv&&t!=="moms-plan"&&momDayIn){ momDayIn=false; if(typeof haMomOff==="function") haMomOff(); }
   if(_kiosk()&&t!=="play") return;   // kiosk console is locked to Play
   if(_kioskR()&&t!=="schedule") return;  // 🧭 General tablet is locked to its own views (routines / points / store / Mom+Dad lanes)
   if(_kioskD()&&t!=="moms-plan") return; // 👨 Dad's link is locked to his page
@@ -4368,6 +4372,9 @@ function renderAll(){
 }
 function _renderAllInner(){
   try{ if(tab==="schedule"&&!momSchedView){ _momSuspend(); if(kid==="mom") kid="all"; } else _momResume(); }catch(e){}   // 🧒 KIDSLENS
+  // 👩 MSV: Mom mode went off somewhere else (a Notebook/Units lock, a check-up relock) while Mom's Day ▸ Schedule was open →
+  // back to the Mom's Day door, never the code box on the schedule.
+  try{ if(momSchedView&&tab==="schedule"&&!momHereReal()){ momDayIn=false; msvExit(); tab="moms-plan"; mpSubView="cal"; document.querySelectorAll(".nav-tab").forEach(b=>b.classList.toggle("active",b.dataset.tab==="moms-plan")); ["sched-subtabs","day-tabs","kid-filter","week-strip","msv-bar"].forEach(id=>{ const e=document.getElementById(id); if(e) e.style.display="none"; }); } }catch(e){}
   const stb=document.getElementById("sitter-tab-btn"); if(stb){ if(SITTER_NAME){stb.textContent=SITTER_NAME;stb.style.display="";} else {stb.style.display="none";} }
   PAGE_KEYS.forEach(k=>{ const b=document.querySelector('.nav-tab[data-tab="'+k+'"]'); if(b) b.style.display=pageOn(k)?"":"none"; });   // 🧩 pages that are off leave the tab bar
   renderSchedSubtabs(); renderDayTabs(); renderKidFilter(); renderSkylight(); renderWeekStrip(); renderKioskKids(); renderKioskTabs(); renderKioskView(); renderKioskPerson();
@@ -4543,6 +4550,9 @@ function renderKidFilter(){
 }
 function selKid(k){
   try{ helperView=null; }catch(e){}   // 🙋 leave a helper's list
+  // 👩 MSV (her rule 2026-10-08): inside Mom's Day Mom mode is ALWAYS on — the 👩 Mom chip only shows Mom's view; it never
+  // turns Mom mode off and never asks for the code (the code is asked at the Mom's Day door).
+  if(k==="mom"&&typeof momSchedView!=="undefined"&&momSchedView){ kid="mom"; schedShowAdmin=false; renderAll(); window.scrollTo({top:0,behavior:'smooth'}); return; }
   if(k==="mom"){
     if(momModeActive){
       if(kid==="mom"){
@@ -10545,7 +10555,7 @@ function renderMomsPlan(el){
 // opened, the ?kiosk=dad link) keeps its own way in and is never stopped here; nor is reading a recipe someone tapped
 // from tonight's dinner (editing a meal keeps its own kitPinGate).
 function momGateOpen(){
-  if(typeof momHere==="function"&&momHere()) return true;
+  if(momDayIn&&typeof momHere==="function"&&momHere()) return true;   // already inside this visit
   if(typeof _kioskD==="function"&&_kioskD()) return true;
   if(mpSubView==='dad'||mpSubView==='dadcal') return true;
   if(grFromDad&&(mpSubView==='grocery'||mpSubView==='meals')) return true;    // Dad's Day → his list / meals
@@ -10565,7 +10575,7 @@ function momGateHTML(err){
 }
 function momGateTry(inp,final){
   const v=String((inp&&inp.value)||"");
-  if(v.length>=4&&pinOk(v)){ haMomOn(); renderAll(); return; }
+  if(v.length>=4&&pinOk(v)){ haMomOn(); momDayIn=true; renderAll(); return; }
   if(final){ const e=document.getElementById("mg-err"); if(e) e.textContent="That code didn\u2019t match"; if(inp){ inp.value=""; inp.focus(); } }
 }
 function renderMomsPlanView(el){
@@ -16224,7 +16234,7 @@ function mpCalWhoSet(w){ mpCalWho=(ROSTER.indexOf(w)>=0)?w:"family"; calDaySel=n
 // 👩 Mom first in the kid row, and the 🙋 I-need-Mom card left on 🏡 Home Base. The kid picked before is handed back on exit.
 function msvEnter(){
   if(momSchedView&&tab==="schedule"){ renderAll(); return; }
-  if(typeof momGateOpen==="function"&&!momGateOpen()&&!momHereReal()){ mpSubView="cal"; showTab("moms-plan"); return; }   // 🔒 only through Mom's Day's door
+  if(!momDayIn){ mpSubView="cal"; showTab("moms-plan"); return; }   // 🔒 only through Mom's Day's door (code this visit)
   momSchedView=true; _msvPrevKid=kid;
   try{ helperView=null; }catch(e){}
   kid="mom";
@@ -27347,7 +27357,7 @@ function calRenderMonthPreview(opts){
   const daysInMonth=new Date(year,month+1,0).getDate();
   const todayIso=calToday();
   const L=kidMode?{breaks:true,coops:true,events:true,meals:true,dad:false}
-             :{breaks:calLayerOn("breaks"),coops:calLayerOn("coops"),events:calLayerOn("events"),meals:calLayerOn("meals"),dad:!who&&calLayerOn("dad")};
+             :{breaks:calLayerOn("breaks"),coops:calLayerOn("coops"),events:calLayerOn("events"),meals:calLayerOn("meals"),dad:!who&&calLayerOn("dad"),school:calLayerOn("school")};
   const holidays=calendarData.holidays||{}, vacations=calendarData.vacations||{};
   const offDates=new Set();
   Object.values(holidays).forEach(h2=>{
@@ -27406,6 +27416,13 @@ function calRenderMonthPreview(opts){
     if(L.breaks) calBreaksOn(iso).forEach(b=>items.push({c:"gmd-brk",t:(b.kind==="holiday"?"\u{1F389} ":"\u{1F3D6} ")+b.name}));
     _coops.forEach(c=>items.push({c:"gmd-coop",t:"\u{1F3EB} "+(c.name||"Co-op")+(c.mode==="fullDay"?"":(c.start?" "+c.start:""))}));
     if(L.dad){ const _dc=_calDadChoresFor(iso); if(_dc.length){ const dn=_dc.filter(x=>x.done).length; items.push({c:"gmd-dad",t:"\u{1F468} "+_dc.length+" chore"+(_dc.length===1?"":"s")+(dn?(" \u00b7 "+dn+" \u2713"):"")}); } }
+    // 📚 CALSCHOOL (her ask 2026-10-08: "month at a glance on moms page needs the option of adding the school schedule"):
+    // with 📚 School on, the family month lists each kid's lessons that day — one line per kid in their colour — from the
+    // same Lesson Map rows the printable calendar reads (_calLessonsFor). A kid's own month already shows its lessons.
+    if(!who&&L.school&&!isWeekend){
+      ROSTER.forEach(function(k){ let _n=0; try{ _n=_calLessonsFor(k,iso).length; }catch(e){}
+        if(_n) items.push({c:"gmd-les",t:"\u{1F4DA} "+(KID_NAME[k]||cap(k))+" \u00b7 "+_n,col:(KID_COLOR[k]||"")}); });
+    }
     if(who){
       const _ls=_calLessonsFor(who,iso); if(_ls.length) items.push({c:"gmd-les",t:"\u{1F4DA} "+(_ls.length===1?_ls[0].name:(_ls.length+" lessons"))});
       // the cell counts the CHORES list only — routine steps (teeth, vitamins) are every day and would drown it
@@ -27419,11 +27436,11 @@ function calRenderMonthPreview(opts){
         const nm=sv.meal?((sv.meal.emoji?sv.meal.emoji+" ":"")+(sv.meal.name||"")):(sv.txt||""); if(nm) items.push({c:"gmd-meal",t:sp[1]+" "+nm}); });
     }
     if(_din) items.push({c:"gmd-meal "+_din.st,t:"\u{1F37D} "+_din.name});
-    const MAXL=who?5:4, shown=items.slice(0,MAXL), more=items.length-shown.length;
+    const MAXL=who?5:(L.school?6:4), shown=items.slice(0,MAXL), more=items.length-shown.length;   // 📚 room for the kids' lesson lines
     const tip=items.map(x=>x.t+(x.c.indexOf("owed")>=0?" (not marked)":x.c.indexOf("ate")>=0?" (eaten)":x.c.indexOf("skip")>=0?" (didn't happen)":"")).join(" · ");
     h+='<div class="'+cls+'" onclick="calDayClick(\''+iso+'\')" title="'+esc(tip||"Tap for the day")+'">'+
        '<span class="gmd-num">'+d+'</span>'+
-       shown.map(x=>'<span class="gmd-line '+x.c+'">'+esc(x.t)+'</span>').join("")+
+       shown.map(x=>'<span class="gmd-line '+x.c+'"'+(x.col?' style="color:'+x.col+'"':'')+'>'+esc(x.t)+'</span>').join("")+
        (more>0?'<span class="gmd-more">+'+more+' more</span>':'')+
        '</div>';
   }
