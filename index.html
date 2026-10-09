@@ -136,7 +136,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .gcal-month-day.lay .gmd-num{margin-bottom:3px}
 .gcal-month-day.sel{outline:2px solid #E07B39;outline-offset:-1px}
 .gmd-line{display:block;font-size:11px;line-height:1.3;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700}
-.gmd-brk{color:#92400e}.gmd-coop{color:#1d4ed8}.gmd-ev{color:#9d174d}.gmd-ev.pend{color:#b45309;opacity:.85}.gmd-les{color:#0f766e}.gmd-chore{color:#6d28d9}.gmd-dad{color:#2C5F8A}
+.gmd-brk{color:#92400e}.gmd-coop{color:#1d4ed8}.gmd-ev{color:#9d174d}.gmd-ev.pend{color:#b45309;opacity:.85}.gmd-les{color:#0f766e}.gmd-chore{color:#6d28d9}.gmd-dad{color:#2C5F8A}.gmd-hab{color:#15803d;letter-spacing:2px}
 .gmd-meal{color:#9a3412}.gmd-meal.ate{color:#15803d}.gmd-meal.skip{color:#9ca3af;text-decoration:line-through}.gmd-meal.owed::before{content:"\25CF ";color:#f97316}
 .gcal-month-day.lay .gmd-more{display:block;font-size:10px;color:var(--muted);font-weight:800;margin:0}
 /* narrow screens: a phone cell is ~50px wide, so a text line is one letter — show one coloured
@@ -1454,7 +1454,7 @@ table.gv{border-collapse:separate;border-spacing:0;font-size:11px;font-family:'D
   <button class="nav-tab" onclick="showTab('mastery')" data-tab="mastery">Mastery</button>
   <button class="nav-tab" onclick="showTab('units')" data-tab="units">Units</button>
   <button class="nav-tab" onclick="showTab('play')" data-tab="play">School Room</button>
-  <button class="nav-tab" onclick="showTab('moms-plan')" data-tab="moms-plan">Mom's Day</button>
+  <button class="nav-tab" onclick="showTab('moms-plan')" data-tab="moms-plan" style="position:relative">Mom's Day<span id="hb-badge" style="display:none;position:absolute;top:2px;right:2px;min-width:16px;height:16px;line-height:16px;padding:0 4px;box-sizing:border-box;border-radius:8px;background:#dc2626;color:#fff;font-size:10px;font-weight:800;text-align:center"></span></button>
   <button class="nav-tab" onclick="showTab('kids')" data-tab="kids">Kids' Corner</button>
   <button class="nav-tab" onclick="showTab('babysitter')" data-tab="babysitter" id="sitter-tab-btn">Maggie</button>
 </div>
@@ -2609,10 +2609,12 @@ let calPreviewMonth=null; // YYYY-MM for calendar preview (null = current)
 // day sheet acts through the same functions the other screens use (kitMarkEaten etc.), so
 // nothing here is a second copy that could drift.
 let calDaySel=null;                       // ISO of the open day sheet (null = closed)
-const CAL_LAYERS=[["breaks","\u{1F3D6} Breaks"],["coops","\u{1F3EB} Co-ops"],["events","\u{1F389} Events"],["meals","\u{1F37D} Meals"],["dad","\u{1F468} Dad"],["school","\u{1F4DA} School"]];   // 📚 CALSCHOOL (her ask 2026-10-08)
+const CAL_LAYERS=[["breaks","\u{1F3D6} Breaks"],["coops","\u{1F3EB} Co-ops"],["events","\u{1F389} Events"],["meals","\u{1F37D} Meals"],["dad","\u{1F468} Dad"],["school","\u{1F4DA} School"],["habits","\u2705 Habits"]];   // 📚 CALSCHOOL + ✅ HABITS_CAL (her asks 2026-10-08)
+const CAL_OPTIN=["school","habits"];   // layers that start OFF until a chip turns them on (the rest start on)
 let calLayers=null;
 function _calLayersLoad(){ if(calLayers) return; try{ calLayers=JSON.parse((typeof HA_LS!=="undefined"?HA_LS:localStorage).getItem("ha_cal_layers")||"null"); }catch(e){} if(!calLayers||typeof calLayers!=="object") calLayers={}; }
-function calLayerOn(k){ _calLayersLoad(); if(k==="school") return calLayers[k]===true; return calLayers[k]!==false; }   // 📚 School starts OFF — it's an option
+function calLayerOn(k){ _calLayersLoad(); if(CAL_OPTIN.indexOf(k)>=0) return calLayers[k]===true; return calLayers[k]!==false; }
+function calLayerOptIn(k){ _calLayersLoad(); return calLayers[k]===true; }   // opt-in layers start OFF until a chip turns them on
 function calLayerToggle(k){ _calLayersLoad(); calLayers[k]=!calLayerOn(k); try{ (typeof HA_LS!=="undefined"?HA_LS:localStorage).setItem("ha_cal_layers",JSON.stringify(calLayers)); }catch(e){} renderAll(); }
 // Breaks on a date: the holiday / vacation records whose range covers it.
 function calBreaksOn(iso){
@@ -3935,6 +3937,7 @@ function initFb() {
       Object.keys(v).forEach(k=>{ kitPrepDone[k]=v[k]; });
       try{HA_LS.setItem('ha_kit_prepdone',JSON.stringify(kitPrepDone));}catch(e){}
       if(tab==="moms-plan"){const el=document.getElementById("content");if(el)renderMomsPlan(el);}
+      else if(tab==="schedule"&&kid==="mom") renderAll();   // 🍳 MEALPREP_BLOCK: done on another device ends the block here
     });
     db.ref("kitchen/staples").on("value",s=>{
       const v=s.val()||{};
@@ -4369,6 +4372,7 @@ function renderAll(){
   // Same for an open 🏪/🙌 pop-up: buying, grabbing and approving all end in renderAll,
   // so the overlay has to rebuild or it shows the balance from before the tap.
   try{ if(popView&&popKid&&document.getElementById("kid-pop")) _popPaint(); }catch(e){}
+  try{ hbAlertsSoon(); }catch(e){}   // 🔴 HBALERT: the Mom's Day tab's red number + the person-waiting ding
 }
 function _renderAllInner(){
   try{ if(tab==="schedule"&&!momSchedView){ _momSuspend(); if(kid==="mom") kid="all"; } else _momResume(); }catch(e){}   // 🧒 KIDSLENS
@@ -7844,7 +7848,7 @@ function momAgendaHtml(dayTasks){
   const _mReq=t=>t.mom==="required"||(typeof famIsMomCard==="function"&&famIsMomCard(t));   // 🏡 family time she leads = Mom Needed
   const req=dayTasks.filter(_mReq);
   const may=dayTasks.filter(t=>t.mom==="maybe");
-  const _lau=(typeof momSchedLaundry==="function")?momSchedLaundry(day,dayTasks):[];   // 🧺 MOMSCHED_LAUNDRY
+  const _lau=((typeof momSchedLaundry==="function")?momSchedLaundry(day,dayTasks):[]).concat((typeof momSchedPrep==="function")?momSchedPrep(day):[]);   // 🧺 MOMSCHED_LAUNDRY · 🍳 MEALPREP_BLOCK
   if(!req.length&&!may.length&&!_lau.length)
     return '<div style="padding:28px 16px;text-align:center;color:var(--muted);font-size:13px">No Mom-needed work scheduled this day. 🎉</div>';
   const byTime={};
@@ -11381,6 +11385,90 @@ function momSchedLaundry(dayName,dayTasks){
   return out.sort(function(a,b2){ return (a.m-b2.m)||(a.o-b2.o); });
 }
 // MOMSCHED_LAUNDRY_END
+// MEALPREP_BLOCK_START — meal prep steps work like the laundry block (her ask 2026-10-08). Each prep step (a time, or "nb" =
+// night before) has "how long" (minutes, 10 when the meal never said). On the Mom-mode schedule (🔴 Mom Needed) it is a REAL
+// block at its time — her Mom-required cards lay around it the same way they step over a laundry block — with a ⏱ countdown and
+// ✓ Done (kitMarkPrep) · ⏰ 10 min later · Not now. Unlike laundry there is no question first: the time is in the recipe.
+//   · today's timed steps sit at their time; tomorrow's night-before steps sit at KIT_NB_HOUR (when 🔴 NOW starts them)
+//   · ⏰ 10 min later moves the block (from now, or from its start if that is later) and hides it from 🏡 Home Base till then
+//   · Not now lets go of the time (nothing held) but the step stays listed with ✓ Done; ✓ Done ends the block
+// 🏡 Home Base lists due prep in 🔴 NOW (kitDuePrepHTML) during school and after — a list, never a sound.
+// Stored with today's laundry blocks: momBlocks/<today iso>/kp_<meal iso>_<mid>_<idx> {iso,kind:"prep",at:"later"|"skip",startMin}
+function kitPrepBlockKey(s){ return "kp_"+String(s.iso+"_"+s.mid+"_"+s.idx).replace(/[.#$\[\]\/]/g,"_"); }
+function kitPrepBlockRec(s){ const b=(momBlocks||{})[kitPrepBlockKey(s)]; return (b&&b.iso===mwTodayIso()&&b.kind==="prep")?b:null; }
+// Today's prep steps that live on today's schedule, each with its time on it: {s, at} (at = minutes from midnight).
+function kitPrepTodaySteps(){
+  const out=[], today=mwTodayIso();
+  try{ kitPrepSteps(today).forEach(function(s){ if(s.when==="nb") return; const m=kitWhenMin(s.when); if(m!=null) out.push({s:s,at:m}); }); }catch(e){}
+  try{ kitPrepSteps(kitIsoPlus(today,1)).forEach(function(s){ if(s.when==="nb") out.push({s:s,at:KIT_NB_HOUR*60}); }); }catch(e){}
+  return out;
+}
+function kitPrepStartMin(s,at){ const b=kitPrepBlockRec(s); return (b&&b.at==="later"&&b.startMin!=null)?(+b.startMin):at; }
+// The prep blocks that hold Mom's time: not done, not "Not now".
+function kitPrepBlocksOpen(){
+  const out=[];
+  kitPrepTodaySteps().forEach(function(x){
+    const s=x.s; if(s.done) return; const b=kitPrepBlockRec(s); if(b&&b.at==="skip") return;
+    out.push({key:kitPrepBlockKey(s),startMin:kitPrepStartMin(s,x.at),mins:kitPrepMins(s)});
+  });
+  return out;
+}
+// ⏰ 10 min later → off 🏡 Home Base until its new time comes.
+function kitPrepPutOff(s,nowMin){ const b=kitPrepBlockRec(s); return !!(b&&b.at==="later"&&+b.startMin>nowMin); }
+function kitPrepCdText(st,en,now){
+  if(now<st) return '⏱ in '+(st-now)+' min';
+  if(now<en) return '⏱ '+(en-now)+' min left';
+  return '⏱ '+(now-en)+' min over';
+}
+function _kpCd(st,en){ return ' <span class="kp-cd" data-s="'+st+'" data-e="'+en+'" style="font-size:11.5px;font-weight:800;color:#c2410c;white-space:nowrap">'+kitPrepCdText(st,en,_lbNowMin())+'</span>'; }
+function _kpBtn(label,on,solid){ return '<button onclick="'+on+'" style="padding:4px 10px;border-radius:8px;border:'+(solid?'none':'1.5px solid #fdba74')+';background:'+(solid?'#ea580c':'#fff')+';color:'+(solid?'#fff':'#c2410c')+';font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">'+label+'</button>'; }
+function _kpLaterBtns(s){ const k=_lbQ(kitPrepBlockKey(s)); return _kpBtn('⏰ 10 min later',"kitPrepLater('"+k+"')",false)+_kpBtn('Not now',"kitPrepNotNow('"+k+"')",false); }
+// The extras on a 🏡 Home Base / Dad's Day 🔴 NOW row: ⏱ + the two buttons (gone once she said Not now).
+function kitPrepRowExtras(s){
+  const x=kitPrepTodaySteps().find(function(y){ return kitPrepBlockKey(y.s)===kitPrepBlockKey(s); }); if(!x) return {cd:'',btns:''};
+  const b=kitPrepBlockRec(s); if(b&&b.at==="skip") return {cd:'',btns:''};
+  const st=kitPrepStartMin(s,x.at);
+  return {cd:_kpCd(st,st+kitPrepMins(s)),btns:_kpLaterBtns(s)};
+}
+function _kpFind(key){ return kitPrepTodaySteps().find(function(y){ return kitPrepBlockKey(y.s)===key; })||null; }
+function _kpSave(key,rec){
+  momBlocks[key]=rec; momBlocksOnValue(momBlocks);
+  if(_lbWrite()) db.ref('momBlocks/'+rec.iso+'/'+key).set(rec);
+  if(typeof tab!=='undefined'&&tab==="schedule"&&typeof renderAll==="function"){ renderAll(); return; }
+  try{ const el=document.getElementById('content'); if(el&&typeof renderMomsPlan==="function") renderMomsPlan(el); }catch(e){}
+}
+function kitPrepLater(key){
+  const x=_kpFind(key); if(!x||x.s.done) return;
+  const st=Math.max(_lbNowMin(),kitPrepStartMin(x.s,x.at))+10;
+  _kpSave(key,{iso:mwTodayIso(),kind:"prep",label:x.s.label||"",at:"later",startMin:st,ts:Date.now()});
+}
+function kitPrepNotNow(key){
+  const x=_kpFind(key); if(!x||x.s.done) return;
+  _kpSave(key,{iso:mwTodayIso(),kind:"prep",label:x.s.label||"",at:"skip",startMin:x.at,ts:Date.now()});
+}
+// Today's prep rows for the Mom agenda: [{m, html}] — same shape as momSchedLaundry.
+function momSchedPrep(dayName){
+  if(typeof _todayDay!=="string"||dayName!==_todayDay) return [];
+  const out=[];
+  kitPrepTodaySteps().forEach(function(x){
+    const s=x.s, nb=s.when==="nb", lbl='<b>'+esc(s.label)+'</b> <span style="color:#6b6560">· '+esc(s.mealName)+(nb?' (tomorrow)':'')+'</span>';
+    const doneBtn=_kpBtn('✓ Done',"kitMarkPrep('"+_lbQ(s.iso)+"','"+_lbQ(s.mid+"_"+s.idx)+"')",true);
+    if(s.done){
+      const ts=((kitPrepDone[s.iso]||{})[s.mid+"_"+s.idx]), dm=(typeof ts==="number")?_lbMin(ts):x.at;
+      out.push({m:(dm>=0&&dm<24*60)?dm:x.at,o:3,html:_lbBox('#f8fafc','#94a3b8','<span style="flex:1;font-size:12.5px;color:#64748b">✓ '+(nb?'🌙 ':'🍳 ')+lbl+'</span>')});
+      return;
+    }
+    const b=kitPrepBlockRec(s);
+    if(b&&b.at==="skip"){ out.push({m:x.at,o:1,html:_lbBox('#fff7ed','#fdba74','<span style="flex:1;font-size:13px">'+(nb?'🌙 ':'⏲ ')+lbl+'</span>'+doneBtn)}); return; }
+    const st=kitPrepStartMin(s,x.at), mins=kitPrepMins(s);
+    out.push({m:st,o:2,html:_lbBox('#fff7ed','#ea580c','<span style="flex:1;font-size:13px">'+(nb?'🌙 ':'🍳 ')+lbl+' · '+mins+' min'+_kpCd(st,st+mins)+'</span>'+doneBtn+_kpLaterBtns(s))});
+  });
+  return out.sort(function(a,b2){ return (a.m-b2.m)||(a.o-b2.o); });
+}
+// ⏱ keeps counting without a repaint.
+function kitPrepCdTick(){ try{ const now=_lbNowMin(); document.querySelectorAll('.kp-cd').forEach(function(el){ el.textContent=kitPrepCdText(+el.getAttribute('data-s'),+el.getAttribute('data-e'),now); }); }catch(e){} }
+try{ if(typeof setInterval==="function"&&typeof document!=="undefined"&&document.querySelectorAll) setInterval(kitPrepCdTick,30000); }catch(e){}
+// MEALPREP_BLOCK_END
 // KIDLAUNDRY_START — a kid starting a load tells Mom (her ask 2026-10-04, Taylor's "Start a load of laundry").
 // Checking off a chore that STARTS a load drops "Taylor started laundry" onto Mom's 🧺 card in the washer, timed
 // from the check — the same 90-min "move it" nudge Mom gets for her own loads. The kid taps nothing extra.
@@ -12132,6 +12220,144 @@ function mdCardDinner(iso){
   return h;
 }
 
+// HBALERT_START — 🔴 Home Base alerts (her ask 2026-10-09). Three levels:
+//   🔔 ding + red number — a PERSON is waiting: a kid tapped 🙋 I need Mom, a new message (Adrienne's reply, a note or
+//      questions from her), a card sent to Mom for checking. The ding plays only on a Mom device (Mom mode on here).
+//   🔴 red number only — close-out items (a finished book, a star ask, the Star Store, unit activity, study-session
+//      flags, spelling tests to grade) and reminders (bills due, laundry sitting, kitchen prep, roadmap this week).
+//   neither — everything else on Home Base just waits there.
+// The red number on the "Mom's Day" tab = alerts NEW since Mom last opened 🏡 Home Base on this device; opening Home
+// Base clears it. Every alert is a stable key (kind:id), so "new" = a key this device hasn't had on Home Base yet.
+// A one-time banner on Home Base explains the levels; "Got it" is remembered on this device.
+// All per device (HA_LS) — nothing is written to the database:
+//   ha_hb_seen = [keys] that were on Home Base when it was open here · ha_hb_dinged = [keys] already dinged (a reload
+//   never re-dings) · ha_hb_tip = "1" after Got it.
+const HB_DING_KINDS={need:1,msg:1,check:1}, HB_KEEP=400;
+let hbTickT=null, hbDingAt=0;
+function hbLoad(k){ try{ const v=JSON.parse(HA_LS.getItem(k)||"[]"); return Array.isArray(v)?v:[]; }catch(e){ return []; } }
+function hbSave(k,arr){ try{ HA_LS.setItem(k,JSON.stringify(arr.slice(-HB_KEEP))); }catch(e){} }
+function hbMap(arr){ const m={}; arr.forEach(x=>{ m[x]=1; }); return m; }
+// Cards claimed done and not yet checked — the same cards as Home Base's ⏳ Waiting for your check (cheap: no re-time).
+function hbClaimedWaiting(){
+  const src=(typeof displacedResult!=="undefined"&&displacedResult&&displacedResult.tasks)||((typeof weekData!=="undefined"&&weekData&&weekData.tasks)||[]);
+  const live={}; (src||[]).forEach(t=>{ if(t&&t.id) live[t.id]=1; });
+  const cl=(typeof claimed!=="undefined"&&claimed)||{}, ck=(typeof checked!=="undefined"&&checked)||{};
+  return Object.keys(cl).filter(id=>cl[id]&&!ck[id]&&live[id]&&!String(id).endsWith("_c"));
+}
+// → [{kind:"need"|"msg"|"check"|"close"|"remind", key}] — everything Home Base would put in front of her right now.
+function hbAlertItems(){
+  const out=[], add=(kind,id)=>out.push({kind:kind,key:kind+":"+id});
+  const kids=(typeof SL_KIDS!=="undefined"&&SL_KIDS)||(typeof ROSTER!=="undefined"&&ROSTER)||[];
+  // 🔔 a person is waiting
+  try{ hrOpenList().forEach(([id])=>add("need",id)); }catch(e){}
+  try{ msgReplyList().forEach(([id,m])=>{ const r=msgAdrReplies(m); add("msg",id+"@"+((r[r.length-1]||{}).at||0)); }); }catch(e){}
+  try{ wsNoteList().concat(wsOpenList()).forEach(([id])=>add("msg","ws_"+id)); }catch(e){}
+  try{ hbClaimedWaiting().forEach(id=>add("check",id+"@"+claimed[id])); }catch(e){}
+  // 🔴 close-out — the yes/no rows in 🔴 Now, study flags, spelling tests to grade
+  kids.forEach(k=>{
+    try{ rlBooks(k).forEach(b=>{ if(b&&b.finishClaim&&b.status!=="done") add("close","book_"+k+"_"+b.id); }); }catch(e){}
+    try{ prPending(k).forEach(r=>add("close","stars_"+k+"_"+r.id)); }catch(e){}
+    try{ _rwWds(k).forEach(w=>{ if(w&&(w.status==="pending"||w.status==="owed")) add("close","store_"+k+"_"+w.id+"_"+w.status); }); }catch(e){}
+  });
+  try{
+    if(typeof unitStudies!=="undefined"&&unitStudies) for(const uid in unitStudies){
+      const u=unitStudies[uid]; if(!u||!u.activityClaims) continue;
+      for(const k in u.activityClaims) for(const ak in (u.activityClaims[k]||{})){
+        if(((u.activityLog||{})[k]||{})[ak]) continue;
+        if(!_unitActs(u).find(a=>a&&a.key===ak)) continue;
+        add("close","unit_"+uid+"_"+k+"_"+ak);
+      }
+    }
+  }catch(e){}
+  try{ const keep=_mstAlertList; try{ mstAlertsAll().filter(a=>a.kind!=="redone").forEach(a=>add("close","study_"+a.kid+"_"+a.kind+"_"+(a.sid||a.text))); } finally { _mstAlertList=keep; } }catch(e){}   // mstAlertsAll re-sets the row list its buttons index into
+  try{ stPendingList().forEach(s=>add("close","spell_"+s.kid+"_"+s.key)); }catch(e){}
+  // 🔴 reminders
+  try{
+    const iso=_todayStr();
+    Object.keys(billsData||{}).forEach(id=>{ const st=billState(billsData[id],iso); if(st.state==="overdue"||st.state==="due") add("remind","bill_"+id+"_"+st.due); });
+  }catch(e){}
+  try{
+    Object.keys(laundryData||{}).forEach(id=>{
+      const l=laundryData[id]; if(!l||(l.stage!=="washer"&&l.stage!=="dryer")) return;
+      const mins=Math.round((Date.now()-(l.ts||0))/60000);
+      if(mins>=(l.stage==="dryer"?laundryT("dry"):laundryT("wash"))+laundryT("grace")) add("remind","wash_"+id+"_"+l.stage+"_"+(l.ts||0));
+    });
+  }catch(e){}
+  try{ kitDuePrep().forEach(s=>add("remind","prep_"+s.iso+"_"+s.mid+"_"+s.idx)); }catch(e){}
+  try{ const iso=_todayStr(); kids.forEach(k=>rmList(k).forEach(r=>{ const st=rmState(r,iso); if(st==="over"||st==="week") add("remind","road_"+k+"_"+r.id); })); }catch(e){}
+  return out;
+}
+function hbNotMomDevice(){
+  return ["_kiosk","_kioskR","_kioskD","_kioskK"].some(f=>{ try{ return typeof window!=="undefined"&&typeof window[f]==="function"&&window[f](); }catch(e){ return false; } });
+}
+// The ding: Mom mode really on here (not set aside by the kids' Schedule), never on a kiosk or Dad's link.
+function hbDingHere(){ return !hbNotMomDevice()&&typeof momHereReal==="function"&&momHereReal(); }
+function hbBadgePaint(n){
+  if(typeof document==="undefined") return;
+  const b=document.getElementById("hb-badge"); if(!b) return;
+  const show=n>0&&!hbNotMomDevice();
+  b.textContent=show?(n>99?"99+":String(n)):"";
+  b.style.display=show?"inline-block":"none";
+}
+// A soft two-note ding on the context any tap already unlocked (bbAudioUnlock) — never more than once in 4 s.
+function hbDing(){
+  const now=Date.now(); if(now-hbDingAt<4000) return; hbDingAt=now;
+  try{
+    if(!bbAlarmCtx||bbAlarmCtx.state==="closed") bbAlarmCtx=new (window.AudioContext||window.webkitAudioContext)();
+    const ctx=bbAlarmCtx;
+    if(ctx.state==="suspended"){ try{ ctx.resume().catch(function(){}); }catch(e){} }
+    [988,1319].forEach((f,i)=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.type="sine"; o.connect(g); g.connect(ctx.destination); o.frequency.value=f;
+      const t0=ctx.currentTime+i*0.18;
+      g.gain.setValueAtTime(0.001,t0);
+      g.gain.exponentialRampToValueAtTime(0.25,t0+0.02);
+      g.gain.exponentialRampToValueAtTime(0.001,t0+0.6);
+      o.start(t0); o.stop(t0+0.62);
+    });
+  }catch(e){}
+}
+// After every repaint (debounced): the badge = keys not seen on Home Base here; a ding for a NEW person-waiting key.
+// A person-waiting key is remembered as handled the first time this device sees it, Mom device or not — so the ding
+// is the moment it arrives, never later when Mom mode comes on.
+function hbAlertsTick(){
+  hbTickT=null;
+  const items=hbAlertItems(), seen=hbMap(hbLoad("ha_hb_seen"));
+  hbBadgePaint(items.filter(x=>!seen[x.key]).length);
+  const dinged=hbLoad("ha_hb_dinged"), dm=hbMap(dinged);
+  const nu=items.filter(x=>HB_DING_KINDS[x.kind]&&!dm[x.key]);
+  if(!nu.length) return;
+  hbSave("ha_hb_dinged",dinged.concat(nu.map(x=>x.key)));
+  if(hbDingHere()) hbDing();
+}
+function hbAlertsSoon(){ if(hbTickT) return; try{ hbTickT=setTimeout(hbAlertsTick,250); }catch(e){ hbTickT=null; } }
+// 🏡 Home Base painted → everything on it now counts as seen on this device; the badge clears.
+function hbAlertsSeen(){
+  if(hbNotMomDevice()) return;
+  const prev=hbLoad("ha_hb_seen"), pm=hbMap(prev);
+  const add=hbAlertItems().map(x=>x.key).filter(k=>!pm[k]);
+  if(add.length) hbSave("ha_hb_seen",prev.concat(add));
+  hbBadgePaint(0);
+}
+// (c) the one-time banner
+function hbTipHTML(){
+  try{ if(HA_LS.getItem("ha_hb_tip")==="1") return ""; }catch(e){}
+  const row=(ic,hd,tx)=>'<div style="display:flex;gap:9px;align-items:flex-start;margin-top:7px"><span style="font-size:16px;flex:none;width:22px;text-align:center">'+ic+'</span>'+
+    '<div style="font-size:12.5px;color:#334155;line-height:1.45"><b style="color:#0f172a">'+hd+'</b> — '+tx+'</div></div>';
+  return '<div id="hb-tip" style="background:#fff;border-radius:12px;box-shadow:0 4px 20px rgba(43,122,120,0.13);padding:12px 14px 13px;border-left:4px solid #b5394a">'+
+    '<div style="font-weight:800;font-size:13px;color:#0f172a">🔔 How Home Base gets your attention</div>'+
+    row('🔔','Ding + red number','someone is waiting on you: a kid tapped “I need Mom”, a new message, or a card sent to you for checking. The ding plays only on a device in Mom mode.')+
+    row('<span style="display:inline-block;min-width:16px;height:16px;line-height:16px;border-radius:8px;background:#dc2626;color:#fff;font-size:10px;font-weight:800">1</span>','Red number only','things to close out (a finished book, a star ask, the Star Store, study flags, spelling tests to grade) and reminders (bills, laundry, kitchen prep, the roadmap).')+
+    row('·','Neither','everything else just waits here on Home Base.')+
+    '<div style="font-size:12px;color:#64748b;margin-top:8px">The red number on the Mom\'s Day tab counts what\'s new since you last opened Home Base. Opening Home Base clears it.</div>'+
+    '<button onclick="hbTipGotIt()" style="margin-top:10px;padding:8px 20px;border-radius:10px;border:none;background:#2B7A78;color:#fff;font-size:13px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">Got it</button></div>';
+}
+function hbTipGotIt(){
+  try{ HA_LS.setItem("ha_hb_tip","1"); }catch(e){}
+  try{ const el=document.getElementById("hb-tip"); if(el) el.remove(); }catch(e){}
+}
+// HBALERT_END
+
 function renderMomsDay(el){
   if(!el){el=document.getElementById("content");if(!el)return;}
   const today=mdTodayName();
@@ -12156,6 +12382,7 @@ function renderMomsDay(el){
     +'</div></div>';
   h+=mpSubnav('plan');
   h+='<div style="padding:12px 12px 0;display:flex;flex-direction:column;gap:11px">';
+  try{ h+=hbTipHTML(); }catch(e){}   // 🔴 HBALERT: the one-time "how alerts work" banner
 
   // today's calendar banner (family events / co-ops happening today)
   try{ const eb=calEventBanner(today,"all"); if(eb) h+=eb; }catch(e){}
@@ -12186,17 +12413,8 @@ function renderMomsDay(el){
   // and it was ninth — below Now, Order day, Today, Star Bank, her schedule, the
   // weigh-in, Win of the day and Use soon. Her own day should not need scrolling to.
   try{ h+=hrMomCardHTML(null,"md"); }catch(e){}   // 🙋 NEEDMOM: a kid asked for Mom → ✓ Helped (first: it's happening now)
-  // 🙋 HELPERGIVE "Give Grandma more today" moved to Mom's Day ▸ 🗓 Schedule (her design 2026-10-08) — it's a Mom tool.
-  try{ h+=momDayStripHTML(iso,today); }catch(e){}
-  try{ h+=wsTaskHTML(); }catch(e){}   // 📋 From Adrienne — tap to answer, ✓ once sent
-  try{ if(typeof stPendingHTML==="function") h+=stPendingHTML(); }catch(e){}   // 📝 spelling tests waiting to be graded
-  try{ if(typeof cbNudgeHTML==="function") h+=cbNudgeHTML(); }catch(e){}   // 🔁 graduated words came back
-  // The full chores card becomes the EDITOR (cadence + time of day); it only appears
-  // while editing, because the strip above now carries the day-to-day list.
-  if(mcManage){ try{ h+=mcPopHTML(iso,today); }catch(e){} }
-  // 📅 curriculum roadmap — overdue + due this week (Stage B)
-  try{ h+=rmWeekHTML(iso); }catch(e){}
-
+  // 🔴 NOWTOP (her ask 2026-10-08): all the alerts together at the top — the Now card sits right under 🙋 I need Mom,
+  // above 🏡 My day (it used to come after My day, worksheets and nudges). Moved as one block, unchanged.
   // ── 🔴 NOW — needs you ──────────────────────────────────────────
   h+='<div style="background:#fff;border-radius:12px;box-shadow:0 4px 20px rgba(43,122,120,0.13);overflow:hidden">';
   h+='<div style="display:flex;align-items:center;gap:8px;padding:11px 14px;background:#b5394a;color:#fff;font-weight:800;font-size:13px"><span>🔴</span> Now — needs you</div>';
@@ -12268,6 +12486,17 @@ function renderMomsDay(el){
   if(!nowN) h+='<div style="font-size:12px;color:var(--muted);padding:4px 0 8px">Nothing waiting on you right now — school is on the schedule below. 🎉</div>';
   h+=_boardClaimsHTML();
   h+='</div></div>';
+  // 🙋 HELPERGIVE "Give Grandma more today" moved to Mom's Day ▸ 🗓 Schedule (her design 2026-10-08) — it's a Mom tool.
+  try{ h+=momDayStripHTML(iso,today); }catch(e){}
+  try{ h+=wsTaskHTML(); }catch(e){}   // 📋 From Adrienne — tap to answer, ✓ once sent
+  try{ if(typeof stPendingHTML==="function") h+=stPendingHTML(); }catch(e){}   // 📝 spelling tests waiting to be graded
+  try{ if(typeof cbNudgeHTML==="function") h+=cbNudgeHTML(); }catch(e){}   // 🔁 graduated words came back
+  // The full chores card becomes the EDITOR (cadence + time of day); it only appears
+  // while editing, because the strip above now carries the day-to-day list.
+  if(mcManage){ try{ h+=mcPopHTML(iso,today); }catch(e){} }
+  // 📅 curriculum roadmap — overdue + due this week (Stage B)
+  try{ h+=rmWeekHTML(iso); }catch(e){}
+
 
   // ── 🛒 Order day — the chosen weekday gathers low/out staples plus
   // every standing usual into one copyable list (Kitchen Phase 3).
@@ -12339,6 +12568,7 @@ function renderMomsDay(el){
 
   h+='</div></div>';
   el.innerHTML=h;
+  try{ hbAlertsSeen(); }catch(e){}   // 🔴 HBALERT: Home Base is open → the tab's red number clears
 }
 
 
@@ -12411,12 +12641,14 @@ function kitWhenLabel(w){
   let h=Math.floor(min/60); const mm=min%60, ap=h>=12?"PM":"AM"; h=h%12||12;
   return h+":"+String(mm).padStart(2,"0")+" "+ap;
 }
+// 🍳 MEALPREP_BLOCK: "how long" for a prep step (her ask 2026-10-08) — optional, 10 min when the meal never said.
+function kitPrepMins(s){ const v=parseInt(s&&s.mins,10); return (v>0&&v<=240)?v:10; }
 // Every prep step for the meal planned on `iso`, with its done flag.
 function kitPrepSteps(iso){
   const pl=kitPlanFor(iso);
   if(!pl||!pl.meal||!Array.isArray(pl.meal.prep)) return [];
   const done=kitPrepDone[iso]||{};
-  return pl.meal.prep.map((s,i)=>({iso:iso,mid:pl.mid,idx:i,when:s.when,label:s.label||"",
+  return pl.meal.prep.map((s,i)=>({iso:iso,mid:pl.mid,idx:i,when:s.when,label:s.label||"",mins:kitPrepMins(s),
     mealName:pl.meal.name||"",done:!!done[pl.mid+"_"+i]}));
 }
 // Steps due RIGHT NOW: today's timed steps whose time has arrived, plus
@@ -12429,14 +12661,15 @@ function kitDuePrepHTML(){
   kitDuePrep().forEach(s=>{
     n++;
     const nb=s.when==="nb";
-    html+='<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#fff7ed;border-left:3px solid #ea580c;border-radius:8px;margin-bottom:6px">'
-      +'<span style="flex:1;font-size:13px">'+(nb?'🌙':'⏲')+' <b>'+esc(s.label)+'</b> <span style="color:#6b6560">· '+esc(s.mealName)+(nb?' (tomorrow)':' · '+kitWhenLabel(s.when))+'</span></span>'
-      +'<button onclick="kitMarkPrep(\''+s.iso+'\',\''+s.mid+'_'+s.idx+'\')" style="padding:4px 10px;border-radius:8px;border:none;background:#ea580c;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✓ Done</button></div>';
+    const _kb=(typeof kitPrepRowExtras==="function")?kitPrepRowExtras(s):{cd:'',btns:''};   // 🍳 MEALPREP_BLOCK: ⏱ + ⏰ 10 min later / Not now
+    html+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 10px;background:#fff7ed;border-left:3px solid #ea580c;border-radius:8px;margin-bottom:6px">'
+      +'<span style="flex:1;font-size:13px">'+(nb?'🌙':'⏲')+' <b>'+esc(s.label)+'</b> <span style="color:#6b6560">· '+esc(s.mealName)+(nb?' (tomorrow)':' · '+kitWhenLabel(s.when))+'</span>'+_kb.cd+'</span>'
+      +'<button onclick="kitMarkPrep(\''+s.iso+'\',\''+s.mid+'_'+s.idx+'\')" style="padding:4px 10px;border-radius:8px;border:none;background:#ea580c;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✓ Done</button>'+_kb.btns+'</div>';
   });
   return {html:html,n:n};
 }
 function kitDuePrep(nowMin){
-  if(nowMin==null) nowMin=kitNowMin();
+  if(nowMin==null) nowMin=(typeof _mlNowMin==="function")?_mlNowMin():kitNowMin();
   const out=[], today=_todayStr();
   kitPrepSteps(today).forEach(s=>{
     if(s.done||s.when==="nb") return;
@@ -12446,6 +12679,7 @@ function kitDuePrep(nowMin){
   if(Math.floor(nowMin/60)>=KIT_NB_HOUR){
     kitPrepSteps(kitIsoPlus(today,1)).forEach(s=>{ if(!s.done&&s.when==="nb") out.push(s); });
   }
+  if(typeof kitPrepPutOff==="function") return out.filter(s=>!kitPrepPutOff(s,nowMin));   // 🍳 MEALPREP_BLOCK: ⏰ 10 min later → back when it's up
   return out;
 }
 function kitMarkPrep(iso,key){
@@ -12457,6 +12691,7 @@ function kitMarkPrep(iso,key){
     if(dayMap[key]) db.ref('kitchen/prepDone/'+iso+'/'+key).set(dayMap[key]);
     else db.ref('kitchen/prepDone/'+iso+'/'+key).remove();
   }
+  if(typeof tab!=='undefined'&&tab==="schedule"&&typeof renderAll==='function'){ renderAll(); return; }   // 🍳 MEALPREP_BLOCK: tapped on the schedule
   const el=document.getElementById('content'); if(el) renderMomsPlan(el);
 }
 
@@ -12518,7 +12753,7 @@ function kitEditMeal(id){ kitPinGate(function(){ _kitEditMealGo(id); }); }
 function _kitEditMealGo(id){
   kitEditId=id||"new"; kitView=null;
   const m=(id&&kitMeals[id])||{};
-  kitEditPrep=(m.prep||[]).map(s=>({when:s.when,label:s.label}));
+  kitEditPrep=(m.prep||[]).map(s=>({when:s.when,label:s.label,mins:kitPrepMins(s)}));   // 🍳 MEALPREP_BLOCK: how long
   kitEditDraft={name:m.name||"",emoji:m.emoji||"",ing:m.ing||"",steps:m.steps||"",photo:m.photo||"",url:m.url||"",yield:m.yield||"",tags:Array.isArray(m.tags)?m.tags.slice():[]};
   kitCap={mode:null,busy:false,msg:"",photos:[]};   // a fresh photo tray for each recipe
   mpGoto('meals');
@@ -12532,11 +12767,12 @@ function kitAddPrepRow(){
   const mode=((document.getElementById('kit-prep-mode')||{}).value)||"t";
   const time=((document.getElementById('kit-prep-time')||{}).value)||"";
   const label=(((document.getElementById('kit-prep-label')||{}).value)||"").trim();
+  const mins=kitPrepMins({mins:((document.getElementById('kit-prep-mins')||{}).value)});   // 🍳 MEALPREP_BLOCK: blank → 10
   if(!label){ alert("Give the step a few words (\u201Cstart the Instant Pot\u201D)."); return; }
   const when=(mode==="nb")?"nb":time;
   if(when!=="nb"&&kitWhenMin(when)==null){ alert("Pick a time for the step (or switch it to night-before)."); return; }
   _kitStash();
-  kitEditPrep.push({when:when,label:label});
+  kitEditPrep.push({when:when,label:label,mins:mins});
   const el=document.getElementById('content'); if(el) renderMomsPlan(el);
 }
 function kitDelPrepRow(i){
@@ -12550,7 +12786,7 @@ function kitSaveMeal(){
   if(!(d.name||"").trim()){ alert("The meal needs a name."); return; }
   const id=(kitEditId&&kitEditId!=="new")?kitEditId:"m"+Date.now().toString(36);
   const m={name:d.name.trim(),ing:d.ing||"",steps:d.steps||"",
-    prep:kitEditPrep.map(s=>({when:s.when,label:s.label})),
+    prep:kitEditPrep.map(s=>({when:s.when,label:s.label,mins:kitPrepMins(s)})),   // 🍳 MEALPREP_BLOCK
     ts:(kitMeals[id]&&kitMeals[id].ts)||Date.now()};
   if((d.emoji||"").trim()) m.emoji=d.emoji.trim();
   // 🍽 recipe fields (2026-10-01): a small picture (data URI ≤ ~60 KB, works on the free Firebase plan), where it came from, tags, how much it makes
@@ -15608,13 +15844,14 @@ function kitEditorHTML(){
   kitEditPrep.forEach((s,i)=>{
     h+='<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fff7ed;border:1.5px solid #fed7aa;border-radius:9px;margin-bottom:5px">'
       +'<span style="font-size:11px;font-weight:800;color:#c2410c;white-space:nowrap">'+(s.when==="nb"?'🌙 night before':'⏲ '+kitWhenLabel(s.when))+'</span>'
-      +'<span style="flex:1;font-size:13px;font-weight:600">'+esc(s.label)+'</span>'
+      +'<span style="flex:1;font-size:13px;font-weight:600">'+esc(s.label)+' <span style="font-size:11px;font-weight:700;color:#9a3412">· '+kitPrepMins(s)+' min</span></span>'
       +'<button onclick="kitDelPrepRow('+i+')" style="border:none;background:none;color:#9ca3af;font-size:14px;cursor:pointer;padding:2px 4px">✕</button></div>';
   });
   h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">'
     +'<select id="kit-prep-mode" onchange="var t=document.getElementById(\'kit-prep-time\');if(t)t.style.display=(this.value===\'nb\'?\'none\':\'\')" style="padding:9px 8px;border:1.5px solid #cbd5e1;border-radius:9px;font-size:13px;font-family:\'DM Sans\',sans-serif"><option value="t">At a time</option><option value="nb">Night before</option></select>'
     +'<input type="time" id="kit-prep-time" style="padding:8px 10px;border:1.5px solid #cbd5e1;border-radius:9px;font-size:13px;font-family:\'DM Sans\',sans-serif">'
     +'<input type="text" id="kit-prep-label" placeholder="Start the Instant Pot…" onkeydown="if(event.key===\'Enter\')kitAddPrepRow()" style="flex:1;min-width:140px;padding:9px 12px;border:1.5px solid #cbd5e1;border-radius:9px;font-size:13px;font-family:\'DM Sans\',sans-serif">'
+    +'<label style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:#334155">How long? <input type="number" id="kit-prep-mins" min="1" max="240" value="10" style="width:56px;padding:8px 6px;border:1.5px solid #cbd5e1;border-radius:9px;font-size:13px;font-family:\'DM Sans\',sans-serif"> min</label>'   // 🍳 MEALPREP_BLOCK
     +'<button onclick="kitAddPrepRow()" style="padding:9px 14px;border-radius:9px;border:1.5px solid #E07B39;background:#fff;color:#c2410c;font-size:13px;font-weight:700;cursor:pointer">＋ Step</button></div>'
     +'<button onclick="kitSaveMeal()" style="margin-top:12px;width:100%;padding:12px;border-radius:10px;border:none;background:#2B7A78;color:#fff;font-size:14px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">💾 Save meal</button>'
     +'</div></div>';
@@ -27563,8 +27800,8 @@ function calRenderMonthPreview(opts){
   const firstDay=new Date(year,month,1).getDay();
   const daysInMonth=new Date(year,month+1,0).getDate();
   const todayIso=calToday();
-  const L=kidMode?{breaks:true,coops:true,events:true,meals:true,dad:false}
-             :{breaks:calLayerOn("breaks"),coops:calLayerOn("coops"),events:calLayerOn("events"),meals:calLayerOn("meals"),dad:!who&&calLayerOn("dad"),school:calLayerOn("school")};
+  const L=kidMode?{breaks:true,coops:true,events:true,meals:true,dad:false,habits:false}
+             :{breaks:calLayerOn("breaks"),coops:calLayerOn("coops"),events:calLayerOn("events"),meals:calLayerOn("meals"),dad:!who&&calLayerOn("dad"),school:calLayerOn("school"),habits:calLayerOn("habits")};
   const holidays=calendarData.holidays||{}, vacations=calendarData.vacations||{};
   const offDates=new Set();
   Object.values(holidays).forEach(h2=>{
@@ -27630,6 +27867,10 @@ function calRenderMonthPreview(opts){
       ROSTER.forEach(function(k){ let _n=0; try{ _n=_calLessonsFor(k,iso).length; }catch(e){}
         if(_n) items.push({c:"gmd-les",t:"\u{1F4DA} "+(KID_NAME[k]||cap(k))+" \u00b7 "+_n,col:(KID_COLOR[k]||"")}); });
     }
+    if(L.habits){   // HABITS_CAL — a dot per kid who finished everything that day (past days with data only)
+      const _hk=(who?[who]:ROSTER).filter(function(k){ return _calHabitsDone(k,iso)===true; });
+      if(_hk.length) items.push({c:"gmd-hab",t:"\u2705 "+_hk.map(cap).join(", "),h:_hk.map(function(k){ return '<span style="color:'+(KID_COLOR[k]||"#16a34a")+'">\u25cf</span>'; }).join("")});
+    }
     if(who){
       const _ls=_calLessonsFor(who,iso); if(_ls.length) items.push({c:"gmd-les",t:"\u{1F4DA} "+(_ls.length===1?_ls[0].name:(_ls.length+" lessons"))});
       // the cell counts the CHORES list only — routine steps (teeth, vitamins) are every day and would drown it
@@ -27647,7 +27888,7 @@ function calRenderMonthPreview(opts){
     const tip=items.map(x=>x.t+(x.c.indexOf("owed")>=0?" (not marked)":x.c.indexOf("ate")>=0?" (eaten)":x.c.indexOf("skip")>=0?" (didn't happen)":"")).join(" · ");
     h+='<div class="'+cls+'" onclick="calDayClick(\''+iso+'\')" title="'+esc(tip||"Tap for the day")+'">'+
        '<span class="gmd-num">'+d+'</span>'+
-       shown.map(x=>'<span class="gmd-line '+x.c+'"'+(x.col?' style="color:'+x.col+'"':'')+'>'+esc(x.t)+'</span>').join("")+
+       shown.map(x=>'<span class="gmd-line '+x.c+'"'+(x.col?' style="color:'+x.col+'"':'')+'>'+(x.h||esc(x.t))+'</span>').join("")+
        (more>0?'<span class="gmd-more">+'+more+' more</span>':'')+
        '</div>';
   }
@@ -27707,13 +27948,40 @@ function _calChoresFor(kid,iso){
         if(st.from&&iso<st.from) return; if(st.to&&iso>st.to) return;
         if(typeof stepCycleOk==="function"&&!stepCycleOk(st,iso)) return;
         if(!_calCadDueOn(st.cad||"daily",dn,iso)) return;
-        out.push({slot:slot,label:st.label||"Chore",emoji:st.emoji||"",pts:st.pts||0,
+        out.push({i:i,slot:slot,label:st.label||"Chore",emoji:st.emoji||"",pts:st.pts||0,
           done:isToday&&(slot==="morning"?(typeof mStepDoneOn==="function"&&mStepDoneOn(kid,dn,i)):(typeof rtDoneOn==="function"&&rtDoneOn(slot,kid,dn,i)))});
       });
     });
     return out;
   }catch(e){ return []; }
 }
+// HABITS_CAL_START — her ask 2026-10-09 (#37): an opt-in "✅ Habits" month layer. A past day gets a dot
+// per kid who finished ALL of that day's chores and routine slots. Only the active week and the
+// week before it have check-off data in memory (slState / prevSlState); any other day, today, the
+// future, or a day with nothing due answers null = no data = no dot (never a false "missed").
+function _calHabitsDone(kid,iso){
+  try{
+    if(!kid||!iso||iso>=calToday()) return null;
+    let map=null, wk=null, dn=null;
+    for(let i=0;i<DAYS_ALL.length;i++){
+      const di=routineDateISO(DAYS_ALL[i]); if(!di) continue;
+      if(di===iso){ map=slState; wk=activeWk(); dn=DAYS_ALL[i]; break; }
+      const pd=new Date(di+"T12:00:00"); pd.setDate(pd.getDate()-7);
+      const pi=pd.getFullYear()+"-"+String(pd.getMonth()+1).padStart(2,"0")+"-"+String(pd.getDate()).padStart(2,"0");
+      if(pi===iso){ map=prevSlState; wk=_prevWkKey(); dn=DAYS_ALL[i]; break; }
+    }
+    if(!map||!wk) return null;
+    const due=_calChoresFor(kid,iso); if(!due.length) return null;
+    let any=false;
+    for(let j=0;j<due.length;j++){
+      const c=due[j], key=wk+"_"+dn+"_"+kid+"_"+(c.slot==="morning"?"mstep":RT_ABBR[c.slot]+"step")+c.i;
+      const st=map[key]; if(st) any=true;
+      if(!(st&&st.done)) return (any||Object.keys(map).some(function(k){ return k.indexOf(wk+"_"+dn+"_"+kid+"_")===0; }))?false:null;
+    }
+    return true;
+  }catch(e){ return null; }
+}
+// HABITS_CAL_END
 // 👨 Dad's own chores on a date (the last item on her 2026-09-05 list): dadChores by the same
 // date-aware cadence the kids' layer uses; done stamps from dadday/{iso}. Mom/Dad lens only.
 function _calDadChoresFor(iso){
@@ -27776,6 +28044,8 @@ function calDaySheetHTML(iso,L,dinnerOf,who,opts){
       }
     });
   }
+  if(L.habits&&!kidMode){ (who?[who]:ROSTER).forEach(function(k){ const r=_calHabitsDone(k,iso); if(r===null) return; rows++;
+    h+='<div class="row"><span class="lbl">Habits</span><span style="flex:1;color:'+(r?'#15803d':'#6b7280')+'"><span style="color:'+(KID_COLOR[k]||"#16a34a")+'">\u25cf</span> '+esc(cap(k))+(r?' \u2014 finished every chore and routine \u2705':' \u2014 not everything checked off')+'</span></div>'; }); }
   if(L.events){ calEventsOn(iso,who||"all",true).forEach(function(e){ rows++;
     h+='<div class="row"><span class="lbl">Event</span><span style="flex:1">'+esc(e.emoji||"\u{1F389}")+' <b>'+esc(e.title||"Event")+'</b>'+(e.time?' <span style="color:#6b7280">· '+esc(e.time)+'</span>':'')+(e.who&&e.who!=="family"?' <span style="color:#6b7280">· '+esc(cap(e.who))+'</span>':'')
       +(e.addedBy?' <span style="font-size:10px;color:#6b7280">· added by '+esc(cap(e.addedBy))+'</span>':'')
@@ -52952,6 +53222,7 @@ function _mlQueueLayCore(tasks){
       let st=b.startMin; if(x&&typeof checked!=="undefined"&&checked&&checked[x.id]){ const c=_mlCkAt(x); st=(c!==null)?c:_ckEnd(x); }
       _blkIv.push([st,st+b.mins]); _mlBlkLaid[b.key]=st;
     }); }catch(e){}
+    try{ if(typeof kitPrepBlocksOpen==="function") kitPrepBlocksOpen().forEach(function(b){ _blkIv.push([b.startMin,b.startMin+b.mins]); _mlBlkLaid[b.key]=b.startMin; }); }catch(e){}   // 🍳 MEALPREP_BLOCK: at its time
     const newTimes={}; const momWait={};
     Object.keys(_famLay).forEach(function(id){ newTimes[id]=_famLay[id]; });   // LIVINGDAY_FAM
     seq.forEach(function(e){
