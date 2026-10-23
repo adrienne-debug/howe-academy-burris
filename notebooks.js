@@ -530,6 +530,12 @@
 "  .count-ani { font-size:26px; line-height:1; }\n" +
 "  .ten-frame { display:grid; grid-template-columns:repeat(5,auto); border:2px solid var(--ju-green); border-radius:6px; overflow:hidden; background:#fff; }\n" +
 "  .tf-cell { display:flex; align-items:center; justify-content:center; line-height:1; border:1px dashed #b7dcc4; }\n" +
+"  .tens-wrap { display:grid; grid-template-columns:repeat(5,auto); gap:3px; }\n" +
+"  .ten-tile { display:grid; grid-template-columns:repeat(5,5px); gap:1px; padding:2px; border:1.5px solid var(--ju-green); border-radius:4px; background:#fff; }\n" +
+"  .ten-tile i { display:block; width:5px; height:5px; border-radius:50%; background:var(--ju-green); }\n" +
+"  .hc-strip { display:flex; gap:1px; margin-top:3px; }\n" +
+"  .hc-cell { flex:1; min-width:0; text-align:center; font-size:8px; font-weight:800; padding:2px 0; border:1px solid #cfe6d6; border-radius:3px; color:var(--muted); }\n" +
+"  .hc-cell.on { background:var(--ju-green); color:#fff; border-color:var(--ju-green); }\n" +
 "  .shape-row { display:flex; align-items:center; justify-content:space-around; gap:6px; margin-top:3px; }\n" +
 "  .shape-cell{ display:flex; flex-direction:column; align-items:center; gap:3px; }\n" +
 "  .shape-cap { font-size:8.5px; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; color:var(--muted); }\n" +
@@ -800,8 +806,101 @@
       : JU_DEFAULT_CURRICULUM.animals.slice();
     cur.flag = flag;              // subject -> { prompt: true } for items due for review
     cur.flagScore = flagScore;    // subject -> { prompt: score } worst-first ordering
+    juNumbersRunAhead(cur, items);
     return cur;
   }
+
+  // JU_NUMBERS_AHEAD_START — a new number every school day, 1 → 100 (her asks 2026-10-12: "why is
+  // julian's notebook cycling back through small numbers after 16?" → "link it to the math facts
+  // unit like caleb is" → "at the last 17 it should move to the next level instead of repeating" →
+  // "a new number each day all the way to 100 so he can recognize numbers to 100"). Before, the week
+  // was a sliding window over the Numbers bank with a plain modulo, so a bank that topped out at 16
+  // printed 16 1 2 3 4; Caleb's run-ahead (her yes 10/4) fixed the start but wrapped inside the top
+  // (17 18 19 20 17). Now:
+  //  • While the Math Fluency Path is still introducing numbers, the first week opens on the number
+  //    he's LEARNING (status "introduction"), else just past the highest one he knows.
+  //  • From then on the notebook keeps its own place (notebookSettings/<kid>/numberCursor =
+  //    {week, from, adv}, saved by the app after each print, like the letter cursor): next week
+  //    continues where this one left off, so no number repeats and nothing rewinds.
+  //  • A bank number he's been missing in drills still comes back once, marked 🔁.
+  //  • Past 100 → the plain review rotation over his bank.
+  // Past 20 the page shows tens-and-ones instead of counting every picture (see juCountVisual).
+  // Shared by Julian and Caleb (her yes 10/12, "both boys"); no-op for a kid with no Numbers deck.
+  function juNumbersRunAhead(cur, items) {
+    var numIt = (items || []).filter(function (it) { return String((it && it.subject) || "").trim().toLowerCase() === "numbers"; });
+    if (!numIt.length) return cur;
+    var nval = function (it) { return parseInt(String(it.prompt || ""), 10); };
+    var learning = numIt.filter(function (it) { return it.status === "introduction" && !isNaN(nval(it)); }).map(nval);
+    var known = numIt.filter(function (it) { return it.status !== "introduction" && !isNaN(nval(it)); }).map(nval);
+    cur.numbersFront = learning.length ? Math.min.apply(null, learning) : (known.length ? Math.max.apply(null, known) + 1 : 11);
+    return cur;
+  }
+  // Where this week's numbers start. No cursor yet (first print) = the drill front; after that the
+  // saved place rules: re-printing the saved week reuses `from`, later weeks continue from
+  // from+adv (+5 per further unprinted week), earlier weeks walk back.
+  function juNumberStart(cursor, wk, front) {
+    if (front == null) return null;
+    if (!cursor || cursor.from == null) return front;
+    var cw = parseInt(cursor.week, 10), from = parseInt(cursor.from, 10), adv = (cursor.adv == null) ? 5 : parseInt(cursor.adv, 10);
+    if (!(cw > 0) || isNaN(from)) return front;
+    if (isNaN(adv) || adv < 0) adv = 5;
+    var s;
+    if (wk === cw) s = from;
+    else if (wk > cw) s = from + adv + 5 * (wk - cw - 1);
+    else s = from - 5 * (cw - wk);
+    return Math.max(1, s);
+  }
+  // The week's number list: `dayCount` new numbers from `start` (on to 100), then any bank number
+  // flagged for 🔁 review. Returns a copy — the cover/parent pages and a caller-supplied
+  // ctx.curriculum are never mutated. Past 100 (or no Numbers deck) → the list is left alone.
+  function juNumbersWeek(cur, start, dayCount) {
+    if (!cur || cur.numbersFront == null || start == null || !(start >= 1) || start > 100) return cur;
+    var list = [];
+    for (var v = start; v <= 100 && list.length < Math.max(1, dayCount || 5); v++) list.push(String(v));
+    Object.keys((cur.flag && cur.flag.numbers) || {}).forEach(function (p) { if (list.indexOf(p) < 0) list.push(p); });   // missed ones, for 🔁 review
+    return Object.assign({}, cur, { numbers: list, numbersFromFront: true });
+  }
+  // The Number-of-the-Day count graphic + its label, shared by Julian's and Caleb's daily pages.
+  // 1–20: ten-frames of the kid's counting picture (one frame, or two for 11–20 — "10 and some
+  // more"). 21–100 (her ask 2026-10-12, numbers to 100): a child learns those numerals as tens and
+  // ones, not by counting every picture (K.NBT.1; teens-to-100 research: ten is the unit, count by
+  // tens first, see where it lives on the hundred chart). Each TEN is a full mini ten-frame of dots
+  // in rows of five (100 = two rows of five tens), the ONES are the counting picture in one small
+  // frame, and the label carries the number's row of the hundred chart with today's number lit.
+  // Same height as the 11–20 two-frame row, so nothing below moves (the green card is at its floor).
+  function juCountVisual(n, pic) {
+    var ani = "", lab = "How many? Count, then trace ➜";
+    if (n <= 20) {
+      var frames = n > 10 ? 2 : 1, cellPx = frames > 1 ? 28 : 36, aniPx = frames > 1 ? 18 : 24;
+      for (var fi = 0; fi < frames; fi++) {
+        var cells = "";
+        for (var ci = 0; ci < 10; ci++) {
+          var filled = (fi * 10 + ci) < n;
+          cells += '<div class="tf-cell' + (filled ? ' on' : '') + '" style="width:' + cellPx + 'px;height:' + cellPx + 'px;font-size:' + aniPx + 'px;">' + (filled ? pic : '') + '</div>';
+        }
+        ani += '<div class="ten-frame">' + cells + '</div>';
+      }
+      return { ani: ani, lab: lab };
+    }
+    var tens = Math.floor(n / 10), ones = n % 10, tiles = "";
+    for (var ti = 0; ti < tens; ti++) {
+      var dots = "";
+      for (var di = 0; di < 10; di++) dots += '<i></i>';
+      tiles += '<div class="ten-tile" title="10">' + dots + '</div>';
+    }
+    ani = '<div class="tens-wrap">' + tiles + '</div>';
+    if (ones) {
+      var ocells = "";
+      for (var oi = 0; oi < 10; oi++) ocells += '<div class="tf-cell' + (oi < ones ? ' on' : '') + '" style="width:13px;height:13px;font-size:9px;">' + (oi < ones ? pic : '') + '</div>';
+      ani += '<div class="ten-frame">' + ocells + '</div>';
+    }
+    var rowStart = Math.floor((n - 1) / 10) * 10 + 1, strip = "";
+    for (var hc = rowStart; hc < rowStart + 10; hc++) strip += '<span class="hc-cell' + (hc === n ? ' on' : '') + '">' + hc + '</span>';
+    lab = '<span style="display:block;">' + tens + (tens === 1 ? ' ten' : ' tens') + (ones ? ' and ' + ones + (ones === 1 ? ' one' : ' ones') : '') + ' · count by tens, then trace ➜</span>' +
+      '<span class="hc-strip">' + strip + '</span>';
+    return { ani: ani, lab: lab };
+  }
+  // JU_NUMBERS_AHEAD_END
 
   // Resolve the week's per-day focus for each subject, folding review of struggled-with
   // items (cur.flag) ahead of new material. Returns subject -> array(dayCount) of
@@ -832,7 +931,9 @@
       // and `((wk-1)*5) % n` over a growing bank rewinds the window (wk19 landed back on
       // A B C D E after three near-identical weeks). The cursor continues from wherever
       // the last printed week left off, so growth only extends the runway ahead.
-      var start = (sub === "letters" && letterStart != null) ? (((letterStart % n) + n) % n) : (((wk - 1) * 5) % n);
+      var start = (sub === "letters" && letterStart != null) ? (((letterStart % n) + n) % n)
+        : (sub === "numbers" && cur.numbersFromFront) ? 0   // JU_NUMBERS_AHEAD: list is built from this week's first number
+        : (((wk - 1) * 5) % n);
       var natural = [], naturalSet = {};
       for (var i = 0; i < dayCount; i++) { var ni = (start + i) % n; natural.push(ni); naturalSet[ni] = 1; }
       // flagged items not already surfacing this week, worst-first, capped
@@ -857,6 +958,7 @@
       // review-injected week doesn't silently skip the letters it displaced — they open the
       // next week's window instead.
       if (sub === "letters") out._letters = { start: start, adv: Math.max(0, dayCount - inject.length) };
+      if (sub === "numbers" && cur.numbersFromFront) out._numbers = { adv: Math.max(0, dayCount - inject.length) };   // JU_NUMBERS_AHEAD
     });
     return out;
   }
@@ -891,6 +993,7 @@
     var wk = parseInt(String(ctx.weekNum || "").replace(/\D/g, ""), 10) || 1;
     var dayCount = Object.keys((ctx.weekData && ctx.weekData.dates) || {}).length || 5;
     var cap = (ctx.reviewCap == null) ? JU_REVIEW_CAP : Math.max(0, Math.min(5, parseInt(ctx.reviewCap, 10) || 0));
+    cur = juNumbersWeek(cur, juNumberStart(ctx.numberCursor, wk, cur.numbersFront), dayCount);   // JU_NUMBERS_AHEAD: same list as the print, so the planner matches the pages
     var picks = juWeekPicks(wk, cur, dayCount, cap, ctx.juPicks, juLetterStart(ctx.letterCursor, wk, cur.letters.length));
     var subjects = ["letters", "numbers", "shapes", "colors", "animals"];
     var out = { weekNum: wk, dayCount: dayCount, subjects: {} };
@@ -1095,24 +1198,16 @@
     var lw = JU_LETTER_WORDS[String(letter).toUpperCase()] || ["", ""], word = lw[0], wemoji = lw[1];
     // Count = the actual number (was capped at 8, so 9–14 all printed 8 animals — Adrienne
     // 2026-08-18: "those should match up"). Capped at 20 = two ten-frames.
-    var n = parseInt(number, 10); if (isNaN(n)) n = 1; n = Math.max(1, Math.min(n, 20));
+    var n = parseInt(number, 10); if (isNaN(n)) n = 1; n = Math.max(1, Math.min(n, 100));   // JU_NUMBERS_AHEAD: 21–100 show tens and ones
     // "🔁 practice again" markers on the cards for items Julian struggled with in drills
     var letterLab = pick.letterReview ? "Practice Again 🔁" : "Letter of the Day";
     var numberLab = (pick.numberReview ? "Practice Again 🔁 · " : "Number of the Day · ") + number;
     var shapeColorLab = (pick.shapeReview || pick.colorReview) ? "Shape &amp; Color 🔁" : "Shape &amp; Color";
 
     // Ten-frames: 5×2 cells per frame, animals fill left→right, top→bottom; empty cells stay
-    // dashed so he can see "how many more to 10". 1–10 = one frame, 11–20 = two frames.
-    var frames = n > 10 ? 2 : 1, cellPx = frames > 1 ? 28 : 36, aniPx = frames > 1 ? 18 : 24;
-    var countAni = "";
-    for (var fi = 0; fi < frames; fi++) {
-      var cells = "";
-      for (var ci = 0; ci < 10; ci++) {
-        var filled = (fi * 10 + ci) < n;
-        cells += '<div class="tf-cell' + (filled ? ' on' : '') + '" style="width:' + cellPx + 'px;height:' + cellPx + 'px;font-size:' + aniPx + 'px;">' + (filled ? aemoji : '') + '</div>';
-      }
-      countAni += '<div class="ten-frame">' + cells + '</div>';
-    }
+    // dashed so he can see "how many more to 10". 1–10 = one frame, 11–20 = two frames,
+    // 21–100 = tens and ones (juCountVisual).
+    var countVis = juCountVisual(n, aemoji), countAni = countVis.ani;
 
     var tidx = dowIndex(day);
     var ar = aroundDay(day), yest = ar[0], tod = ar[1], tom = ar[2];
@@ -1186,7 +1281,7 @@
       '        <div class="count-row" style="align-items:center;gap:12px;margin:2px 0 0;flex-wrap:nowrap;">\n' +
       '          <span class="nt-disp" style="font-size:42px;color:var(--ju-green);' + (String(number).length > 1 ? 'letter-spacing:-0.05em;' : '') + '">' + number + '</span>\n' +
       '          ' + countAni + '\n' +
-      '          <span class="lab" style="font-size:11px;font-weight:800;color:var(--ink);flex:1;min-width:0;">How many? Count, then trace ➜</span>\n        </div>\n' +
+      '          <span class="lab" style="font-size:11px;font-weight:800;color:var(--ink);flex:1;min-width:0;">' + countVis.lab + '</span>\n        </div>\n' +
       // Multi-digit numbers: repeat(3) ran the digits together ("111111" — Adrienne:
       // "the eleven graphic has the ones very far apart, doesn't work"). Group the
       // copies with a space and tighten the digit spacing so each "11" reads as one
@@ -1306,18 +1401,27 @@
     var days = nbCalendarDays(dates, DAY_ORDER.filter(function (d) { return dates.hasOwnProperty(d) && dates[d]; }));   // NBDAYORDER
     if (!days.length) days = DAY_ORDER.slice();
 
-    var parts = [juHtmlHead(weekNum)];
-    parts.push(juPageCover(weekNum, weekDates, cur));
-    if (xpOn(ctx, "abc")) parts.push(juPageAbc(weekNum, weekDates, cur));
-    if (xpOn(ctx, "daysSeasons")) parts.push(juPageDaysSeasons(weekNum, weekDates, cur));
-    if (xpOn(ctx, "thisMonth")) { var _jym = /\b(\d{4})\b/.exec(weekDates || ""); var _jmp = juPageMonth(weekNum, weekDates, dates, _jym ? _jym[1] : ""); if (_jmp) parts.push(_jmp); }
-    // review-slots-per-week cap: app setting (ctx.reviewCap) overrides the default, clamped 0–5
+    // JU_NUMBERS_AHEAD: this week's numbers (and where next week continues from) are decided first,
+    // so the cover and parent guide can list this week's five instead of a 1–100 runway.
     var reviewCap = (ctx.reviewCap == null) ? JU_REVIEW_CAP : Math.max(0, Math.min(5, parseInt(ctx.reviewCap, 10) || 0));
     var wkInt = parseInt(weekNum, 10) || 0;
     var letterStart = juLetterStart(ctx.letterCursor, wkInt || 1, cur.letters.length);
-    var picks = juWeekPicks(weekNum, cur, days.length, reviewCap, ctx.juPicks, letterStart);
+    var numStart = juNumberStart(ctx.numberCursor, wkInt || 1, cur.numbersFront);
+    var curWk = juNumbersWeek(cur, numStart, days.length);
+    var picks = juWeekPicks(weekNum, curWk, days.length, reviewCap, ctx.juPicks, letterStart);
+    var curCover = cur;
+    if (curWk.numbersFromFront) {
+      var wkNums = (picks.numbers || []).map(function (s2) { return curWk.numbers[s2.idx]; }).filter(function (v, i2, a) { return a.indexOf(v) === i2; });
+      curCover = Object.assign({}, cur, { numbers: wkNums });
+    }
+
+    var parts = [juHtmlHead(weekNum)];
+    parts.push(juPageCover(weekNum, weekDates, curCover));
+    if (xpOn(ctx, "abc")) parts.push(juPageAbc(weekNum, weekDates, cur));
+    if (xpOn(ctx, "daysSeasons")) parts.push(juPageDaysSeasons(weekNum, weekDates, cur));
+    if (xpOn(ctx, "thisMonth")) { var _jym = /\b(\d{4})\b/.exec(weekDates || ""); var _jmp = juPageMonth(weekNum, weekDates, dates, _jym ? _jym[1] : ""); if (_jmp) parts.push(_jmp); }
     for (var i = 0; i < days.length; i++) {
-      parts.push(juPageDaily(weekNum, days[i], dates[days[i]] || "", i, cur, juDayPick(cur, picks, i),
+      parts.push(juPageDaily(weekNum, days[i], dates[days[i]] || "", i, curWk, juDayPick(curWk, picks, i),
         xpStrip(pagesForDay(ctx, "julian", days[i]), "#d97706", "#fffbeb", "#92400e")));
     }
     (ctx.units || []).forEach(function (ins) { unitInsertPages(ins, weekNum, UNIT_INSERT_THEMES.julian).forEach(function (p) { parts.push(p); }); });
@@ -1326,12 +1430,14 @@
     var student = parts.join("\n");
 
     var parent = juHtmlHead(weekNum, "Julian's Parent Guide") + "\n" +
-      juPageParent(weekNum, weekDates, cur, ctx.teachNotes || "") + "\n</body>\n</html>";
+      juPageParent(weekNum, weekDates, curCover, ctx.teachNotes || "") + "\n</body>\n</html>";
 
     var out = { student: student, parent: parent };
     // the app persists this to notebookSettings/julian/letterCursor after a print, so the
     // next week's letters continue from here (see juLetterStart)
     if (wkInt > 0 && picks._letters) out.letterCursor = { week: wkInt, idx: picks._letters.start, adv: picks._letters.adv };
+    // JU_NUMBERS_AHEAD: same idea for numbers — notebookSettings/julian/numberCursor (see juNumberStart)
+    if (wkInt > 0 && picks._numbers && numStart != null) out.numberCursor = { week: wkInt, from: numStart, adv: picks._numbers.adv };
     return out;
   }
 
@@ -1444,25 +1550,9 @@
     // The drills introduce only 2 little letters at a time (Letters Path); the notebook keeps one new letter a
     // day running ahead of them — his drilled letters first, then the rest in handwriting order.
     else CB_LOWER_DEFAULT.forEach(function (l) { if (cur.letters.indexOf(l) < 0) cur.letters.push(l); });
+    // Numbers run ahead of his drills (her yes 10/4) — now shared with Julian, see juNumbersRunAhead
+    // (already applied by juCurriculumFromMastery above when he has a Numbers deck).
     if (!has("numbers")) cur.numbers = CB_NUMBERS_DEFAULT.slice();
-    else {
-      // Numbers run ahead of his drills (her yes 10/4): the Math Fluency Path introduces 3 at a time, and
-      // rotating over just those printed 11, 12, 13 all week. The week starts at the number he's LEARNING
-      // and counts up to 20; a number he already knows comes back only when he's been missing it in drills
-      // (🔁). Knows all of them → plain review rotation, like Julian's.
-      var numIt = items.filter(function (it) { return subj(it) === "numbers"; });
-      var nval = function (it) { return parseInt(String(it.prompt || ""), 10); };
-      var learning = numIt.filter(function (it) { return it.status === "introduction" && !isNaN(nval(it)); }).map(nval);
-      var known = numIt.filter(function (it) { return it.status !== "introduction" && !isNaN(nval(it)); }).map(nval);
-      var front = learning.length ? Math.min.apply(null, learning) : (known.length ? Math.max.apply(null, known) + 1 : 11);
-      if (front <= 20) {
-        var list = [];
-        for (var nn = front; nn <= 20; nn++) list.push(String(nn));
-        Object.keys(cur.flag.numbers || {}).forEach(function (p) { if (list.indexOf(p) < 0) list.push(p); });   // missed ones, for 🔁 review
-        cur.numbers = list;
-        cur.numbersFromFront = true;
-      }
-    }
     if (!has("shapes")) cur.shapes = CB_SHAPES_DEFAULT.slice();
     else {
       // Shapes run ahead of his drills (step 3, 10/4): the Shapes Path introduces 2 at a time, so the notebook
@@ -1510,9 +1600,17 @@
   function cbPageCover(weekNum, weekDates, cur, picks) {
     var wkLetters = (picks.letters || []).map(function (s) { return cur.letters[s.idx]; }).join(" · ");
     var wkNumbers = (picks.numbers || []).map(function (s) { return cur.numbers[s.idx]; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(" · ");
-    var colorsx = cur.colors.concat(cur.colors);
-    var shapes = cur.shapes.map(function (s, i) { return juSvgShape(s, { dashed: false, stroke: (colorsx[i] || ["", ""])[1], size: 22 }); }).join(" ");
-    var colorSwatches = cur.colors.map(function (pair) {
+    // CB_COVER_WEEK (her report 2026-10-13, DeWalt: "the first page is falling off in some of the areas, colors
+    // specifically"): the Shapes row drew EVERY shape in his list — 21 once the Shapes Path run-ahead (10/4) reached
+    // stage 2 — in one non-wrapping row, so the grid grew past the page edge and overflow:hidden cut off the right
+    // column (Numbers + Colors). Now the cover shows only THIS WEEK's shapes and colors, like Letters and Numbers
+    // already do, and both rows wrap as a backstop so a long list can never widen the grid again.
+    var _uniq = function (v, i, a) { return a.indexOf(v) === i; };
+    var wkShapes = (picks.shapes || []).map(function (s) { return cur.shapes[s.idx]; }).filter(function (v) { return v != null; }).filter(_uniq);
+    var wkColors = (picks.colors || []).map(function (s) { return cur.colors[s.idx]; }).filter(function (v) { return v != null; }).filter(_uniq);
+    var colorsx = wkColors.concat(wkColors);
+    var shapes = wkShapes.map(function (s, i) { return juSvgShape(s, { dashed: false, stroke: (colorsx[i] || ["", ""])[1], size: 22 }); }).join(" ");
+    var colorSwatches = wkColors.map(function (pair) {
       return '<span class="swatch" style="background:' + pair[1] + ';width:20px;height:20px;display:inline-block;margin-right:3px;border-radius:6px;"></span>';
     }).join("");
     return '<div class="page-label">Cover — Week ' + weekNum + '</div>\n<div class="page">\n' +
@@ -1525,8 +1623,8 @@
       '    <div class="learn-grid">\n' +
       '      <div class="learn-card card-peach"><div class="learn-ico">🔤</div><div><div class="learn-lab">Little letters</div><div class="learn-val learn-val-nt">' + wkLetters + '</div></div></div>\n' +
       '      <div class="learn-card card-green"><div class="learn-ico">🔢</div><div><div class="learn-lab">Numbers</div><div class="learn-val">' + wkNumbers + '</div></div></div>\n' +
-      '      <div class="learn-card card-blue"><div class="learn-ico">⭐</div><div><div class="learn-lab">Shapes</div><div class="learn-val" style="display:flex;gap:5px;align-items:center;">' + shapes + '</div></div></div>\n' +
-      '      <div class="learn-card card-gold"><div class="learn-ico">🎨</div><div><div class="learn-lab">Colors</div><div class="learn-val" style="display:flex;align-items:center;">' + colorSwatches + '</div></div></div>\n' +
+      '      <div class="learn-card card-blue"><div class="learn-ico">⭐</div><div><div class="learn-lab">Shapes</div><div class="learn-val" style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;">' + shapes + '</div></div></div>\n' +
+      '      <div class="learn-card card-gold"><div class="learn-ico">🎨</div><div><div class="learn-lab">Colors</div><div class="learn-val" style="display:flex;align-items:center;flex-wrap:wrap;">' + colorSwatches + '</div></div></div>\n' +
       '    </div>\n' +
       '    <div class="learn-card card-peach" style="margin-top:9px;"><div class="learn-ico">🦺</div><div><div class="learn-lab">I know my BIG letters!</div><div class="learn-val learn-val-nt" style="font-size:15px;letter-spacing:1px;">A B C D E F G H I J K L M N O P Q R S T U V W X Y Z</div></div></div>\n' +
       '  </div>\n  <div class="cover-draw">\n' +
@@ -1545,22 +1643,15 @@
     // Before his sounds stage: name + recognition only (Mrs. DeWalt 10/2). After: the sound and its picture word.
     // A Letters Path sound card already carries its word ("/a/ — apple 🍎"); a bare "/a/" gets the built-in word.
     var cue = sound ? (/—/.test(sound) ? (l + ' says ' + sound) : (l + ' says ' + sound + ' · ' + sw[0] + ' ' + sw[1])) : ('This is little ' + l + ' · big ' + U);
-    var n = parseInt(number, 10); if (isNaN(n)) n = 1; n = Math.max(1, Math.min(n, 20));
+    var n = parseInt(number, 10); if (isNaN(n)) n = 1; n = Math.max(1, Math.min(n, 100));   // JU_NUMBERS_AHEAD: 21–100 show tens and ones
     var letterLab = pick.letterReview ? "Practice Again 🔁" : "Letter of the Day";
     // Teens = "10 and some more" (K.NBT.1): one full frame + the rest — said in the card title.
-    var numberLab = (pick.numberReview ? "Practice Again 🔁 · " : "Number of the Day · ") + number + (n > 10 ? ' <span style="color:var(--ju-green);">= 10 and ' + (n - 10) + '</span>' : '');
+    var numberLab = (pick.numberReview ? "Practice Again 🔁 · " : "Number of the Day · ") + number +
+      (n > 20 ? ' <span style="color:var(--ju-green);">= ' + Math.floor(n / 10) + ' tens' + (n % 10 ? ' and ' + (n % 10) : '') + '</span>'   // JU_NUMBERS_AHEAD
+        : n > 10 ? ' <span style="color:var(--ju-green);">= 10 and ' + (n - 10) + '</span>' : '');
     var shapeColorLab = (pick.shapeReview || pick.colorReview) ? "Shape &amp; Color 🔁" : "Shape &amp; Color";
 
-    var frames = n > 10 ? 2 : 1, cellPx = frames > 1 ? 28 : 36, aniPx = frames > 1 ? 18 : 24;
-    var countAni = "";
-    for (var fi = 0; fi < frames; fi++) {
-      var cells = "";
-      for (var ci = 0; ci < 10; ci++) {
-        var filled = (fi * 10 + ci) < n;
-        cells += '<div class="tf-cell' + (filled ? ' on' : '') + '" style="width:' + cellPx + 'px;height:' + cellPx + 'px;font-size:' + aniPx + 'px;">' + (filled ? cpic : '') + '</div>';
-      }
-      countAni += '<div class="ten-frame">' + cells + '</div>';
-    }
+    var countVis = juCountVisual(n, cpic), countAni = countVis.ani;   // JU_NUMBERS_AHEAD: shared with Julian; 21–100 = tens and ones
 
     var tidx = dowIndex(day);
     var ar = aroundDay(day), yest = ar[0], tod = ar[1], tom = ar[2];
@@ -1631,7 +1722,7 @@
       '        <div class="count-row" style="align-items:center;gap:12px;margin:2px 0 0;flex-wrap:nowrap;">\n' +
       '          <span class="nt-disp" style="font-size:42px;color:var(--ju-green);' + (String(number).length > 1 ? 'letter-spacing:-0.05em;' : '') + '">' + number + '</span>\n' +
       '          ' + countAni + '\n' +
-      '          <span class="lab" style="font-size:11px;font-weight:800;color:var(--ink);flex:1;min-width:0;">How many? Count, then trace ➜</span>\n        </div>\n' +
+      '          <span class="lab" style="font-size:11px;font-weight:800;color:var(--ink);flex:1;min-width:0;">' + countVis.lab + '</span>\n        </div>\n' +
       '        ' + (String(number).length > 1
         ? juTrace(Array(3).fill(String(number)).join(" "), 46, null, "-0.05em")
         : juTrace(String(number).repeat(3), 58)) + '\n' +
@@ -1760,13 +1851,8 @@
       for (var _r3 = 0; _r3 < _n3; _r3++) _rot3.push(_ord[(_r3 - _p3 + _n3) % _n3]);
       cur.shapes = _rot3;
     }
-    if (cur.numbersFromFront) {
-      // juWeekPicks starts numbers at ((week-1)*5) % n — turn the list so that spot holds the number he's
-      // learning, so every week opens on it and counts up from there.
-      var nl = cur.numbers, nn2 = nl.length, p0 = ((relWk - 1) * 5) % nn2, rot = [];
-      for (var ri = 0; ri < nn2; ri++) rot.push(nl[(ri - p0 + nn2) % nn2]);
-      cur.numbers = rot;
-    }
+    var numStart = juNumberStart(ctx.numberCursor, wkInt || 1, cur.numbersFront);   // JU_NUMBERS_AHEAD: a new number a day, on to 100
+    cur = juNumbersWeek(cur, numStart, days.length);
     var picks = juWeekPicks(relWk, cur, days.length, reviewCap, ctx.juPicks, letterStart);
 
     var parts = [juHtmlHead(weekNum, "Caleb's Notebook", CB_CSS, CB_FONTS)];
@@ -1787,6 +1873,7 @@
     };
     // Same cursor idea as Julian's letters — the app stores it at notebookSettings/caleb/letterCursor.
     if (wkInt > 0 && picks._letters) out.letterCursor = { week: wkInt, idx: picks._letters.start, adv: picks._letters.adv, from: fromWk };
+    if (wkInt > 0 && picks._numbers && numStart != null) out.numberCursor = { week: wkInt, from: numStart, adv: picks._numbers.adv };   // JU_NUMBERS_AHEAD
     return out;
   }
   // CALEB_END
@@ -3186,13 +3273,22 @@ ${extraStrip || ""}
     var T = theme || UNIT_INSERT_THEMES.lincoln, GD = T.GD, GM = T.GM, GL = T.GL, GP = T.GP, GOLD = T.GOLD;
     var line = '<div style="border-bottom:1.5px solid ' + GL + ';height:17px"></div>';
     var sec = '';
+    var anyWords = (sp.sections || []).some(function (s) { return (s.words || []).length && !s.review; });
+    var anyReview = (sp.sections || []).some(function (s) { return (s.words || []).length && s.review; });
     (sp.sections || []).forEach(function (s) {
       var ws = (s.words || []).slice(0, 10);
       sec += '<div style="margin-bottom:10px"><div style="font-family:\'Fraunces\',serif;font-size:15px;font-weight:700;color:' + GD + ';margin-bottom:5px">' + esc(s.label) +
         (s.lesson != null ? ' <span style="font-size:11px;font-weight:600;color:' + GM + '">· Lesson ' + esc(s.lesson) + '</span>' : '') + '</div>' +
+        // ST_NOWORDS (her report 2026-10-13, DeWalt Kenzie): a lesson with no new word cards says so instead of vanishing
+        (!ws.length && s.note ? '<div style="font-size:12px;font-style:italic;color:#6b7280;padding:2px 0 4px">' + esc(s.note) + '</div></div>' :
+        // ST_REVIEW (her design 2026-10-13): a review day is read-and-spell-aloud, not copy work — compact chips, so five
+        // review days (50 words) share one page with the Practice Words box; lined boxes stay for lessons with new words
+        s.review ? '<div style="display:flex;flex-wrap:wrap;gap:5px 8px;margin-bottom:2px">' + ws.map(function (w) {
+          return '<div style="border:1.5px solid ' + GL + ';border-radius:7px;padding:3px 9px;background:#fff;font-size:13px;font-weight:700;color:#1c1c1e">' + esc(String(w).replace(/․/g, ".")) + '</div>';
+        }).join('') + '</div></div>' :
         '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px 14px">' + ws.map(function (w) {
           return '<div style="border:1.5px solid ' + GL + ';border-radius:8px;padding:4px 8px;background:#fff"><div style="font-size:14px;font-weight:700;color:#1c1c1e;margin-bottom:1px">' + esc(String(w).replace(/․/g, ".")) + '</div>' + line + line + line + '</div>';
-        }).join('') + '</div></div>';
+        }).join('') + '</div></div>');
     });
     var pr = (sp.practice || []).slice(0, 12);
     var prH = pr.length ? '<div style="margin-top:4px;border:2px dashed ' + GOLD + ';border-radius:10px;padding:8px 12px;background:' + GP + '">' +
@@ -3204,7 +3300,8 @@ ${extraStrip || ""}
       '<div style="font-family:\'Fraunces\',serif;font-size:22px;font-weight:700;color:#fff;line-height:1">📝 ' + esc(sp.title || "Spelling") + '</div>' +
       '<div style="font-family:\'Fraunces\',serif;font-size:14px;font-weight:600;color:' + GOLD + '">Week ' + esc(ctx.weekNum || "") + '</div></div>' +
       '<div style="height:5px;flex-shrink:0;background:' + GM + '"></div>';
-    var intro = (sp.sections && sp.sections.length) ? '<div style="font-size:11.5px;color:#4b5563;margin-bottom:8px">Write each word three times on its lines. Say the sounds as you write.</div>' : '';
+    var intro = anyWords ? '<div style="font-size:11.5px;color:#4b5563;margin-bottom:8px">Write each word three times on its lines. Say the sounds as you write.</div>' : '';
+    if (anyReview) intro += '<div style="font-size:11.5px;color:#4b5563;margin-bottom:8px">Review days: read each word, cover it, then spell it out loud.</div>';   // ST_REVIEW
     return ['<div class="page-label">Spelling — Week ' + esc(ctx.weekNum || "") + '</div>\n<div class="page">\n' + hdr +
       '<div style="padding:14px 40px;flex:1;display:flex;flex-direction:column;overflow:hidden">' + intro + sec + prH + '</div>\n</div>'];
   }
@@ -4163,10 +4260,10 @@ ${ellFooter("Howe Academy · Parent Guide · Full Keys · Week " + weekNum)}
   function luStdHeader(eyebrow, name, sub, weekLabel, dateLabel, badge) {
     return '<div class="header">\n  <div>\n    <div class="header-eyebrow">' + eyebrow + '</div>\n    <div class="header-name">' + name + '</div>\n    <div class="header-sub">' + sub + '</div>\n  </div>\n  <div class="header-right">\n    <div class="header-week">' + weekLabel + '</div>\n    <div class="header-date">' + dateLabel + '</div>\n    <div class="unicorn-badge">' + badge + '</div>\n  </div>\n</div>\n<div class="accent-bar"></div>';
   }
-  function luShell(pagesHtml, title) {
+  function luShell(pagesHtml, title, extraCss) {
     return '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<title>' + title + '</title>\n' +
       '<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,600;0,700;1,500&family=DM+Sans:wght@400;500;600;700&family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">\n' +
-      '<style>\n' + fontFacesCss() + '\n' + LUCY_CSS + '\n</style>\n</head>\n<body>\n' + pagesHtml + '\n</body>\n</html>';
+      '<style>\n' + fontFacesCss() + '\n' + LUCY_CSS + (extraCss || "") + '\n</style>\n</head>\n<body>\n' + pagesHtml + '\n</body>\n</html>';
   }
   function luPractice(texts, nWrite, traceSize) {
     nWrite = nWrite || 1; traceSize = traceSize || 32;
@@ -4406,8 +4503,18 @@ ${luFooter("Howe Academy · Lucy Howe · Keep this private 🔒", weekDates)}
     var rows = dayTasks.map(function (t) { return '<tr><td>' + luSubjectName(t.title) + '</td><td><span class="bubble"></span></td><td><span class="bubble"></span></td><td><span class="bubble"></span></td></tr>\n'; }).join("");
     var subHtml = (subProblems || []).map(function (ab) { return '<div class="sub-problem"><span class="sub-num">' + ab[0] + '</span><span class="sub-op">−</span><span class="sub-num">' + ab[1] + '</span><span class="sub-eq">=</span><span class="sub-blank"></span></div>\n'; }).join("");
     var bl = blend, wordsHtml = (bl.words || []).map(function (w) { return '<span class="bword">' + w + '</span>'; }).join("");
+    // LU_PHONO: a book phonogram carries sounds/lesson/review and may sit mid-word (pre + pg + part2); the static
+    // list has none of these and prints exactly as before.
+    var phOn = bl.lesson != null;
+    var phLabel = phOn
+      ? 'Phonogram · ' + bl.digraph + ' <span class="ph-sounds">says ' + bl.sounds + '</span><span class="ph-lesson">LOE B · Lesson ' + bl.lesson + '</span>'
+      : 'Blend of the day · ' + bl.digraph;
+    var phParts = [bl.pre, bl.digraph, bl.part2].filter(function (s) { return s; }).map(function (s) { return '<span class="blend-part">' + s + '</span>'; }).join('\n        <span class="blend-plus">+</span>\n        ');
+    var phReview = (phOn && bl.review && bl.review.length)
+      ? '\n      <div class="ph-review">Review: ' + bl.review.map(function (r) { return '<span class="ph-chip">' + r + '</span>'; }).join("") + '</div>'
+      : '';
     var writeBlock = FONTS_OK
-      ? '<div class="write-prompt">Trace it, then write it yourself:</div><div class="nt-trace" style="font-size:31px;">' + dotted(bl.word) + '</div>'
+      ? '<div class="write-prompt">Trace it, then write it yourself:</div><div class="nt-trace" style="font-size:' + (blend.lesson != null ? 26 : 31) + 'px;">' + dotted(bl.word) + '</div>'
       : '<div class="write-prompt">Write your favorite ' + bl.digraph + ' word:</div>';
     var tidx = dowIndex(day), ar = aroundDay(day), tod = ar[1];
     var cmonth = monthFromDate(dateStr), seas = seasonOfMonth(cmonth), sname = seas[0], semoji = seas[1];
@@ -4462,12 +4569,10 @@ ${extraStrip || ""}
         <div>${pills}</div>
       </div>
     </div>
-    <div class="blend-card" style="display:flex;flex-direction:column;">
-      <div class="slabel">Blend of the day · ${bl.digraph}</div>
+    <div class="blend-card${phOn ? " ph" : ""}" style="display:flex;flex-direction:column;">
+      <div class="slabel${phOn ? " ph" : ""}">${phLabel}</div>
       <div class="blend-display">
-        <span class="blend-part">${bl.digraph}</span>
-        <span class="blend-plus">+</span>
-        <span class="blend-part">${bl.part2}</span>
+        ${phParts}
         <span class="blend-arrow">→</span>
         <span class="blend-word">${bl.word}</span>
       </div>
@@ -4476,8 +4581,8 @@ ${extraStrip || ""}
       <div class="blend-write-area">
         ${writeBlock}
         <div class="write-line"></div>
-      </div>
-      <div class="blend-draw-box" style="flex:1;"><div class="blend-draw-hint">✏️ draw a picture of the word!</div></div>
+      </div>${phReview}
+      ${phOn ? '' : '<div class="blend-draw-box" style="flex:1;"><div class="blend-draw-hint">✏️ draw a picture of the word!</div></div>'}
     </div>
   </div>
 
@@ -4856,8 +4961,9 @@ ${luFooter("Howe Academy · Lucy Howe · End of Week", "Week " + weekNum + " · 
       "wh": 'In American speech, "wh" sounds like "w." The key skill is visual recognition — she should see "wh" and know it starts question words: what, when, where, which, why.'
     };
     var blendTipRows = blends.map(function (bl) {
-      var dg = bl.digraph, tip = tips[dg] || ('Practice "' + dg + '" words from today\'s blend card. Read them aloud together first.');
-      return '<div class="key-row"><div class="key-label" style="min-width:28px;">' + dg + '</div><div style="font-size:11px;color:var(--ink);line-height:1.5;">' + tip + '</div></div>\n';
+      var dg = bl.digraph, tip = (bl.lesson != null && luPhonoTip(dg)) || tips[dg] || ('Practice "' + dg + '" words from today\'s blend card. Read them aloud together first.');   // LU_PHONO: the ladder's tip when the book is driving
+      var lsn = bl.lesson != null ? '<div style="font-size:8.5px;font-weight:800;color:var(--muted);margin-top:2px;">LOE B · Lesson ' + bl.lesson + (bl.newest ? ' · new this week' : ' · review') + '</div>' : '';
+      return '<div class="key-row"><div class="key-label" style="min-width:28px;">' + dg + '</div><div style="font-size:11px;color:var(--ink);line-height:1.5;">' + tip + lsn + '</div></div>\n';
     }).join("");
     var allApps = {}, appOrder = [];
     (days || []).forEach(function (day) {
@@ -4964,6 +5070,70 @@ ${luFooter("Howe Academy · Teaching Companion · Not for Lucy", "Week " + weekN
     return out;
   }
 
+  // LU_PHONO_START — 📖 phonogram of the day follows LOE Foundations B (her "go" 2026-10-14, step 1 of
+  // PLAN_lucy_notebook_2026-10-14.md). The card used to print the same five digraphs every week (sh ch th wh sh)
+  // while Lucy's book had moved on (Lesson 51: ck, igh, ee taught; er new). Now the Notebook tab passes
+  // ctx.loe = loeTaught(kid) — the phonograms the book has taught so far, in ladder order (index.html LOELINK) —
+  // and the week is: the newest phonogram on Mon and Thu, the three before it once each; fewer taught = wrap.
+  // Entries keep the blend-card shape (digraph · part2 · word · words), so the daily page, the end-of-week page and
+  // the companion render them unchanged; `pre` lets a phonogram sit in the middle of its word (n + igh + t).
+  // No LOE link (ctx.loe missing or empty) = today's static list, byte for byte.
+  var LU_PHONO = {
+    sh:   { post: "ip", word: "ship",  words: ["shop", "shell", "shed", "fish", "wish"],      tip: '"sh" is one sound — like shushing someone: <em>shhh</em>. It\'s not separate s + h. Model: "Listen — <strong>ship</strong>. Do you hear the sh at the start?"' },
+    th:   { post: "is", word: "this",  words: ["that", "them", "with", "bath", "think"],      tip: 'Two sounds — voiced (<em>this, that, them</em>) and unvoiced (<em>think, bath</em>). She doesn\'t need the rule — practice both. Tongue tip peeks out between the teeth.' },
+    ck:   { pre: "du", word: "duck",   words: ["back", "sock", "kick", "neck", "rock"],       tip: 'Two letters, one sound /k/. It only comes right after a short vowel at the END of a word (du-ck, ba-ck) — never at the start. Have her tap the short vowel, then ck.' },
+    igh:  { pre: "n", post: "t", word: "night", words: ["light", "high", "sigh", "bright", "fight"], tip: 'Three letters say /ī/ together. Have her underline igh in each word so she sees it as one piece, then read the word.' },
+    ch:   { post: "op", word: "chop",  words: ["chip", "chin", "much", "such", "rich"],       tip: 'Like a train: <em>ch-ch-ch</em>. Common mix-up with sh. Exaggerate the mouth shape — ch pushes forward more. Have her put her hand in front of her mouth and feel the air.' },
+    ee:   { pre: "s", word: "see",     words: ["tree", "feet", "seed", "keep", "green"],      tip: 'Two e\'s say /ē/. Put <em>bed</em> next to <em>feed</em> so she hears short e against long e — the double letter is the clue.' },
+    er:   { pre: "h", word: "her",     words: ["fern", "herd", "perch", "sister", "under"],   tip: 'Her first "bossy r": the r changes the vowel, so e + r is one sound /er/. Compare <em>he</em> and <em>her</em> — the e is not /ĕ/ once r is behind it.' },
+    wh:   { post: "en", word: "when",  words: ["what", "where", "which", "whip", "while"],    tip: 'In American speech "wh" sounds like "w." The key skill is seeing wh and knowing it starts question words: what, when, where, which, why.' },
+    oi:   { pre: "c", post: "n", word: "coin", words: ["oil", "boil", "join", "point", "soil"], tip: '/oi/ as in <em>coin</em>. oi lives in the MIDDLE of a word; its twin oy takes the end (boy) — English words don\'t end in i.' },
+    oy:   { pre: "b", word: "boy",     words: ["toy", "joy", "enjoy", "royal", "annoy"],      tip: 'Same sound as oi, /oi/, but oy is the spelling at the END of a word (boy, toy). Ask her: "Is it at the end? Then it\'s oy."' },
+    ai:   { pre: "r", post: "n", word: "rain", words: ["tail", "mail", "paint", "train", "chain"], tip: '/ā/ in the middle of a word (r-ai-n). Its twin ay takes the end (play). Two vowels together — the first one talks.' },
+    ay:   { pre: "pl", word: "play",   words: ["day", "say", "stay", "tray", "away"],         tip: '/ā/ at the END of a word (play, day). If she tries to write "plai", ask where the sound is — at the end it\'s ay.' },
+    ng:   { pre: "ri", word: "ring",   words: ["sing", "long", "king", "song", "bring"],      tip: 'One sound, made in the back of the throat. Have her hold the end of <em>ring</em> and feel the hum — it is not n then g.' },
+    ar:   { pre: "c", word: "car",     words: ["farm", "star", "park", "barn", "dark"],       tip: 'Bossy r again: /ar/ as in <em>car</em>. She may want to read the a as /ă/ — the r right after it is the clue. Say it as a pirate: <em>arrr</em>.' },
+    or:   { pre: "f", post: "k", word: "fork", words: ["corn", "horn", "short", "storm", "north"], tip: '/or/ as in <em>fork</em>. Put an ar word and an or word side by side (barn · horn) so she hears the two bossy-r sounds apart.' },
+    tch:  { pre: "ca", word: "catch",  words: ["match", "patch", "witch", "fetch", "pitch"],  tip: 'Three letters, one sound /ch/, right after a short vowel (ca-tch, wi-tch). After a long vowel or a consonant it is plain ch (reach, bench).' },
+    ou:   { post: "t", word: "out",    words: ["cloud", "found", "shout", "round", "mouth"],  tip: 'Four sounds — /ow/ as in <em>out</em> comes first. Teach the habit: try the first sound; if the word doesn\'t make sense, try the next one.' },
+    ough: { pre: "d", word: "dough",   words: ["tough", "rough", "cough", "bought", "though"], tip: 'The six-sound phonogram. Don\'t drill the list — read each word as a whole, then name which sound ough took in it. Knowing it is ONE piece is the win.' },
+    ea:   { post: "t", word: "eat",    words: ["read", "team", "bread", "great", "leaf"],     tip: 'Three sounds: /ē/ (eat), /ĕ/ (bread), /ā/ (great). Try /ē/ first — it is the most common — then the others if the word doesn\'t make sense.' },
+    oa:   { pre: "b", post: "t", word: "boat", words: ["coat", "road", "soap", "goat", "toast"], tip: '/ō/ as in <em>boat</em>. The o does the talking and the a is silent — "two vowels, the first one talks" works for oa every time.' }
+  };
+  var LU_PHONO_CSS = "\n  .slabel.ph { display:flex; align-items:center; white-space:nowrap; }\n" +
+    "  .ph-sounds { font-family:'Nunito',sans-serif; font-size:11px; font-weight:800; color:var(--lu-mid); margin-left:6px; text-transform:none; letter-spacing:0; min-width:0; overflow:hidden; text-overflow:ellipsis; }\n" +
+    "  .ph-lesson { font-size:8.5px; font-weight:800; color:var(--muted); margin-left:auto; padding-left:6px; flex-shrink:0; }\n" +
+    "  .ph-review { display:flex; align-items:center; gap:4px; flex-wrap:wrap; font-size:11px; font-weight:700; color:var(--ink); margin-top:4px; }\n" +
+    "  .ph-chip { font-size:10px; font-weight:700; color:var(--lu-dark); background:white; border:1.5px solid var(--lu-light); border-radius:6px; padding:0 6px; }\n" +
+    // the card has the same 229px it always had and the review row is new, so the book-driven card runs compact:
+    // smaller display + words, a 26px trace, a 24px writing line, and no draw box (it was already collapsing to 0–4px
+    // on task-heavy days — see the 2026-08-30 note on the closing block).
+    "  .blend-card.ph .blend-part { font-size:24px; padding:3px 10px; }\n" +
+    "  .blend-card.ph .blend-word { font-size:24px; }\n" +
+    "  .blend-card.ph .blend-display { margin:3px 0 4px; }\n" +
+    "  .blend-card.ph .blend-words-label { margin-bottom:4px; }\n" +
+    "  .blend-card.ph .bword { font-size:13px; padding:3px 8px; }\n" +
+    "  .blend-card.ph .blend-words { margin-bottom:4px; gap:5px; }\n" +
+    "  .blend-card.ph .write-prompt { margin-bottom:3px; }\n" +
+    "  .blend-card.ph .write-line { height:24px; }\n";
+  // Pure. loe = [{pg, sounds, lesson}, …] (what the book has taught, any order); dayCount = this week's school days.
+  // Returns blend-shaped entries for each day, or null when there is nothing to plan from (→ the static list).
+  function luPhonoWeek(loe, dayCount) {
+    var taught = (Array.isArray(loe) ? loe : []).filter(function (p) { return p && LU_PHONO[p.pg]; })
+      .sort(function (a, b) { return (a.lesson || 0) - (b.lesson || 0); });
+    var n = taught.length; if (!n) return null;
+    var order = [0, 1, 2, 0, 3], out = [];   // steps back from the newest: Mon newest · Tue · Wed · Thu newest · Fri
+    for (var d = 0; d < (dayCount || 5); d++) {
+      var p = taught[n - 1 - (order[d % order.length] % n)], e = LU_PHONO[p.pg];
+      var others = taught.filter(function (q) { return q.pg !== p.pg; }).map(function (q) { return q.pg; }).slice(-6);
+      out.push({ digraph: p.pg, pre: e.pre || "", part2: e.post || "", word: e.word, words: e.words.slice(),
+                 sounds: p.sounds || "", lesson: p.lesson, newest: p.pg === taught[n - 1].pg, review: others });
+    }
+    return out;
+  }
+  function luPhonoTip(pg) { var e = LU_PHONO[pg]; return e ? e.tip : ""; }
+  // LU_PHONO_END
+
   function generateLucy(ctx) {
     ctx = ctx || {};
     var weekData = ctx.weekData || {};
@@ -4975,7 +5145,8 @@ ${luFooter("Howe Academy · Teaching Companion · Not for Lucy", "Week " + weekN
     var tasks = weekData.tasks || [], dates = weekData.dates || {};
     var DAY_ORDER = ["monday", "tuesday", "wednesday", "thursday", "friday"];
     var days = nbCalendarDays(dates, DAY_ORDER.filter(function (d) { return dates.hasOwnProperty(d); }));   // NBDAYORDER
-    var blends = LUCY_DATA.blends, focus = LUCY_DATA.focus, pace = (ctx.pace && ctx.pace.length) ? ctx.pace : LUCY_DATA.pace;
+    var phono = luPhonoWeek(ctx.loe, days.length);   // LU_PHONO: the book's phonograms, or null → the static list
+    var blends = phono || LUCY_DATA.blends, focus = LUCY_DATA.focus, pace = (ctx.pace && ctx.pace.length) ? ctx.pace : LUCY_DATA.pace;
     var subtraction = luSubWeek(wn, days.length);
     var prevStats = ctx.prevStats || {};   // dashes until the shared history wiring
     var category = LUCY_DATA.category_order[((wn - 1) % LUCY_DATA.category_order.length + LUCY_DATA.category_order.length) % LUCY_DATA.category_order.length];
@@ -5013,9 +5184,9 @@ ${luFooter("Howe Academy · Teaching Companion · Not for Lucy", "Week " + weekN
       if (dolls.outfit) { parts.push(luPageDoll(dolls.outfit, "Outfit — cut me out!")); parts.push(luBlankPage()); }
     }
 
-    var student = luShell(parts.join("\n"), "Lucy's Notebook — Week " + wn);
+    var student = luShell(parts.join("\n"), "Lucy's Notebook — Week " + wn, phono ? LU_PHONO_CSS : "");
     var companion = luPageTeachingCompanion(wn, weekDates, days, tasks, blends, subtraction, ctx.teachNotes || "");
-    var parent = luShell(companion, "Lucy's Parent Companion — Week " + wn);
+    var parent = luShell(companion, "Lucy's Parent Companion — Week " + wn, phono ? LU_PHONO_CSS : "");
     return { student: student, parent: parent };
   }
 
@@ -5467,6 +5638,6 @@ ${luFooter("Howe Academy · Teaching Companion · Not for Lucy", "Week " + weekN
     dgStart: dgStart,                   // Daily Grams: first Day of a week from the stored cursor (Notebook tab card + prefetch)
 
     // exposed for testing
-    _internal: { generateGeneric: generateGeneric, spellNbPages: spellNbPages, juCurriculumFromMastery: juCurriculumFromMastery, generateJulian: generateJulian, generateCaleb: generateCaleb, cbCurriculum: cbCurriculum, dgWeekPlan: dgWeekPlan, nbCalendarDays: nbCalendarDays }
+    _internal: { generateGeneric: generateGeneric, spellNbPages: spellNbPages, juCurriculumFromMastery: juCurriculumFromMastery, generateJulian: generateJulian, generateCaleb: generateCaleb, cbCurriculum: cbCurriculum, dgWeekPlan: dgWeekPlan, nbCalendarDays: nbCalendarDays, generateLucy: generateLucy, luPhonoWeek: luPhonoWeek, LU_PHONO: LU_PHONO }
   };
 })();

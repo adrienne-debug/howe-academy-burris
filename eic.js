@@ -507,11 +507,15 @@ function openNext(k){
   load().then(()=>{
     const n=eicNextSitting(TK(),logs,decs,mom(),iowaLogs);
     if(n&&n.iowa){ iowaStart(n.iowa,{timed:true}); return; }
-    if(n&&eicWorkbook(books(),n.book)){ rememberToday(kid,n.book,n.page); openPage(n.book,n.page); return; }
+    if(n&&eicWorkbook(books(),n.book)){ rememberToday(kid,n.book,n.page); cardPage(n.book,n.page); return; }
     panel(kid);
     toast(n?"That book's PDF isn't linked yet.":"Nothing waiting right now — every page built so far is done.");
   });
 }
+// 🔑 The schedule card's doorway (her yes 2026-10-07): on Mom's device "Open today's page" and "Back to today's page"
+// open his page with the ANSWER KEY beside it + 📊 Score — the same view as the ✅ chip in the panel. A kid's device is
+// unchanged (his page with the rule sheet). A page with no tagged key page opens for Mom as before.
+function cardPage(bk,printed){ if(mom()&&eicKeyPage(TK(),bk,printed)) checkPage(bk,printed); else openPage(bk,printed); }
 // ↩ today's page, so a checked card can reopen it (her ask 2026-09-23)
 function localDate(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function rememberToday(k,bk,printed){ try{ if(typeof db!=="undefined"&&db&&!dry()) db.ref("eic/"+k+"/today").set({date:localDate(),book:bk,page:+printed,ts:Date.now()}); }catch(e){} }
@@ -520,7 +524,7 @@ function reopenToday(k){
   if(typeof db==="undefined"||!db){ toast("Editor in Chief isn't loaded yet."); return; }
   load().then(()=>db.ref("eic/"+kid+"/today").once("value")).then(s=>{
     const t=s&&s.val();
-    if(t&&t.date===localDate()&&t.book&&t.page){ openPage(t.book,t.page); return; }
+    if(t&&t.date===localDate()&&t.book&&t.page){ cardPage(t.book,t.page); return; }
     toast("No Editor in Chief page was opened today."); panel(kid);
   }).catch(()=>toast("Couldn't reach Editor in Chief — try again."));
 }
@@ -529,7 +533,13 @@ function withBook(bk,go){
   const wb=eicWorkbook(books(),bk); if(!wb){ toast("That book's PDF isn't linked yet."); return; }
   if(typeof wbOpen!=="function") return; go(wb);
 }
-function openPage(bk,printed){ withBook(bk,wb=>{
+// ↩ EIC_PANELBACK_START — her ask 2026-10-15: "when I click Editor in Chief and then something to look at, and then I want
+// to go back, it takes me all the way back to headquarters instead of the Editor in Chief menu." A page opened FROM the
+// panel (window.eicOpen / window.eicCheck — the chips) is tagged eic.back; the workbook's ✕ (wbClose) then re-opens the panel
+// for the same kid. The panel closes only on its own ✕. The schedule card's doorway (cardPage via openNext / reopenToday)
+// passes no flag, so from the card back still goes where it always did. Writes nothing.
+// EIC_PANELBACK_END
+function openPage(bk,printed,fromPanel){ withBook(bk,wb=>{
   const skill=eicSkillOf(TK(),bk,printed), pool=skill?eicPool(TK(),skill):[], me=pool.find(p=>p.book===bk&&p.page===+printed);
   const rules=((me&&me.rules)||[]).map(p=>eicPdf(TK(),bk,p));
   const step=eicStepOf(TK(),bk,printed), cover=(step===2||step===3)?eicCover(TK(),bk,printed):[];
@@ -539,12 +549,12 @@ function openPage(bk,printed){ withBook(bk,wb=>{
   if(step===2&&!mom()){ const pr=skill?eicProgress(TK(),logs,decs,skill):null;
     if(!pr||!pr.g1.cleared){ toast("That page is saved for step 2."); return; }
     if(!cover.length){ toast("That page isn't ready yet — ask Mom."); return; } }
-  close(); wbOpen(wb.id,kid,eicPdf(TK(),bk,printed),{rules:rules,cover:cover,eic:{book:bk}});
+  close(); wbOpen(wb.id,kid,eicPdf(TK(),bk,printed),{rules:rules,cover:cover,eic:{book:bk,back:!!fromPanel}});
   const gk=step===3?REV:skill;
   if(gk&&step){ const g=eicGate(logs,decs,gk,step,poolFor(TK(),gk,step)); if(g.round>1) toast("Round "+g.round+" — tap 🧽 Clear to start this page fresh."); } }); }
-function checkPage(bk,printed){ if(!mom()) return; withBook(bk,wb=>{
+function checkPage(bk,printed,fromPanel){ if(!mom()) return; withBook(bk,wb=>{
   const kp=eicKeyPage(TK(),bk,printed);
-  close(); wbOpen(wb.id,kid,eicPdf(TK(),bk,printed),{ans:kp?eicPdf(TK(),bk,kp):0,eic:{book:bk}}); }); }
+  close(); wbOpen(wb.id,kid,eicPdf(TK(),bk,printed),{ans:kp?eicPdf(TK(),bk,kp):0,eic:{book:bk,back:!!fromPanel}}); }); }
 
 // ── Mom's score: found / missed / extra for the page ON SCREEN ─────────────────────────────
 function scoreOpen(){
@@ -711,7 +721,7 @@ function toggleKid(){ if(!mom()) return;
   draw(); }
 
 window.eicReopenToday=reopenToday;
-window.eicPanel=panel; window.eicClose=close; window.eicOpen=openPage; window.eicCheck=checkPage; window.eicOpenNext=openNext; window.eicNextSitting=eicNextSitting;
+window.eicPanel=panel; window.eicClose=close; window.eicOpen=function(bk,printed){ openPage(bk,printed,true); }; window.eicCheck=function(bk,printed){ checkPage(bk,printed,true); }; window.eicOpenNext=openNext; window.eicNextSitting=eicNextSitting;
 window.eicSetKid=k=>{ kid=k; try{HA_LS.setItem("ha_eic_kid",k);}catch(e){} logs={}; decs={}; counts={}; iowaLogs={}; load().then(draw); };
 window.eicToggleAll=()=>{ showAll=!showAll; draw(); }; window.eicNoBook=()=>toast("That book's PDF isn't linked yet.");
 window.eicScoreOpen=scoreOpen; window.eicScorePreview=scorePreview; window.eicScoreClose=scoreClose; window.eicScoreSave=scoreSave;
