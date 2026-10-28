@@ -4444,6 +4444,7 @@ function initFb() {
       const _mastFirst=!_haMastReady;
       try{ if(_mastFirst&&typeof cdMark==="function") cdMark("mastMs"); }catch(eM){}   // ⏱ CDBOOTS
       _haMastReady=true;   // MASTGATE: real data is in — Mastery writes allowed from here on
+      if(_mastFirst&&typeof envMirrorOn==="function") envMirrorOn("boot");   // 🌿 ENVMIRROR: boot catch-up (the named app opens here, after the default one; inert without the config block)
       // NO_MIRROR: there is no local copy any more, so the first arrival repaints whatever is
       // showing (Mastery HQ, Editor-in-Chief cards, drill strips), not just the Mastery tab.
       if(_mastFirst){ try{ renderAllSoon(); }catch(e){} try{ if(typeof stHeal==="function") stHeal(); }catch(e){} }   // 📝 STHEAL: the records are in — the week's test cards can be checked now (live 2026-10-14: the cards arrived first, the heal waited, nothing re-ran it)
@@ -4715,6 +4716,7 @@ function showTab(t,keepMsv){
   if(_kioskK()&&t!=="kids") return;      // 🧒 Kids' Corner link is locked to the Corner
   tab=t;
   if(typeof kcStudyKid!=="undefined") kcStudyKid=null;   // 🧒📚 KC_MASTERY: a tab tap always lands on the page itself
+  try{ if(typeof luLgLeave==="function") luLgLeave(); }catch(e){}   // 📒 LAUNDRY_LEDGER: leaving the page folds the ledger
   if(typeof dcState!=="undefined") dcState=null;   // 📺 DAYCARD: a tab tap closes the board
   mastAddMode=false; mastLogMode=false; mastLogScores={};
   document.querySelectorAll(".nav-tab").forEach(b=>b.classList.toggle("active",(momSchedView&&t==="schedule")?b.dataset.tab==="moms-plan":(b.dataset.tab===t||(t==="supplies"&&b.dataset.tab==="schedule"))));
@@ -5554,6 +5556,7 @@ function showPaceToast(taskId, doneMinOverride, opts){
 
   // Per-kid timing gate: when enabled, only early/within-window completions earn a spin.
   const gate=spinGateFor(t.who);
+  if(typeof sotOffOn==="function"&&sotOffOn(t.who,taskDay)) gate.enabled=false;   // SPINSOFFTODAY: Mom switched on-time spins off for this date → any finished task spins
   const inWindow=diff<=gate.window;
   let cls, msg, canSpin=false, spinType=null;
   if(_once){ cls="on-track"; msg="✅ Done! This card already had its spin."; }   // 🎰 SPINONCE (her rule 2026-10-22): one spin per card, ever
@@ -6492,6 +6495,7 @@ function renderSettings(el,ah){
   pinHtml+=renderFamilyRulesWrap();   // 🏠 all family-wide rules, one home (2026-10-02)
   pinHtml+=renderAIKeyCard();   // ✨ the family's Claude key (recipes from a paste or a photo, book scans, stories)
   pinHtml+=renderTtsVoiceCard();   // 🔊 this device's spelling voice (2026-10-07)
+  if(typeof envMirrorCardHtml==="function") pinHtml+=envMirrorCardHtml();   // 🌿 ENVMIRROR: the Envirothon sign-in card (Mom only; empty without the config block)
   pinHtml+='<div class="rules-wrap">';
   pinHtml+='<div class="rules-hdr">Change PIN</div>';
   pinHtml+='<div class="rules-sub">This PIN is used for Mom mode, Admin, Blockouts, Points, and all locked areas.</div>';
@@ -8955,6 +8959,7 @@ function renderSchedule(el){
   // 👩 the Mom loop — who has her right now. Mom-gated, today only, reports nothing on
   // another day's view where "ready" and "paused" have no meaning.
   if(day===_todayDay){ try{ h+=helpersStripHTML(); }catch(e){} }   // 🙋 "Grandma here?"
+  if(day===_todayDay){ try{ if(typeof sotStripHTML==="function") h+=sotStripHTML(); }catch(e){} }   // SPINSOFFTODAY: 🎰 on-time spins off for today (Mom only)
   if(day===_todayDay){ try{ h+=helperGiveBtnsHTML(); }catch(e){} }   // 🙋 HELPERGIVE: "Give Grandma more today" (Mom mode only)
   try{ h+=helperViewHeadHTML(day); }catch(e){}   // 🙋 "Grandma's list"
   if(day===_todayDay){ try{ if(typeof momTipsScheduleHTML==="function") h+=momTipsScheduleHTML(!!mlStripHTML()); }catch(e){} }   // MOMNEWS: 👋 Mom banners above the strip
@@ -10493,6 +10498,7 @@ function taskCard(t, fromDay, readOnly, doneId){
     mb='<span class="mom-badge maybe-badge">May Need Mom</span>';
   }
   if(t.famBlock) mb='<span class="mom-badge req-badge" style="background:#ede9fe;color:#5b21b6;border-color:#c4b5fd">\u{1F3E1} Family time'+(kid==="mom"?' \u2014 '+(typeof famGroup==="function"?famGroup(t).map(function(x){ return cap(x.who); }).join(", "):klbl):'')+'</span>';
+  { const _fdt=(typeof fdtClockHTML==="function")?fdtClockHTML(t,done,claimedHere,readOnly,!!mb):""; if(_fdt) mb+=_fdt; }   // ⏰ FIXEDDAYTIME: Mom's ⏰ Set time at the end of the badge slot (the ✗ and SETTIME's ⏰ keep their own spot)
   const _coSb=!done&&!claimedHere&&!readOnly&&typeof coSentBack!=="undefined"&&!!coSentBack[srcId];   // ✅ CLOSEOUT
   const hasPending=!readOnly&&(done||claimedHere||_coSb)&&!!pendingSpins[t.id];   // ✅ CLOSEOUT: the spin comes the moment it is sent to Mom
   const _he=histState[srcId];
@@ -11752,6 +11758,7 @@ function renderDadsDay(el){
 }
 
 function renderMomsPlan(el){
+  try{ if(typeof luLgPage==="function") luLgPage(); }catch(e){}   // 📒 LAUNDRY_LEDGER: another page — the ledger folds
   const _mcPop=document.getElementById('mc-pop'), _mcTop=_mcPop?_mcPop.scrollTop:0;   // ✎ Edit pop-up keeps its place
   try{ renderMomsPlanView(el); } finally {
     const _mcNew=document.getElementById('mc-pop'); if(_mcNew&&_mcTop) _mcNew.scrollTop=_mcTop;
@@ -14352,7 +14359,7 @@ function llDadCardHTML(by,bare){ if(!laundryLine||!Object.keys(laundryLine).leng
 function llMyDayLaundryHTML(who){ let h=""; who=who==="dad"?"dad":"mom";
   try{ if(typeof mdCardLaundry==="function") h+=mdCardLaundry(true,true); }catch(e){}
   try{ if(typeof laundryLine!=="undefined"&&laundryLine&&Object.keys(laundryLine).length) h+=llDadCardHTML(who,true); }catch(e){}
-  try{ if(typeof luAwayRowsHTML==="function") h+=luAwayRowsHTML(true); }catch(e){}   // ↩︎ LAUNDRYUNDO: 🧺 Put away today
+  try{ if(typeof luLgHTML==="function") h+=luLgHTML(true); }catch(e){}   // 📒 LAUNDRY_LEDGER: under the laundry card (put-aways listed there)
   return h; }
 // LL_MYDAY_END
 // 🧒 the kid's derived "🧺 Your laundry" card (their Day page, after the 🏡 House card). Only the loads this kid runs that day.
@@ -14765,10 +14772,10 @@ function hhLaundryHTML(){
   if(typeof mdCardLaundry==="function"){ let mc=""; try{ mc=mdCardLaundry(true); }catch(e){}
     h+='<div style="margin-bottom:10px">'+(mc||'<div style="background:#fff;border-radius:12px;box-shadow:0 2px 10px rgba(43,122,120,0.10);padding:11px 14px;font-size:12.5px;color:var(--muted)"><b style="color:#1f2937">🧺 Laundry</b> — nothing in the machines. Start a load from 🏡 My day.</div>')+'</div>'; }
   else h+='<div style="background:#fff;border-radius:12px;box-shadow:0 2px 10px rgba(43,122,120,0.10);padding:9px 12px;margin-bottom:10px"><div style="font-size:12px;font-weight:800">🧺 In the machines now</div>'+(inM.length?inM.map(function(k){ const l=L[k]; return '<div style="font-size:12px;padding:3px 0">'+((typeof lcMeta==="function"&&lcMeta(l))?lcMeta(l)[0]+' ':l.stage==="dryer"?'🌀 ':l.stage==="fold"?'🧺 ':'🫧 ')+esc(l.label||"Load")+' <span style="color:var(--muted)">· '+((typeof lcMeta==="function"&&lcMeta(l))?esc(lcMeta(l)[1]):l.stage==="prewash"?"washer (prewash)":l.stage)+(l.ts?' · since '+esc((typeof laundrySince==="function")?laundrySince(l.ts):""):'')+'</span></div>'; }).join(''):'<div style="font-size:12px;color:var(--muted);padding:3px 0">Nothing running. Start a load from Home Base.</div>')+'</div>';
+  try{ if(typeof luLgHTML==="function") h+=luLgHTML(); }catch(e){}   // 📒 LAUNDRY_LEDGER: under the laundry to-do list, collapsed
   try{ if(typeof llWeekCardHTML==="function"&&typeof laundryLine!=="undefined") h+=llWeekCardHTML(); }catch(e){}   // 📅 the schedule
   try{ h+=llCardHTML(true); }catch(e){}   // 🧺 LAUNDRYLINE: order, caps, every few weeks, one-time
   try{ if(typeof qlCardHTML==="function") h+=qlCardHTML(); }catch(e){}   // ⚡ QUICKLOADS: her quick buttons, edited here
-  try{ if(typeof luAwayRowsHTML==="function") h+=luAwayRowsHTML(); }catch(e){}   // ↩︎ LAUNDRYUNDO: 🧺 Put away today, at the bottom
   return h;
 }
 // HH_LAUNDRY_END
@@ -15338,6 +15345,55 @@ function llKidOutRowHTML(o){ const A=llAll(), em=(o.line&&A[o.line]&&A[o.line].e
 function llLabelTag(id){ return llMemo("T|"+id,function(){ const I=llItems(), x=I[id]; if(!x||!x.label) return ""; const lb=String(x.label).trim(), tw=llOrder().filter(function(k){ return I[k]&&String(I[k].label||"").trim()===lb; }); if(tw.length<2) return "";
   if(llMode()==="home") return " · "+LL_DL[llHome(id)]; const n=tw.indexOf(id)+1; return " · "+n+(n===1?"st":n===2?"nd":n===3?"rd":"th"); }); }   // ⚡ LL_MEMO: once per render, reset by any line edit
 // LAUNDRY_SYNC_END
+// LAUNDRY_LEDGER_START — 📒 the laundry ledger (her words 2026-10-28, from Sara's day: "The laundry undo on the bottom that shows up and
+// doesn't go away she is not liking. I am not liking. Instead we need to go with a ledger. I would put that underneath the laundry to-do
+// list, in the household laundry section, and it be collapsed unless clicked and then naturally go back collapsed if moved away from that
+// page. And that means it could also show up on the My Day part."). Why the bar never went: luPaint drew #lu-wrap fixed on document.body
+// and emptied it only when luLast was null or luValid failed — true only when the load moved again (this device replaced it, another
+// device changed it) or ↩︎ Undo was tapped; no timer, no ✕, no clear on a tab or page change, and #content re-renders never touched it.
+// A put-away load stays put away, so the last tap of the day sat at the bottom until a reload.
+// Now: no bar. luPaint hands every step to luLgNote, which keeps the bar's own records (luLast: did/before/after, or done) on luSteps,
+// this device, memory only, newest first. The ledger fold — "📒 Laundry ledger", collapsed, one tap opens, folds again whenever the page or
+// tab changes (luLgPage in renderMomsPlan, luLgLeave in showTab; luLgOpen / luLgAt in memory only) — sits under the laundry to-do list
+// on Household ▸ Laundry and under the laundry card on Mom's / Dad's 🏡 My day. Its rows, newest first: this device's steps (↩︎ Undo =
+// luUndo on that record, the bar's own path, while luValid still holds), every put-away on any device (luAwayList → ↩︎ Undo = luUnputaway,
+// the old "Put away today" list, which lives here now), every load still out (laundry/<id>: started / the stage it is on; ↩︎ Undo =
+// llUnstart for a line load still on its first step, else laundryBack's own back-a-stage, Mom or Dad), and today's ✓ Done-only line
+// entries (↩︎ Undo = llUndone). Nothing new is written anywhere; every undo is the write path it already was; dry run inert the same way.
+let luSteps=[], luLgOpen=false, luLgAt="";
+const LU_LG_MAX=15;
+function luLgKey(){ return (typeof tab!=="undefined"?String(tab):"")+"|"+(typeof mpSubView!=="undefined"?String(mpSubView):"")+"|"+(typeof hhView!=="undefined"?String(hhView):""); }
+function luLgNote(){ const r=(typeof luLast!=="undefined")?luLast:null;
+  if(r&&luSteps.indexOf(r)<0){ if(!r.by) r.by=(typeof luWho==="function")?luWho():""; luSteps.unshift(r); if(luSteps.length>LU_LG_MAX) luSteps.length=LU_LG_MAX; }
+  try{ const w=(typeof document!=="undefined")?document.getElementById("lu-wrap"):null; if(w) w.innerHTML=""; }catch(e){} }   // nothing ever stays at the bottom
+function luLgToggle(){ luLgOpen=!luLgOpen; luLgAt=luLgKey(); if(typeof _cuRe==="function") _cuRe(); }
+function luLgPage(){ if(luLgOpen&&luLgAt!==luLgKey()) luLgOpen=false; }
+function luLgLeave(){ luLgOpen=false; }
+function luLgUndo(k){ const s=luSteps[k]; if(!s) return false; luLast=s; const ok=luUndo(); const i=luSteps.indexOf(s); if(ok&&i>=0) luSteps.splice(i,1); return ok; }
+function luLgWhen(ms){ if(!ms) return ""; const d=new Date(ms), h=d.getHours(), m=d.getMinutes(), hm=((h%12)||12)+":"+(m<10?"0":"")+m+(h<12?" AM":" PM"), iso=_hhIsoLocal(ms);
+  return iso===llToday()?hm:((typeof LL_DL!=="undefined"&&typeof llDow==="function")?LL_DL[llDow(iso)]+" ":"")+hm; }
+function luLgFirst(l){ return (typeof lcHas==="function"&&lcHas(l))?lcStep(l)===0:(l.stage==="washer"&&!l.wet); }   // still on its first step (a start, not a move)
+// → [{at, words, by, undo, title}] newest first
+function luLgRows(){ const LD=(typeof laundryData!=="undefined"&&laundryData)||{}, t=llToday(), rows=[], cov={}, par=luParentOk();
+  luSteps.forEach(function(s,k){ const v=luValid(s); if(v){ (s.did||[]).forEach(function(x){ cov[x.id]=1; }); if(s.done) cov["done:"+s.done]=1; }
+    rows.push({at:s.at||0,words:s.words||"",by:s.by||"",undo:v?"luLgUndo("+k+")":"",title:"Undo this step"}); });
+  luAwayList().forEach(function(a){ if(cov[a.id]) return; rows.push({at:a.at||0,words:"🧺 "+(a.load.label||"Load")+" — put away",by:a.by||"",undo:par?"luUnputaway('"+_lbQ(a.id)+"')":"",title:"Not put away — back to folded"}); });
+  Object.keys(LD).forEach(function(id){ const l=LD[id]; if(!l||!l.stage||cov[id]) return; const first=luLgFirst(l), lg=l.line&&l.lineDay&&typeof laundryLine!=="undefined"&&laundryLine&&laundryLine.log&&laundryLine.log[l.lineDay]&&laundryLine.log[l.lineDay][l.line];
+    let undo="", title=""; if(first&&lg&&lg.load===id&&par&&typeof llUnstart==="function"){ undo="llUnstart('"+_lbQ(id)+"');_cuRe()"; title="Not started — back in line"; }
+    else if(!first&&typeof laundryBackStage==="function"&&laundryBackStage(l)&&typeof _cuMomOk==="function"&&_cuMomOk()){ undo="laundryBack('"+_lbQ(id)+"')"; title="Back to "+((typeof _cuStageName==="function")?_cuStageName(laundryBackStage(l)):laundryBackStage(l)); }
+    rows.push({at:l.ts||0,words:_luWords([{id:id,before:first?null:l,after:l}]),by:first?(l.by||"mom"):"",undo:undo,title:title}); });
+  const g=(typeof laundryLine!=="undefined"&&laundryLine&&laundryLine.log&&laundryLine.log[t])||{};
+  Object.keys(g).forEach(function(it){ const e=g[it]; if(!e||!e.done||e.load||e.with||cov["done:"+it]) return;
+    rows.push({at:e.at||0,words:"✓ "+((typeof llLabelFull==="function"&&llLabelFull(it))||"Laundry")+" — done today",by:e.by||"",undo:par?"llUndone('"+_lbQ(it)+"')":"",title:"Not done after all"}); });
+  return rows.sort(function(a,b){ return b.at-a.at; }).slice(0,LU_LG_MAX); }
+function luLgRowHTML(r){ return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #f3f4f6;font-size:12px;font-weight:600;flex-wrap:wrap"><span style="flex:1;min-width:0">'+esc(r.words)
+  +' <span style="font-size:10.5px;color:var(--muted);font-weight:500">'+(r.by?'· '+esc(luByName(r.by))+' ':'')+(r.at?'· '+esc(luLgWhen(r.at)):'')+'</span></span>'+(r.undo?_cuBtn(r.undo,"↩︎ Undo","#64748b",r.title||"Undo"):'')+'</div>'; }
+function luLgHTML(bare){ const open=luLgOpen&&luLgAt===luLgKey(); let R=[]; if(open){ try{ R=luLgRows(); }catch(e){ R=[]; } }
+  let h=(bare?'<div data-lulg="1" style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">':'<div data-lulg="1" style="background:#fff;border-radius:12px;box-shadow:0 2px 10px rgba(43,122,120,0.10);padding:8px 12px;margin-bottom:10px">')
+    +'<button onclick="luLgToggle()" title="'+(open?'Fold the ledger':'Open the ledger')+'" style="display:flex;align-items:center;gap:6px;width:100%;border:none;background:none;padding:2px 0;cursor:pointer;font-family:inherit;text-align:left"><span style="font-size:11.5px;font-weight:800;flex:1;color:#1f2937">📒 Laundry ledger</span><span style="font-size:11px;color:var(--muted)">'+(open?'▾':'▸')+'</span></button>';
+  if(open) h+=R.length?R.map(luLgRowHTML).join(''):'<div style="font-size:11.5px;color:var(--muted);padding:4px 0">Nothing yet today.</div>';
+  return h+'</div>'; }
+// LAUNDRY_LEDGER_END
 function laundrySince(ts){
   try{ return new Date(ts).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}); }catch(e){ return ""; }
 }
@@ -16096,6 +16152,7 @@ function luBarHTML(r){ return '<div style="position:fixed;left:50%;transform:tra
   +'<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(r.words)+'</span>'
   +'<button onclick="luUndo()" style="flex-shrink:0;padding:6px 12px;border-radius:8px;border:none;background:#fff;color:#334155;font-size:13px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">↩︎ Undo</button></div>'; }
 function luPaint(){ if(luLast&&!luValid(luLast)) luLast=null;
+  if(typeof luLgNote==="function"){ luLgNote(); return; }   // 📒 LAUNDRY_LEDGER: no bar at the bottom — the step goes on the ledger
   if(typeof document==="undefined"||!document.body) return; let w=document.getElementById("lu-wrap"); if(!w){ w=document.createElement("div"); w.id="lu-wrap"; document.body.appendChild(w); }
   w.innerHTML=luLast?luBarHTML(luLast):""; }
 // ── (2) put away today, on every device ──
@@ -34216,6 +34273,7 @@ function fxSplitDay(tasks,ds,dayName){
       const fw=famWindowOf(t,dayName);
       if(fw){ t.time=fromMin(fw.s); pinned.push({t:t,w:fw,s:{mom:famCardMomLeads(t)?"required":"none"}}); return; }
     }
+    { const _fw=(typeof fdtWinOf==="function")?fdtWinOf(t,ds):null; if(_fw){ t.time=fromMin(_fw.s); pinned.push({t:t,w:_fw,s:{mom:t.mom||"none"}}); return; } }   // ⏰ FIXEDDAYTIME: a card Mom set a time for holds on its date (the kid, Mom if required, its device)
     const w=s?fxWindow(s,ds,dayName):null;
     if(!w){ rest.push(t); return; }
     t.time=fromMin(w.s);                       // pinned at its own clock time, never packed
@@ -36332,6 +36390,304 @@ function frTapGate(t){
   return true;
 }
 // FAMRES_END
+// SPINSOFFTODAY_START — 🎰 on-time spins OFF for one day (her ask 2026-10-28: "a button on the schedule that for that day can
+// turn the on-time spins off. So if the day got started late because of Mom or because of some other unexplained circumstance,
+// I would like to be able to switch it. And it only counts for that day and it goes back to whatever the setting is after
+// that. It shouldn't show up if it's already off in settings, but if it's on, then there needs to be a switch. I think it
+// needs to be an all and a per kid.")
+// The setting it bends: config/spin_gate/<kid> = {enabled, window} — "On-time spins only" in Settings ▸ Slot Machine.
+// enabled ON = a finished task earns a 🎰 spin only when done early or within the window (showPaceToast:
+// !gate.enabled || diff<=gate.window); OFF = every finished task spins. "Off for today" = OFF for ONE date: a late check-off
+// on that date still spins; tomorrow reads the setting again. The day-finish bonus spin was never gated and is untouched.
+// The leaf, in SETTIME_TODAY's shape, next to the setting it bends:
+//   config/spin_gate/<kid>/offByDate/<YYYY-MM-DD> = true
+// The gate reads it for the TASK's date only (sotOffOn(kid, dayName) → that weekday's date in the plan week); any other date
+// reads the normal setting. The config/spin_gate listener already carries the whole node, so the switch shows on every device.
+// Written only when Mom flips it (db && !_dryRun() — ?dryrun=1 flips on screen and writes nothing); back to on-time removes
+// the leaf (null) in the same targeted update; "All" = ONE multi-path update, one leaf per shown kid, never a whole-node set.
+// Shown to Mom only (momHereCards), on TODAY's day view, and only for kids whose setting is ON — a kid already OFF in Settings
+// has no switch; no kid ON → nothing at all. A kid's own view shows just that kid's switch. Settings is untouched
+// (spinGateFor / spinGateToggle / spinGateSetWindow / spinGateSave as before; spinGateSave's set of the node Mom edits there
+// carries offByDate along because spinGate holds the live node).
+function sotIsoOk(iso){ return /^\d{4}-\d{2}-\d{2}$/.test(String(iso||"")); }
+function sotIsoOf(dayName){   // the date a weekday name means in the current week (today → today's own date)
+  try{ if(typeof _todayDay==="string"&&dayName===_todayDay&&typeof _todayStr==="function") return _todayStr(); }catch(e){}
+  try{ if(typeof routineDateISO==="function"){ const r=routineDateISO(dayName); if(r) return r; } }catch(e){}
+  try{ if(typeof calDateForWeekDay==="function") return calDateForWeekDay(dayName)||null; }catch(e){}
+  return null;
+}
+function sotKidsOn(){ return ROSTER.filter(function(k){ return spinGateFor(k).enabled; }); }   // the setting is ON → a switch
+function sotOffAt(kid,iso){ const g=(typeof spinGate!=="undefined"&&spinGate)?spinGate[kid]:null; const o=g&&g.offByDate; return !!(o&&typeof o==="object"&&!Array.isArray(o)&&sotIsoOk(iso)&&o[iso]===true); }
+function sotOffOn(kid,dayName){ const iso=sotIsoOf(dayName); return !!iso&&sotOffAt(kid,iso); }   // read by the gate for the task's date
+function sotShownKids(){ const on=sotKidsOn(); const k=(typeof kid==="string")?kid:"all"; return (k!=="all"&&k!=="mom")?on.filter(function(x){ return x===k; }):on; }
+function sotStripHTML(){
+  if(typeof momHereCards!=="function"||!momHereCards()) return "";
+  if(typeof day!=="string"||typeof _todayDay!=="string"||day!==_todayDay) return "";
+  const kids=sotShownKids(); if(!kids.length) return "";
+  const iso=sotIsoOf(day); if(!sotIsoOk(iso)) return "";
+  const allOff=kids.every(function(k){ return sotOffAt(k,iso); });
+  const chip=function(label,off,click){ return '<button class="sot-chip" onclick="'+click+'" style="border:none;border-radius:14px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap;background:'+(off?'#f59e0b':'#16a34a')+';color:#fff">'+label+'</button>'; };
+  let h='<div class="sot-strip" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 10px;padding:8px 10px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px">';
+  h+='<span style="font-size:12px;font-weight:800;color:#92400e;white-space:nowrap">🎰 On-time spins today</span>';
+  if(kids.length>1) h+=chip(allOff?'All · back to on-time':'All · off today',allOff,'sotToggleAll(\''+iso+'\')');
+  kids.forEach(function(k){ const off=sotOffAt(k,iso); h+=chip(cap(k)+' · '+(off?'off today':'on-time'),off,'sotToggle(\''+k+'\',\''+iso+'\')'); });
+  h+='<span style="font-size:10px;color:var(--muted);flex-basis:100%">Off today = any finished task spins; tomorrow goes back to the setting.</span>';
+  return h+'</div>';
+}
+// ONE targeted update: config/spin_gate/<kid>/offByDate/<iso> = true (off today) or null (back to on-time), per kid asked for.
+function sotSet(kids,iso,off){
+  if(typeof momHere!=="function"||!momHere()||!sotIsoOk(iso)) return false;
+  const ks=(kids||[]).filter(function(k){ return ROSTER.indexOf(k)>=0&&spinGateFor(k).enabled; }); if(!ks.length) return false;
+  const upd={};
+  ks.forEach(function(k){
+    if(!spinGate[k]){ if(typeof spinGateEnsure==="function") spinGateEnsure(k); else spinGate[k]={}; }
+    const o=(spinGate[k].offByDate&&typeof spinGate[k].offByDate==="object")?spinGate[k].offByDate:{};
+    if(off) o[iso]=true; else delete o[iso];
+    spinGate[k].offByDate=o;
+    upd["config/spin_gate/"+k+"/offByDate/"+iso]=off?true:null;
+  });
+  if(db&&!_dryRun()){ try{ db.ref().update(upd); }catch(e){ if(typeof dbg==="function") dbg("spins off today write: "+e); } }
+  try{ if(typeof gwShowToast==="function") gwShowToast(off?("🎰 "+ks.map(cap).join(" & ")+" — any finished task spins today"):("🎰 "+ks.map(cap).join(" & ")+" — back to on-time spins")); }catch(e){}
+  if(typeof renderAll==="function") renderAll();
+  return true;
+}
+function sotToggle(k,iso){ return sotSet([k],iso,!sotOffAt(k,iso)); }
+function sotToggleAll(iso){ const kids=sotShownKids(); if(!kids.length) return false; const allOff=kids.every(function(k){ return sotOffAt(k,iso); }); return sotSet(kids,iso,!allOff); }
+// SPINSOFFTODAY_END
+// FIXEDDAYTIME_START ── ⏰ SET TIME: TODAY AT <time> · <weekday this week> AT <time> (her ask 2026-10-28: "if there is
+// something in the schedule it would be nice if I could click it and say today I need it at this specific time, or I need to
+// send it to this specific time on this specific day this week … it would just need to work for that particular schedule, that
+// particular week, a fixed time … I think that would be pretty easy if we follow that mechanism [Set time just for today]") ──
+// SETTIME_TODAY already moves a Family Time block / a fixed class to a new start for ONE date, and its writer takes ANY date
+// (sttOpen(kind,a,b,iso) — the Month day sheet opens it for other days); only the card's ⏰ was limited to today. So here:
+//   · a Family Time / class card on ANOTHER day this week gets the same ⏰ → sttOpen for THAT day (its own leaf as before:
+//     atByDate/<iso> · fixedTimeByDate/<iso>). Today's card keeps SETTIME_TODAY's ⏰ exactly as it is.
+//   · a kid's OWN lesson/task card (any day this week, Mom lens) gets the ⏰ → this sheet: a day chip (Today, or a weekday of
+//     this week still ahead) and a start time. The card is then FIXED at that time on that date — held like a class in every
+//     lay (fxSplitDay in each packAround re-pack · dsRetime · the living-day lay mlQueueLay, where a Mom-required one holds Mom
+//     there too · the school-end guard seGuardWeek) — and nothing else about it changes; next week lays as normal.
+// The pin lives ON THE CARD, not on the subject: SETTIME's class leaf sits on curriculum/subjects, which every device reads
+// ONCE at boot (db.ref("curriculum").once) — a pin there would not reach the kid's own iPad until it reloaded, and the kid's
+// device is the one that must hold the card where Mom put it. week<N>/tasks is live on every device.
+//   week<N>/tasks/<id>/fixedAt = {date:"YYYY-MM-DD", at:"10:30 AM", was:"<its time before>"}   (removed by Back to normal)
+//   week<N>/tasks/<id>/time    = "10:30 AM"                                                    (what every device shows)
+//   a chosen day that is not the card's own day: week<N>/tasks/<id>/day = <day> and week<N>/momMoves/<id> =
+//     {mode:"push", toDay, fromDays:[], pulledFrom:<its day>, fromTime:<its time>, setTime:true, ts} — MOVETODAY's own
+//     record shape, so effectiveDay, the sweep and the dialog's "↩ Undo move (back to …)" treat it as Mom's move; fromDays stays
+//     EMPTY (a deliberate re-schedule: no day counts it unfinished). The card leaves its old day and lands at the time on the
+//     new one; the kid's other open cards that day slide around it through the existing school-end re-lay (seGuardWeek, this
+//     kid only), its paths folded into the SAME update — nothing else is re-laid.
+// Collisions as SETTIME_TODAY: a class / lunch / a family block the kid is in at that time → one line each, keep its time (work
+// packs around both) or move it that day too (its own leaf, same update). A past time on today → "did you already do it then?"
+// — Yes writes the pin and checks the card off at that time (finalizeDone, ts = the chosen time, as stCheckAt does); No goes
+// back to the picker. Lessons stay in order: a sequenced lesson is refused a day/time that would put it ahead of an earlier
+// open lesson of its subject this week or behind a later one (mvtPlan's rule and wording). Day-bound cards (the notebooks,
+// subjNoCarry) get a time on their own day only. Every write is ONE multi-path db.ref().update through stWrite (db &&
+// !_dryRun(): with ?dryrun=1 the sheet works, memory only). Mom only (momHereCards / momHere); kids never see the ⏰.
+// Names: fdt* (none existed). Hooks (one line each, typeof-guarded): taskCard (fdtClockHTML at the end of the badge slot) ·
+// fxSplitDay (fdtWinOf) · dsRetime ×2, mlQueueLay movable / lunchOf / Mom's _blkIv, seGuardCtx.isClass (fdtHeld) · undoMomMove
+// (fdtOnUndo: the dialog's ↩ drops the pin too).
+const FDT_DN=["monday","tuesday","wednesday","thursday","friday","saturday"];
+function fdtIsoOf(dn){ try{ if(typeof _pushDateStr==="function"){ const d=_pushDateStr(dn); if(d) return d; } }catch(e){} return stDsOf(dn)||null; }   // this plan week's date for a weekday
+function fdtShort(dn){ const s=String(dn||""); return s.charAt(0).toUpperCase()+s.slice(1,3); }
+function fdtPinned(t,ds){ const f=t&&t.fixedAt; if(!f||typeof f!=="object"||!ds||f.date!==ds) return false; const m=toMin(f.at); return m!=null&&!isNaN(m); }
+function fdtHeld(t){ if(!t||!t.fixedAt) return false; return fdtPinned(t,fdtIsoOf(t.day)); }   // pinned on this plan week's date of its own day
+function fdtWinOf(t,ds){ if(!fdtPinned(t,ds)) return null; const s=toMin(t.fixedAt.at); return {s:s,e:s+(t.dur||20)}; }
+function fdtRec(t){ const m=(t&&typeof momMoves!=="undefined"&&momMoves)?momMoves[t.id]:null; return (m&&m.mode==="push"&&m.setTime)?m:null; }   // this sheet's own move record
+function fdtOrig(t){ const r=fdtRec(t); if(r&&r.pulledFrom) return {day:r.pulledFrom,time:r.fromTime||t.time||null}; return {day:t.day,time:(t.fixedAt&&t.fixedAt.was)||t.time||null}; }   // where it was before Mom set a time
+function fdtTask(id){ return ((typeof weekData!=="undefined"&&weekData&&weekData.tasks)||[]).find(function(t){ return t&&t.id===id; })||null; }
+function fdtIsNb(t){ return !!t&&(t.subjectKey==="morning_nb"||t.subjectKey==="closing_nb"||/notebook/i.test(t.title||"")); }
+function fdtDayBound(t){ return fdtIsNb(t)||(typeof subjNoCarry==="function"&&!!subjNoCarry(t)); }
+function fdtKidOff(kid,ds){ try{ if(typeof schedOvKidOff==="function"&&schedOvKidOff(kid,ds)) return true; if(typeof smapIsKidOff==="function"&&smapIsKidOff(kid,ds)) return true; }catch(e){} return false; }
+// The days Mom may pick for a card: this plan week's days from today on (today included) that the kid has school (not off, not
+// a holiday; Saturday only when the week runs it). A day-bound card: its own day only.
+function fdtDays(t){
+  const out=[]; if(!t) return out; const today=stTodayIso();
+  const sat=((typeof weekData!=="undefined"&&weekData&&weekData.tasks)||[]).some(function(x){ return x&&x.day==="saturday"&&!String(x.id||"").endsWith("_c"); });
+  FDT_DN.forEach(function(dn){
+    if(fdtDayBound(t)&&dn!==t.day) return;
+    if(dn==="saturday"&&!sat) return;
+    const iso=fdtIsoOf(dn); if(!iso||iso<today) return;
+    if(fdtKidOff(t.who,iso)) return;
+    out.push({dn:dn,iso:iso,lbl:iso===today?"Today":fdtShort(dn)});
+  });
+  return out;
+}
+// ── the ⏰ on a card (Mom lens, open card) ──
+// "task" → this sheet · "fam" / "fx" → SETTIME_TODAY's sheet for the card's own day (a day that is not today) · "" → nothing
+function fdtKind(t,done,claimedHere,readOnly){
+  if(readOnly||done||claimedHere||!t||typeof momHereCards!=="function"||!momHereCards()) return "";
+  if(typeof dadTapView!=="undefined"&&dadTapView) return "";
+  if(String(t.id||"").endsWith("_c")||t._eowOverflow||t._dayDrop||/lunch/i.test(t.title||"")) return "";
+  const dn=(typeof effectiveDay==="function")?effectiveDay(t):t.day, today=(typeof _todayDay==="string")?_todayDay:"";
+  if(t.famBlock||stClassOf(t)){
+    if(dn===today) return "";   // SETTIME_TODAY's own ⏰ draws there (today only)
+    const iso=fdtIsoOf(dn); if(!iso||iso<stTodayIso()) return "";
+    if(t.famBlock) return famDefs()[t.famBlock]?"fam":"";
+    return "fx";
+  }
+  const mv=(typeof momMoves!=="undefined"&&momMoves)?momMoves[t.id]:null; if(mv&&!fdtRec(t)) return "";   // pushed / dismissed / waived by another button — that button's ↩ first
+  const iso=fdtIsoOf(dn), tIso=stTodayIso();   // a day of this week still ahead (or today) to put it on — a day-bound card: its own day
+  if(fdtDayBound(t)) return (iso&&iso>=tIso)?"task":"";
+  return ((iso&&iso>=tIso)||fdtIsoOf(today)===tIso)?"task":"";
+}
+function fdtClockHTML(t,done,claimedHere,readOnly,hasBadge){
+  const k=fdtKind(t,done,claimedHere,readOnly); if(!k) return "";
+  const dn=(typeof effectiveDay==="function")?effectiveDay(t):t.day;
+  const oc=k==="task"?"fdtOpen('"+stJ(t.id)+"')":k==="fam"?"sttOpen('fam','"+stJ(t.famBlock)+"','','"+stJ(fdtIsoOf(dn))+"')":"sttOpen('fx','"+stJ(t.who)+"','"+stJ(t.subjectKey)+"','"+stJ(fdtIsoOf(dn))+"')";
+  const on=(k==="task"&&!!(fdtHeld(t)||fdtRec(t)));   // a card with a set time shows it
+  return '<span class="fdt-clock" onclick="event.stopPropagation();'+oc+'" title="'+(k==="task"?"Set a time":"Set a time just for this day")+'" style="margin-left:'+(hasBadge?'4px':'auto')+';flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:7px;border:1.5px solid '+(on?'#7c3aed':'#d1d5db')+';background:'+(on?'#ede9fe':'#fff')+';color:'+(on?'#5b21b6':'#6b7280')+';font-size:12px;font-weight:800;cursor:pointer;line-height:1">&#9200;</span>';
+}
+// ── the sheet (a kid's own card) ──
+let fdtState=null;   // {id, kid, iso, dn, time, step:"pick"|"past"|"clash", didIt, clashes:[{key,kind,kid,sk,id,name,s,e,move,time}]}
+function fdtOpen(id){
+  if(!momHere()) return; const t=fdtTask(id); if(!t) return;
+  const days=fdtDays(t); if(!days.length) return;
+  const dn0=(typeof effectiveDay==="function")?effectiveDay(t):t.day;
+  const d=days.find(function(x){ return x.dn===dn0; })||days.find(function(x){ return x.dn===t.day; })||days[0];
+  const m=toMin(t.time);
+  fdtState={id:id,kid:t.who,iso:d.iso,dn:d.dn,time:(m!=null&&!isNaN(m))?fromMin(m):"10:00 AM",step:"pick",didIt:false,clashes:[]};
+  fdtRender();
+}
+function fdtClose(){ fdtState=null; const o=document.getElementById("fdt-ov"); if(o) o.remove(); }
+function fdtPick(dn){ const st=fdtState; if(!st) return; const t=fdtTask(st.id); const d=t?fdtDays(t).find(function(x){ return x.dn===dn; }):null; if(!d) return; st.iso=d.iso; st.dn=d.dn; st.step="pick"; st.didIt=false; st.clashes=[]; fdtRender(); }
+function fdtSetTime(v){ const st=fdtState; if(!st) return; const t=to12h(String(v||"")); if(toMin(t)==null||isNaN(toMin(t))) return; st.time=t; if(st.step==="clash"){ st.step="pick"; st.clashes=[]; fdtRender(); } }   // a new time → the collisions are looked at again
+function fdtClashTime(key,v){ if(!fdtState) return; const c=fdtState.clashes.find(function(x){ return x.key===key; }); if(!c) return; const t=to12h(String(v||"")); if(toMin(t)!=null&&!isNaN(toMin(t))) c.time=t; }
+function fdtClashMove(key,on){ if(!fdtState) return; const c=fdtState.clashes.find(function(x){ return x.key===key; }); if(!c) return; c.move=!!on; fdtRender(); }
+// The new window [m, m+dur] on that date against the kid's fixed classes, lunch (the kid's leaf → all → the rule) and the family
+// blocks the kid is in — stClashes' own lines for a moved class, for this card.
+function fdtClashes(st,m){
+  const t=fdtTask(st.id); if(!t) return [];
+  const kid=t.who, s=m, e=m+(t.dur||20), out=[], seen={};
+  const hit=function(w){ return w&&w.s<e&&w.e>s; };
+  (typeof fxWindowsFor==="function"?fxWindowsFor(kid,st.iso,st.dn):[]).forEach(function(w){
+    const key="fx|"+kid+"|"+w.sk; if(seen[key]||!hit(w)) return; seen[key]=1;
+    out.push({key:key,kind:"fx",kid:kid,sk:w.sk,name:cap(kid)+" — "+String(w.display||w.sk),s:w.s,e:w.e,move:false,time:fromMin(e)});
+  });
+  const lw=stLunchWin(kid,st.iso,st.dn);
+  if(hit(lw)){ seen["lunch"]=1; out.push({key:"lunch",kind:"lunch",kid:"all",name:"everyone — lunch",s:lw.s,e:lw.e,move:false,time:fromMin(e)}); }
+  const defs=famDefs(); Object.keys(defs).forEach(function(id){ const b=defs[id]; if(!b||famList(b.kids).indexOf(kid)<0) return;
+    const L=famLayout(b,st.dn,st.iso); if(!L.length) return; const w={s:L[0].s,e:L[L.length-1].e}; const key="fam|"+id; if(seen[key]||!hit(w)) return; seen[key]=1;
+    out.push({key:key,kind:"fam",id:id,name:FAM_ICON+" "+(b.name||"Family time"),s:w.s,e:w.e,move:false,time:fromMin(e)}); });
+  return out.sort(function(a,b){ return a.s-b.s; });
+}
+// "" when the lesson may go there; else why not (mvtPlan's wording). An earlier open lesson of the subject this week must stay
+// ahead of it (an earlier day, or the same day at an earlier time) and a later one behind it. Unsequenced work: always "".
+function fdtOrderWhy(t,dn,m){
+  try{
+    if(!t||!t.subjectKey||typeof _lessonPos!=="function") return "";
+    const sub=((((typeof currData!=="undefined"&&currData)||{}).subjects||{})[t.who]||{})[t.subjectKey]||{};
+    if(!((sub.lessonIds||[]).length||(sub.lessonSeq||[]).length)) return "";
+    const pos=_lessonPos(t); if(pos<0) return "";
+    const di=FDT_DN.indexOf(dn); if(di<0) return "";
+    const open=function(x){ return !(typeof checked!=="undefined"&&checked&&checked[x.id])&&!(typeof claimed!=="undefined"&&claimed&&claimed[x.id])&&!(typeof _dismissed==="function"&&_dismissed(x)); };
+    const ref=function(x){ return (typeof taskLessonRef==="function"&&taskLessonRef(x))||"the other lesson"; };
+    const tasks=((typeof weekData!=="undefined"&&weekData&&weekData.tasks)||[]);
+    for(const x of tasks){
+      if(!x||x.id===t.id||x.who!==t.who||x.subjectKey!==t.subjectKey||String(x.id||"").endsWith("_c")||x._eowOverflow||!open(x)) continue;
+      const xp=_lessonPos(x); if(xp<0) continue;
+      const xd=(typeof effectiveDay==="function")?effectiveDay(x):x.day, xi=FDT_DN.indexOf(xd); if(xi<0) continue;
+      const xm=toMin(x.time), xOk=(xm!=null&&!isNaN(xm));
+      if(xp<pos&&(xi>di||(xi===di&&xOk&&xm>=m))) return "Move "+ref(x)+" first — lessons stay in order.";
+      if(xp>pos&&(xi<di||(xi===di&&xOk&&xm<=m))) return ref(x)+" is already ahead of it — lessons stay in order.";
+    }
+  }catch(e){}
+  return "";
+}
+// [Move]: the order rule; a past time is a question first; then the collision list; then the one update.
+function fdtMove(){
+  const st=fdtState; if(!st||!momHere()) return; const t=fdtTask(st.id); if(!t){ fdtClose(); return; }
+  const m=toMin(st.time); if(m==null||isNaN(m)) return;
+  const why=fdtOrderWhy(t,st.dn,m); if(why){ if(typeof gwShowToast==="function") gwShowToast(why); return; }
+  if(!st.didIt&&stIsPast(st.iso,m)){ st.step="past"; fdtRender(); return; }
+  if(!st.didIt&&st.step!=="clash"){ const cl=fdtClashes(st,m); if(cl.length){ st.clashes=cl; st.step="clash"; fdtRender(); return; } }
+  fdtCommit(st,m);
+}
+function fdtPastYes(){ if(!fdtState) return; fdtState.didIt=true; fdtState.step="pick"; fdtMove(); }   // the time stands; the card is checked off there
+function fdtPastNo(){ if(!fdtState) return; fdtState.step="pick"; fdtRender(); }
+// The kid's other open cards that day slide around the pinned one — the existing school-end re-lay, this kid only (the pinned
+// card is fixed for it: seGuardCtx.isClass → fdtHeld), its paths folded into the same update. The local copy is saved as
+// momMoveToToday does.
+function fdtRelay(t,upd){
+  let se=null;
+  try{ if(typeof seGuardWeek==="function"&&typeof seGuardCtx==="function"){ se=seGuardWeek(weekData.tasks,seGuardCtx({kids:[t.who],nowMin:(typeof _mlNowMin==="function")?_mlNowMin():stNowMin()})); Object.keys(se.upd||{}).forEach(function(k){ upd[WK+"/tasks/"+k]=se.upd[k]; }); } }catch(e){ dbg("set time re-lay skip: "+e); }
+  sv(WK+"_tasks",weekData.tasks); lastTasksWrite=Date.now();
+  const n=(se&&se.deferred)?se.deferred.length:0, r=(se&&se.rolled)?se.rolled.length:0;   // what the re-lay had to do to make room — said in the toast, never silent
+  return n?" · "+n+" lesson"+(n>1?"s":"")+" rolled to next week to make room":(r?" · "+r+" card"+(r>1?"s":"")+" moved later this week":"");
+}
+// Every path in ONE multi-path update (stWrite), then the ✓ for a time already past, then the day re-lays.
+function fdtCommit(st,m){
+  const t=fdtTask(st.id); if(!t||!momHere()) return;
+  const T=fromMin(m), orig=fdtOrig(t), P=WK+"/tasks/", upd={}, moved=[], rec0=fdtRec(t);
+  t.fixedAt={date:st.iso,at:T,was:orig.time}; upd[P+t.id+"/fixedAt"]=t.fixedAt;
+  t.time=T; upd[P+t.id+"/time"]=T;
+  if(t.day!==st.dn){ t.day=st.dn; upd[P+t.id+"/day"]=st.dn; }
+  if(st.dn!==orig.day){ const rec={mode:"push",toDay:st.dn,fromDays:[],pulledFrom:orig.day,fromTime:orig.time,setTime:true,ts:nowTs()}; momMoves[t.id]=rec; upd[WK+"/momMoves/"+t.id]=rec; sv(WK+"_momMoves",momMoves); }
+  else if(rec0){ delete momMoves[t.id]; upd[WK+"/momMoves/"+t.id]=null; sv(WK+"_momMoves",momMoves); }   // back on its own day: no move record
+  (st.clashes||[]).forEach(function(c){
+    if(!c.move) return; const x=toMin(c.time); if(x==null||isNaN(x)) return;
+    if(c.kind==="fx") upd["curriculum/subjects/"+c.kid+"/"+c.sk+"/fixedTimeByDate/"+st.iso]=fromMin(x);
+    else if(c.kind==="fam") upd["config/rules/familyBlocks/"+c.id+"/atByDate/"+st.iso]=fromMin(x);
+    else if(c.kind==="lunch") upd["config/rules/schoolDay/lunchByDate/"+st.iso+"/all"]={start:fromMin(x),end:fromMin(x+(c.e-c.s))};
+    moved.push(c.name+" → "+fromMin(x));
+  });
+  const room=fdtRelay(t,upd);
+  if(!stWrite(upd)) return;
+  let did=false;
+  if(st.didIt){ try{ did=(finalizeDone(t.id,stTsAt(st.iso,m),null)!==false); }catch(e){ dbg("set time check: "+e); } }
+  fdtClose();
+  if(typeof schedCascade==="function") schedCascade();
+  if(typeof renderAll==="function") renderAll();
+  const when=(st.iso===stTodayIso())?"today":stDateWords(st.iso);
+  let msg="⏰ "+cap(t.who)+" — "+(t.title||"")+" at "+T+" "+when+(st.dn!==orig.day?" (from "+fdtShort(orig.day)+")":"")+(moved.length?" · "+moved.join(" · "):"");
+  if(st.didIt) msg+=did?" · ✓ checked off then":" · not checked off (see the card)";
+  if(typeof gwShowToast==="function") gwShowToast(msg+room);
+}
+// "Back to normal": the pin goes; a card this sheet moved goes back to its own day and time (the move record goes too); a card
+// set on its own day gets its earlier time back. The day then re-lays as any day.
+function fdtClear(){
+  const st=fdtState; if(!st||!momHere()) return; const t=fdtTask(st.id); if(!t){ fdtClose(); return; }
+  const P=WK+"/tasks/", upd={}, rec=fdtRec(t), was=(t.fixedAt&&t.fixedAt.was)||null;
+  delete t.fixedAt; upd[P+t.id+"/fixedAt"]=null;
+  if(rec){ if(rec.pulledFrom&&t.day!==rec.pulledFrom){ t.day=rec.pulledFrom; upd[P+t.id+"/day"]=t.day; } if(rec.fromTime&&t.time!==rec.fromTime){ t.time=rec.fromTime; upd[P+t.id+"/time"]=t.time; } delete momMoves[t.id]; upd[WK+"/momMoves/"+t.id]=null; sv(WK+"_momMoves",momMoves); }
+  else if(was&&was!==t.time){ t.time=was; upd[P+t.id+"/time"]=was; }
+  fdtRelay(t,upd);
+  if(!stWrite(upd)) return;
+  fdtClose(); if(typeof schedCascade==="function") schedCascade(); if(typeof renderAll==="function") renderAll();
+  if(typeof gwShowToast==="function") gwShowToast("⏰ "+cap(t.who)+" — "+(t.title||"")+" back to "+(rec?"its own day":"its usual time"));
+}
+// The dialog's ↩ Undo move (undoMomMove → mvtUndo already put the card back on its day and time): the pin goes with it.
+function fdtOnUndo(id){ const t=fdtTask(id); if(!t||!t.fixedAt) return; delete t.fixedAt; sv(WK+"_tasks",weekData.tasks); if(db&&!_dryRun()){ try{ db.ref(WK+"/tasks/"+id+"/fixedAt").remove(); }catch(e){ dbg("set time undo: "+e); } } }
+function fdtRender(){
+  const st=fdtState; if(!st) return; const t=fdtTask(st.id); if(!t){ fdtClose(); return; }
+  const today=(st.iso===stTodayIso()), when=today?"Today only":stDateWords(st.iso)+" only", m=toMin(st.time), orig=fdtOrig(t), pinned=!!(fdtHeld(t)||fdtRec(t));
+  const btn=function(oc,lbl,bg,fg){ return '<button onclick="'+oc+'" style="padding:9px 13px;border-radius:10px;border:'+(bg?'none':'1.5px solid var(--border)')+';background:'+(bg||'#fff')+';color:'+(fg||'#111')+';font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif;font-size:13px">'+lbl+'</button>'; };
+  let h='<div style="background:#fff;border-radius:18px;max-width:460px;width:100%;padding:18px 18px 14px;box-shadow:0 20px 50px rgba(0,0,0,.25);font-family:\'DM Sans\',sans-serif">';
+  h+='<div style="font-family:\'Fraunces\',serif;font-size:20px;font-weight:800">⏰ '+esc(cap(t.who)+" — "+(t.title||""))+'</div>';
+  h+='<div style="font-size:12px;color:var(--muted);margin:2px 0 10px"><b>'+esc(when)+'</b> · usually '+esc(fdtShort(orig.day)+(orig.time?" "+orig.time:""))+(pinned?' · set: '+esc(fdtShort(t.day)+" "+(t.time||"")):'')+'</div>';
+  if(st.step==="past"){
+    h+='<div style="font-size:14px;font-weight:700;line-height:1.45;margin:6px 0 12px">'+esc(fromMin(m))+' is already past. Did you already do it then?</div>';
+    h+='<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">'+btn("fdtPastNo()","No, pick a later time")+btn("fdtPastYes()","Yes — we did it at "+esc(fromMin(m)),"#16a34a","#fff")+'</div>';
+  } else {
+    const days=fdtDays(t);
+    h+='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:4px 0 10px"><span style="font-size:13px;font-weight:700;margin-right:4px">Day</span>'+days.map(function(d){ return _famChip(d.dn===st.dn,esc(d.lbl),"fdtPick('"+d.dn+"')",true); }).join("")+'</div>';
+    h+='<div style="display:flex;align-items:center;gap:10px;margin:4px 0 10px"><span style="font-size:13px;font-weight:700">Starts at</span><input type="time" id="fdt-time" value="'+esc(ampmTo24(st.time))+'" onchange="fdtSetTime(this.value)" style="padding:7px 9px;border:1.5px solid var(--border);border-radius:9px;font-size:15px;font-family:\'DM Sans\',sans-serif"></div>';
+    if(st.step==="clash"&&st.clashes.length){
+      h+='<div style="font-size:12.5px;font-weight:700;color:#78350f;background:#fef3c7;border-radius:10px;padding:8px 10px;line-height:1.45">At '+esc(fromMin(m))+' this runs into:</div>';
+      st.clashes.forEach(function(c){
+        h+='<div style="padding:8px 0;border-bottom:1px solid #f3f4f6"><div style="font-size:13px;font-weight:800">'+esc(c.name)+' <span style="color:var(--muted);font-weight:600">'+esc(stSpan(c.s,c.e))+'</span></div>';
+        h+='<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:5px">'+_famChip(!c.move,"Keep its time — work packs around both","fdtClashMove('"+stJ(c.key)+"',false)",true)+_famChip(c.move,"Move it "+(today?"today":"this day")+" →","fdtClashMove('"+stJ(c.key)+"',true)",true)
+          +(c.move?'<input type="time" value="'+esc(ampmTo24(c.time))+'" onchange="fdtClashTime(\''+stJ(c.key)+'\',this.value)" style="padding:4px 7px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:\'DM Sans\',sans-serif">':'')+'</div></div>';
+      });
+    }
+    h+='<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;padding-top:12px">'+btn("fdtClose()","Never mind")+(pinned?btn("fdtClear()","Back to normal"):'')+btn("fdtMove()","Move","#7c3aed","#fff")+'</div>';
+  }
+  h+='</div>';
+  let o=document.getElementById("fdt-ov");
+  if(!o){ o=document.createElement("div"); o.id="fdt-ov"; o.style.cssText="position:fixed;inset:0;z-index:9000;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:16px"; o.onclick=function(e){ if(e.target===o) fdtClose(); }; document.body.appendChild(o); }
+  o.innerHTML=h;
+}
+// FIXEDDAYTIME_END
 
 
 // ── WHEN THE DOOR IS OPEN ──
@@ -38437,6 +38793,7 @@ function utsKidHTML(kid,isMom){
     if(ss){ inner+='<div style="font-size:11px;color:#374151;margin-top:5px">Stage '+ss.stage+' \u00B7 '+ss.on+' of '+ss.total+' on the ladder'+(ss.learn?' \u00B7 '+ss.learn+' learning':'')+(ss.ready?' \u00B7 <b style="color:#15803d">\u2713 ready to move up</b>':'')+'</div>';
       if(isMom&&ss.ready&&ss.next&&typeof unitStageMoveUp==="function") inner+='<button onclick="unitStageMoveUp(\''+utsJ(u.id)+'\',\''+utsJ(kid)+'\')" style="margin-top:6px;padding:5px 11px;border-radius:9px;border:1.5px solid #86efac;background:#f0fdf4;color:#15803d;font-size:11px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">\u27A1 Start stage '+ss.next.n+'</button>'; }
     inner+=utsRungChips(utsRungs(kid,u));
+    if(typeof envtKidCardsHtml==="function") inner+=envtKidCardsHtml(u,kid,isMom);   // 📝 ENVTEST: station check-ins (pre / post / 🎓)
     const bits=[]; const ow=utsOwCount(kid,u); const nbDays=utsNbDays(kid,u); const cw=utsClaimsWaiting(kid,u);
     if(ow&&typeof owList==="function"){ const dk=utsDecks(u)[0]; const go=(typeof mhqSetKid==="function"&&typeof mhqOpenDeck==="function"&&dk)?'onclick="mhqSetKid(\''+utsJ(kid)+'\');mhqOpenDeck(\''+utsJ(dk.key)+'\');if(typeof showTab===\'function\')showTab(\'mastery\')" ':''; bits.push('<span '+go+'style="padding:3px 9px;border-radius:9px;background:#ede9fe;color:#5b21b6;font-size:10.5px;font-weight:800;'+(go?'cursor:pointer':'')+'">\u{1F4DD} Our words '+ow+'</span>'); }
     bits.push('<span style="padding:3px 9px;border-radius:9px;background:'+(u.nbInsert!==false?'#f0fdf4':'#f3f4f6')+';color:'+(u.nbInsert!==false?'#15803d':'#9ca3af')+';font-size:10.5px;font-weight:700">\u{1F4D3} notebook '+(u.nbInsert!==false?'on':'off')+(nbDays.length?' \u00B7 '+utsEsc(nbDays.join(", ")):'')+'</span>');
@@ -38495,7 +38852,7 @@ function utsFamilyHTML(isMom){
   if(shared.length){
     h+='<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:14px 0 6px">Shared units \u00B7 by kid</div>';
     shared.forEach(u=>{ let inner='<div onclick="openUnit(\''+utsJ(u.id)+'\')" style="font-size:13px;font-weight:800;color:#1f2937;cursor:pointer">'+(u.emoji||"\u{1F4D8}")+' '+utsEsc(u.title||u.id)+'</div>';
-      utsRoster().filter(k=>(u.enrolled||{})[k]).forEach(k=>{ inner+='<div style="display:flex;align-items:center;gap:8px;margin-top:5px"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+utsColor(k)+'"></span><span style="font-size:11.5px;font-weight:700;color:#374151;min-width:60px">'+utsEsc(utsCap(k))+'</span><div style="flex:1">'+utsRungChips(utsRungs(k,u)).replace('margin-top:5px','margin-top:0')+'</div></div>'; });
+      utsRoster().filter(k=>(u.enrolled||{})[k]).forEach(k=>{ inner+='<div style="display:flex;align-items:center;gap:8px;margin-top:5px"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+utsColor(k)+'"></span><span style="font-size:11.5px;font-weight:700;color:#374151;min-width:60px">'+utsEsc(utsCap(k))+'</span><div style="flex:1">'+utsRungChips(utsRungs(k,u)).replace('margin-top:5px','margin-top:0')+((typeof envtLineHtml==="function")?envtLineHtml(u,k):"")+'</div></div>'; });   // 📝 ENVTEST: the scores line
       h+=card(inner); }); }
   return h;
 }
@@ -44891,6 +45248,7 @@ function envHydrate(u,lib){
   (u.decks||[]).forEach(d=>{ if(!d||!d.key||!by[d.key]) return;
     const edits=(d.cards&&typeof d.cards==="object")?d.cards:null;
     d.cards=by[d.key].map((c,i)=>{ const o=edits?edits[i]:null; return (o&&typeof o==="object"&&(!o.name||o.name===c.name))?Object.assign({},c,o):c; }); });
+  if(typeof envPicsOn==="function") envPicsOn(u);   // ⚡ ENVIDFLASH: the ID decks' pictures, in memory, from envirothon/pics/index.json
   return true;
 }
 // Called when unitStudies arrives (and after 📚 Add): hydrate every code-held unit, loading envirothon.js first if needed.
@@ -44932,6 +45290,193 @@ function envEnrollSession(u,kid){
   return rec;
 }
 // ENVUNIT_END
+// ENVTEST_START — 📝 STATION CHECK-INS: pre-test → cards → post-test → 🎓 graduated (her words 2026-10-27: "having a pre-test on
+// the area that's about to be studied, and then the same test or another test in that same category after they have finished
+// learning those cards, and then maybe if it gets to the graduated point"). PR 2 of the Envirothon plan (PLAN_envirothon §2;
+// DESIGN_envirothon_console §DECISIONS: "Sending out a station first gives the kid a pre-test (baseline). Cards open after it.
+// When every deck in the station is mastered the post-test unlocks; both scores sit side by side; a passed post-test =
+// graduated on the kid's screen").
+//   · The QUESTIONS live in envirothon.js (HoweEnvirothon.tests, compiled from envirothon/nc_envirothon_tests.json by
+//     build_envirothon_js.py) — never here. Pre-test = the real 2026 Area 8 middle-school test for the station; post-test = the
+//     2022 Area 8 MS test (Current Issues: the 2026 form again — "the same test"). Items that need a picture are left out until
+//     ENVPICS (envirothon/TESTS.md lists them); a form keeps whatever remains, so n is 13–20.
+//   · A station = the ENV_DECKS station id (forestry · soils · aquatics · wildlife · cei; Firebase-safe, unlike the stage label
+//     "Soils/Land Use"); its decks are the ENV_DECKS rows with that station, its label the stage's label.
+//   · Pre-test OPEN: the kid is enrolled in the unit, any deck of the station is released (cat_hold cleared — PR 3's send-out),
+//     and no pre record yet. Taken once: mastery/<kid>_tests/<station>/pre = {form,date,n,right,secs,answers,ts}. No retake.
+//   · Post-test OPEN: every deck of the station mastered (mastDeckMastery — the heat map's "% mastered (n/total at monthly+)"
+//     rule — over the kid's cards in that deck, equal to the deck's card count) OR Mom opened it early (momHere(), the Units
+//     page's Mom gate → mastery/<kid>_tests/<station>/postOpen = {date,ts}). Each sitting: one multi-path update on
+//     mastery/<kid>_tests/<station>: post/t<ts> = the attempt, post/best when it beats the best, graduated = {date,right,n} the
+//     first time right ≥ 80 % (16 of 20; a shorter form rounds up). A retake waits 24 h; a graduated station shows 🎓 and closes.
+//   · The test: one question at a time, big touch targets, choices in the form's order with A–E letters (a 5-choice item says
+//     "both a and b"), no feedback per item, a running count, time counting up (the contest allows 25 min; nothing cuts off),
+//     ← Back inside the test, Quit keeps nothing. "Select all that apply" items are right only when exactly the keyed set is picked.
+//   · Shown: the kid's Units tab card and the unit's page — per station "Pre 13/20 · Post 17/20 🎓 Graduated" and the open test
+//     as a card ("📝 Soils/Land Use check-in · 20 questions"); the same card tops the kid's 🌿 session start; the Family tab's
+//     shared-units row gets the one line. Nothing speaks, no confetti.
+//   · Dry run: the test runs and scores, nothing is written, the result says so. No kid's name here — the kid comes from the
+//     caller (the Units tab, the study screen), so the Envirothon edition runs this block for a whole class unchanged.
+const ENVT_PASS_NUM=4, ENVT_PASS_DEN=5;   // 80 %
+const ENVT_RETAKE_MS=24*60*60*1000;
+function envtEsc(v){ return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function envtJ(s){ return String(s==null?"":s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;"); }
+function envtLib(){ return ((typeof window!=="undefined")&&window.HoweEnvirothon&&window.HoweEnvirothon.tests)||null; }
+function envtIsUnit(u){ return !!(u&&(u.starter===ENV_UNIT_ID||u.id===ENV_UNIT_ID)); }
+function envtEnrolled(u,kid){ return !!(envtIsUnit(u)&&kid&&u.enrolled&&u.enrolled[kid]); }
+// the stations with a form, in the club's order (ENV_DECKS order), each with its decks {key,n} and the stage's label
+function envtStations(){ const T=envtLib(); if(!T) return []; const out=[], seen={};
+  ENV_DECKS.forEach(d=>{ const s=d[3]; if(seen[s]||!T[s]) return; seen[s]=1; const st=ENV_STAGES.find(x=>x[0]===d[2]);
+    out.push({ id:s, label:(st&&st[1])||T[s].label||s, emoji:T[s].emoji||"", decks:ENV_DECKS.filter(x=>x[3]===s).map(x=>({key:x[0],n:x[5]})) }); });
+  return out; }
+function envtStation(id){ return envtStations().find(s=>s.id===id)||null; }
+function envtForm(station,which){ const T=envtLib(); const f=T&&T[station]&&T[station][which]; return (f&&Array.isArray(f.items)&&f.items.length)?f:null; }
+function envtPassAt(n){ return Math.ceil(n*ENVT_PASS_NUM/ENVT_PASS_DEN); }
+function envtRec(kid,station){ const t=masteryData[kid+"_tests"]; return (t&&t[station]&&typeof t[station]==="object")?t[station]:{}; }
+function envtAttempts(rec){ const p=(rec&&rec.post)||{}; return Object.keys(p).filter(k=>k!=="best"&&p[k]&&typeof p[k]==="object").map(k=>p[k]).sort((a,b)=>(a.ts||0)-(b.ts||0)); }
+// released = a deck of the station with no cat_hold. Without a hold map at all (the kid's data not here yet, or every hold
+// cleared and the empty node gone) a station counts as released only when the kid already holds one of its cards.
+function envtReleased(kid,station){ const st=envtStation(station); if(!st) return false; const hold=(masteryData[kid+"_settings"]||{}).cat_hold;
+  if(!hold||typeof hold!=="object"){ let items=masteryData[kid]||[]; if(!Array.isArray(items)) items=Object.values(items); return st.decks.some(d=>items.some(i=>i&&i.subject===d.key)); }
+  return st.decks.some(d=>!hold[d.key]); }
+// a deck is mastered when every one of its cards is on this kid's ladder at the mastery tier (the heat map's rule, mastDeckMastery)
+function envtDeckMastered(kid,deck){ let items=masteryData[kid]||[]; if(!Array.isArray(items)) items=Object.values(items);
+  const mine=items.filter(i=>i&&i.subject===deck.key&&!i.twinOf&&i.dir!=="prod");
+  const m=(typeof mastDeckMastery==="function")?mastDeckMastery(mine):{mastered:0}; return deck.n>0&&m.mastered>=deck.n; }
+function envtAllMastered(kid,station){ const st=envtStation(station); return !!st&&st.decks.length>0&&st.decks.every(d=>envtDeckMastered(kid,d)); }
+// {pre:{open,rec}, post:{open,why,best,last,attempts}, graduated, line}
+function envtStatus(u,kid,station){
+  const st=envtStation(station); if(!st||!envtEnrolled(u,kid)) return null;
+  const rec=envtRec(kid,station), pre=envtForm(station,"pre"), post=envtForm(station,"post");
+  const out={ station:st, rec, pre:{open:false,rec:rec.pre||null,n:pre?pre.items.length:0}, post:{open:false,why:"",best:(rec.post&&rec.post.best)||null,attempts:envtAttempts(rec),n:post?post.items.length:0}, graduated:rec.graduated||null, line:"" };
+  out.pre.open=!!(pre&&!rec.pre&&envtReleased(kid,station));
+  if(post&&!out.graduated){
+    const last=out.post.attempts.length?out.post.attempts[out.post.attempts.length-1]:null;
+    if(!(rec.postOpen||envtAllMastered(kid,station))) out.post.why="cards";
+    else if(last&&last.ts&&Date.now()-last.ts<ENVT_RETAKE_MS) out.post.why="wait";
+    else out.post.open=true;
+  }
+  const parts=[]; if(rec.pre) parts.push("Pre "+rec.pre.right+"/"+rec.pre.n);
+  if(out.post.best) parts.push("Post "+out.post.best.right+"/"+out.post.best.n); else if(rec.pre) parts.push("Post \u2014");
+  if(out.graduated) parts.push("\u{1F393} Graduated");
+  out.line=parts.join(" \u00B7 ");
+  return out;
+}
+// one line for a kid across the stations ("Forestry: Pre 13/20 · Post 17/20 🎓") — the Family tab's shared-units row
+function envtLineHtml(u,kid){ if(!envtEnrolled(u,kid)) return "";
+  const bits=envtStations().map(s=>{ const st=envtStatus(u,kid,s.id); return (st&&st.line)?'<span style="white-space:nowrap">'+envtEsc(s.label)+': '+envtEsc(st.line)+'</span>':""; }).filter(Boolean);
+  return bits.length?'<div style="font-size:10.5px;color:#0d9488;font-weight:700;line-height:1.5;margin-top:3px">\u{1F4DD} '+bits.join(' <span style="color:var(--muted)">\u00B7</span> ')+'</div>':""; }
+const ENVT_BTN='min-height:48px;padding:0 16px;border-radius:12px;border:none;background:#2d6a4f;color:#fff;font-size:14px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif';
+function envtStartCardHtml(kid,st,which){ const f=envtForm(st.station.id,which); if(!f) return "";
+  const kind=which==="pre"?"check-in":"final";
+  return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#f0fdf4;border:2px solid #86efac;border-radius:14px;padding:10px 12px;margin-top:8px">'
+    +'<div style="flex:1;min-width:160px"><div style="font-size:14px;font-weight:800;color:#14532d">\u{1F4DD} '+envtEsc(st.station.label)+' '+kind+'</div><div style="font-size:11.5px;color:#166534;font-weight:600">'+f.items.length+' questions \u00B7 '+(which==="pre"?"before the cards \u2014 just do your best":"every card mastered \u2014 show what you know")+'</div></div>'
+    +'<button onclick="envtOpen(\''+envtJ(kid)+'\',\''+envtJ(st.station.id)+'\',\''+which+'\')" style="'+ENVT_BTN+'">Start</button></div>'; }
+// the per-station block under the unit for one kid: scores line, 🎓, the open test as a card, Mom's early open
+function envtKidCardsHtml(u,kid,isMom){ if(!envtEnrolled(u,kid)) return ""; const S=envtStations(); if(!S.length) return "";
+  let h='<div style="margin-top:8px;border-top:1px solid #f3f1ee;padding-top:6px">';
+  S.forEach(s=>{ const st=envtStatus(u,kid,s.id); if(!st) return;
+    h+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;padding:3px 0"><span style="font-weight:800;color:#1f2937">'+envtEsc(s.emoji)+' '+envtEsc(s.label)+(st.graduated?' \u{1F393}':'')+'</span>';
+    h+=st.line?'<span style="color:#0d9488;font-weight:700">'+envtEsc(st.line)+'</span>':'<span style="color:var(--muted)">'+(st.pre.open?'check-in ready':(st.rec.pre?'':'not sent out yet'))+'</span>';
+    if(!st.post.open&&!st.graduated&&st.post.why==="wait") h+='<span style="color:#b45309;font-weight:700">final again tomorrow</span>';
+    if(isMom&&!st.post.open&&!st.graduated&&st.post.why==="cards"&&envtForm(s.id,"post")) h+='<button onclick="envtMomOpen(\''+envtJ(kid)+'\',\''+envtJ(s.id)+'\')" style="margin-left:auto;padding:4px 10px;border-radius:9px;border:1.5px solid var(--border);background:#fff;color:#1f2937;font-size:10.5px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">\u{1F513} Open the final early</button>';
+    h+='</div>';
+    if(st.pre.open) h+=envtStartCardHtml(kid,st,"pre");
+    else if(st.post.open) h+=envtStartCardHtml(kid,st,"post"); });
+  return h+'</div>'; }
+// the unit's own page: one block per enrolled kid
+function envtDetailHtml(u,kids,isMom){ if(!envtIsUnit(u)||!envtLib()) return ""; let h="";
+  (kids||[]).forEach(k=>{ const inner=envtKidCardsHtml(u,k,isMom); if(!inner) return;
+    h+='<div style="background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px"><div style="font-size:12px;font-weight:800;color:#1f2937">\u{1F4DD} '+envtEsc((typeof cap==="function")?cap(k):k)+'\u2019s station check-ins</div>'+inner+'</div>'; });
+  return h; }
+// the top of the kid's 🌿 session start: the open check-in / final, if any
+function envtStartHtml(kid,session){ if(!kid||!session||session.sid!==ENV_SESSION_SID) return "";
+  const us=(typeof unitStudies!=="undefined"&&unitStudies)||{}; const u=Object.keys(us).map(k=>us[k]).find(x=>envtIsUnit(x)); if(!u||!envtEnrolled(u,kid)) return "";
+  let h=""; envtStations().forEach(s=>{ const st=envtStatus(u,kid,s.id); if(!st) return; if(st.pre.open) h+=envtStartCardHtml(kid,st,"pre"); else if(st.post.open) h+=envtStartCardHtml(kid,st,"post"); });
+  return h?'<div style="margin-bottom:14px">'+h+'</div>':""; }
+function envtLive(){ return typeof db!=="undefined"&&db&&!(typeof _dryRun==="function"&&_dryRun()); }
+function envtToday(){ return (typeof _todayStr==="function")?_todayStr():new Date().toISOString().slice(0,10); }
+function envtMomOpen(kid,station){ if(!(typeof momHere==="function"&&momHere())||!kid||!envtStation(station)) return;
+  const rec={date:envtToday(),ts:Date.now()};
+  let T=masteryData[kid+"_tests"]; if(!T||typeof T!=="object") T=masteryData[kid+"_tests"]={}; T[station]=Object.assign({},T[station]||{},{postOpen:rec});
+  if(envtLive()) db.ref("mastery/"+kid+"_tests/"+station+"/postOpen").set(rec);
+  envtAfter(); }
+// ── the test itself (a full-screen layer; the state lives here only until Finish or Quit) ──
+let envtState=null, envtTick=null;
+function envtOpen(kid,station,which){
+  const us=(typeof unitStudies!=="undefined"&&unitStudies)||{}; const u=Object.keys(us).map(k=>us[k]).find(x=>envtIsUnit(x));
+  const st=u?envtStatus(u,kid,station):null; if(!st||!(which==="pre"?st.pre.open:st.post.open)) return false;
+  const f=envtForm(station,which); if(!f) return false;
+  envtState={kid,station,which,form:f,i:0,answers:f.items.map(()=>null),started:Date.now(),done:null};
+  envtRe(); if(typeof setInterval==="function"){ if(envtTick) clearInterval(envtTick); envtTick=setInterval(envtTimer,1000); }
+  return true; }
+function envtSecs(){ return envtState?Math.max(0,Math.round((Date.now()-envtState.started)/1000)):0; }
+function envtClock(s){ return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); }
+function envtTimer(){ if(!envtState||envtState.done){ if(envtTick){ clearInterval(envtTick); envtTick=null; } return; } try{ const el=document.getElementById("envt-timer"); if(el) el.textContent=envtClock(envtSecs()); }catch(e){} }
+function envtMulti(it){ return Array.isArray(it.ans); }
+function envtPick(i){ const S=envtState; if(!S||S.done) return; const it=S.form.items[S.i]; if(i<0||i>=it.choices.length) return;
+  if(envtMulti(it)){ const cur=Array.isArray(S.answers[S.i])?S.answers[S.i].slice():[]; const k=cur.indexOf(i); if(k<0) cur.push(i); else cur.splice(k,1); S.answers[S.i]=cur.length?cur.sort((a,b)=>a-b):null; }
+  else S.answers[S.i]=i;
+  envtRe(); }
+function envtBack(){ const S=envtState; if(!S||S.done||S.i<=0) return; S.i--; envtRe(); }
+function envtNext(){ const S=envtState; if(!S||S.done||S.answers[S.i]==null) return; if(S.i+1>=S.form.items.length){ envtFinish(); return; } S.i++; envtRe(); }
+function envtQuit(){ if(!envtState) return; if(!envtState.done&&typeof confirm==="function"&&!confirm("Stop the test? Nothing is kept \u2014 you start over next time.")) return; envtClose(); }
+// right = the keyed choice, or exactly the keyed set on a select-all item
+function envtScore(form,answers){ let right=0; const out=[];
+  form.items.forEach((it,i)=>{ const a=answers[i]; out.push(a==null?-1:a);
+    if(envtMulti(it)){ if(Array.isArray(a)&&a.length===it.ans.length&&a.every((x,k)=>x===it.ans[k])) right++; }
+    else if(a===it.ans) right++; });
+  const n=form.items.length; return {right,n,pass:right>=envtPassAt(n),answers:out}; }
+function envtFinish(){ const S=envtState; if(!S||S.done) return;
+  const sc=envtScore(S.form,S.answers), now=Date.now();
+  const rec={form:S.form.form,date:envtToday(),n:sc.n,right:sc.right,secs:envtSecs(),answers:sc.answers,ts:now};
+  let T=masteryData[S.kid+"_tests"]; if(!T||typeof T!=="object") T=masteryData[S.kid+"_tests"]={}; const R=T[S.station]=Object.assign({},T[S.station]||{});
+  const base="mastery/"+S.kid+"_tests/"+S.station; let grad=false;
+  if(S.which==="pre"){ R.pre=rec; if(envtLive()) db.ref(base+"/pre").set(rec); }
+  else {
+    const key="t"+now, post=Object.assign({},R.post||{}); post[key]=rec; const up={}; up["post/"+key]=rec;
+    const best=post.best; if(!best||rec.right>best.right||(rec.right===best.right&&rec.secs<best.secs)){ post.best=rec; up["post/best"]=rec; }
+    R.post=post;
+    if(sc.pass&&!R.graduated){ R.graduated={date:rec.date,right:rec.right,n:rec.n}; up.graduated=R.graduated; grad=true; }
+    if(envtLive()) db.ref(base).update(up);
+  }
+  S.done={right:sc.right,n:sc.n,pass:sc.pass,grad,saved:envtLive()};
+  if(envtTick){ clearInterval(envtTick); envtTick=null; }
+  envtRe(); }
+function envtClose(){ envtState=null; if(envtTick){ clearInterval(envtTick); envtTick=null; }
+  try{ const el=document.getElementById("envtest-ov"); if(el&&el.parentNode) el.parentNode.removeChild(el); }catch(e){}
+  envtAfter(); }
+function envtAfter(){ try{ if(typeof renderAll==="function") renderAll(); else { const c=document.getElementById("content"); if(c&&typeof renderUnits==="function"&&typeof tab!=="undefined"&&tab==="units") renderUnits(c); } }catch(e){} }
+function envtRe(){ if(typeof document==="undefined") return; let el=document.getElementById("envtest-ov");
+  if(!envtState){ if(el&&el.parentNode) el.parentNode.removeChild(el); return; }
+  if(!el){ el=document.createElement("div"); el.id="envtest-ov"; el.style.cssText="position:fixed;inset:0;z-index:450;background:#faf8f5;overflow-y:auto;-webkit-overflow-scrolling:touch"; document.body.appendChild(el); }
+  el.innerHTML=envtHtml(); try{ el.scrollTop=0; }catch(e){} }
+function envtHtml(){ const S=envtState; if(!S) return ""; const st=envtStation(S.station)||{label:S.station}; const kind=S.which==="pre"?"check-in":"final";
+  let h='<div style="max-width:560px;margin:0 auto;padding:16px 16px 60px;font-family:\'DM Sans\',sans-serif">';
+  h+='<div style="display:flex;align-items:center;gap:10px;justify-content:space-between"><div style="font-size:16px;font-weight:800;color:#14532d">\u{1F4DD} '+envtEsc(st.label)+' '+kind+'</div>';
+  h+='<button onclick="envtQuit()" style="border:none;background:none;color:var(--muted);font-size:13px;font-weight:700;cursor:pointer;padding:6px">'+(S.done?"Close":"Quit")+'</button></div>';
+  if(S.done){
+    const d=S.done; let msg;
+    if(S.which==="pre") msg="now the cards.";
+    else if(d.grad) msg="\u{1F393} Graduated!"; else if(d.pass) msg="\u{1F393} passed again."; else msg="not yet. The cards keep going \u2014 try again tomorrow.";
+    h+='<div style="background:#fff;border:2px solid '+(d.pass&&S.which!=="pre"?'#86efac':'#fed7aa')+';border-radius:20px;padding:28px 20px;margin-top:40px;text-align:center">';
+    h+='<div style="font-size:34px;font-weight:800;color:#1f2937">'+d.right+' of '+d.n+'</div><div style="font-size:17px;font-weight:800;color:#14532d;margin-top:6px">'+msg+'</div>';
+    h+='<div style="font-size:12px;color:var(--muted);margin-top:10px">'+envtClock(envtSecs())+(S.which==="post"?' \u00B7 pass is '+envtPassAt(d.n)+' of '+d.n:'')+'</div>';
+    if(!d.saved) h+='<div style="margin-top:10px;font-size:12px;font-weight:800;color:#b45309">Dry run \u2014 nothing saved.</div>';
+    h+='<button onclick="envtClose()" style="'+ENVT_BTN+';margin-top:18px;padding:0 32px">Done</button></div>';
+    return h+'</div>'; }
+  const it=S.form.items[S.i], n=S.form.items.length, a=S.answers[S.i], multi=envtMulti(it);
+  h+='<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);font-weight:700;margin:8px 0 4px"><span>'+(S.i+1)+' of '+n+'</span><span id="envt-timer">'+envtClock(envtSecs())+'</span></div>';
+  h+='<div style="height:6px;border-radius:3px;background:#e5e0d8;overflow:hidden"><div style="height:100%;width:'+Math.round(S.i/n*100)+'%;background:#2d6a4f"></div></div>';
+  h+='<div style="font-size:17px;font-weight:700;color:#1f2937;line-height:1.45;margin:18px 0 12px">'+envtEsc(it.q)+'</div>';
+  if(multi) h+='<div style="font-size:12px;color:#b45309;font-weight:800;margin-bottom:8px">Pick every answer that fits, then Next.</div>';
+  it.choices.forEach((c,i)=>{ const on=multi?(Array.isArray(a)&&a.indexOf(i)>=0):(a===i);
+    h+='<button onclick="envtPick('+i+')" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;min-height:56px;padding:12px 14px;margin:6px 0;border-radius:14px;border:2px solid '+(on?'#2d6a4f':'#e5e0d8')+';background:'+(on?'#f0fdf4':'#fff')+';color:#1f2937;font-size:16px;font-weight:600;line-height:1.35;cursor:pointer;font-family:\'DM Sans\',sans-serif"><span style="flex-shrink:0;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;background:'+(on?'#2d6a4f':'#f3f4f6')+';color:'+(on?'#fff':'#6b7280')+'">'+"ABCDE"[i]+'</span><span>'+envtEsc(c)+'</span></button>'; });
+  h+='<div style="display:flex;gap:10px;margin-top:16px">';
+  h+='<button onclick="envtBack()" '+(S.i===0?'disabled':'')+' style="min-height:48px;padding:0 18px;border-radius:12px;border:1.5px solid var(--border);background:#fff;color:'+(S.i===0?'#c4c0b8':'#1f2937')+';font-size:14px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">\u2190 Back</button>';
+  h+='<button onclick="envtNext()" '+(a==null?'disabled':'')+' style="flex:1;'+ENVT_BTN+(a==null?';opacity:.45;cursor:default':'')+'">'+(S.i+1>=n?"Finish":"Next \u2192")+'</button></div>';
+  return h+'</div>'; }
+// ENVTEST_END
 // Staged units enroll per kid (start stage, what they already know, book link — UNIT_STAGES below);
 // the plain enroll (which would start EVERY kid at card 1) stays closed for them.
 function _unitStagedEnrollPending(u){ return !!(u&&u.stages); }
@@ -45089,6 +45634,7 @@ function unitStageEnroll(){
   const w=_ustApply(u,f.kid,f.stage,f.knows,f.subject,f.map); if(!w) return;
   const rec={stage:f.stage,knows:f.knows||"",subject:f.subject||"",map:(w.gate?f.map:"")||"",ts:Date.now()};
   _ustWrite(f.unitId,f.kid,w,rec); if(typeof envEnrollSession==="function") envEnrollSession(u,f.kid);   // 🌿 ENVUNIT: his own session, once
+  if(typeof envMirrorOn==="function") envMirrorOn("enroll");   // 🌿 ENVMIRROR: enrolled → the first summary
   _ustDone(f.unitId,f.kid,rec);
 }
 // Where a kid stands in their current stage: total / on the ladder / learning, and the family they're on.
@@ -45239,6 +45785,7 @@ function renderUnitDetail(u){
     h+='</div>';
   }
   const enrolledKids=roster.filter(k=>(u.enrolled||{})[k]);
+  if(typeof envtDetailHtml==="function") h+=envtDetailHtml(u,enrolledKids,isMom);   // 📝 ENVTEST: station check-ins per enrolled kid
   // UNITS_CALM (10/4): on a starter path, Up next + Sprints fold into one closed "Speed rounds (optional)" row
   const _calm=!!(u.starter&&enrolledKids.length);
   if(_calm) h+='<details style="background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:10px 14px;margin-bottom:14px"><summary style="cursor:pointer;font-size:12.5px;font-weight:800;color:#1f2937">\u{1F3C3} Speed rounds (optional) <span style="font-weight:600;color:var(--muted);font-size:11px">\u00B7 just for fun if they want to play \u2014 nothing here is due</span></summary><div style="margin-top:10px">';
@@ -45681,6 +46228,292 @@ function _unitNudgePanelHtml(kid){
     '</div></div>';
 }
 // NUDGE_ROLLUP_END
+// ENVMIRROR_START — 🌿 ENVIROTHON MIRROR, step 5 of PLAN_envirothon_2026-10-27.md (design DESIGN_envirothon_console_2026-10-27.md
+// ✅ DECISIONS + §1.2 + §3 + §4; her decision 2026-10-27: "ONE Envirothon site, ONE Firebase project … ENVMIRROR copies Lincoln's
+// summary from the Howe project into this one, and he never needs a login here"; her 8.9: streak / accuracy = study sittings only).
+//   · Config: window.HA_FAMILY.envirothon = { firebase:{…the Envirothon project's web config…}, familyId?, kids?, classId? }.
+//     ABSENT → every function here returns at once: no named app, no listener, no Settings card, nothing on boot — every
+//     other family's boot is byte-identical. PRESENT → a NAMED app, firebase.initializeApp(cfg.firebase,"envirothon"), with
+//     its own auth and database. It is opened only from the boot hook (the first `mastery` arrival, after initFb has made the
+//     default app and `db`), so the default-app guard `if(!(firebase.apps&&firebase.apps.length))` is never fooled. Nothing
+//     here ever touches `db` except the release read-back's one targeted removal.
+//   · Sign-in: a Mom-only card in Settings ("🌿 Envirothon"). Email + password go straight to the named app's auth and are
+//     never stored; the auth SDK keeps the session on the device (localStorage, like the family login). Kids' devices never
+//     see a password prompt — Mom signs each of his study devices in once.
+//   · envSummary(kid, ctx) is PURE — from masteryData (the kid's items, _settings.cat_hold, _custom_items, studyLog, history,
+//     _tests) and the unit record (hydrated cards), restricted to the Envirothon unit's decks (the record's deck keys, never a
+//     list here). The §1.2 record: byDeck {total,new,waiting,learning,active,mastered,held,correct,miss,acc,c14,m14,acc14,last},
+//     byConcept (the same counters, keyed <station>|<Key Concept>), streak {days,last}, weak (≤5 fronts per deck: {n,m,d,t}),
+//     days (the last 30 study days {n,c,m,secs}), plus unitVer, at, and tests (pre/post/graduated per station, read
+//     defensively from mastery/<kid>_tests). Accuracy, streak and days count STUDY SITTINGS only (studyLog); Mom's drills
+//     (history) count only toward a card's miss total in the weak list. No card back, no other deck, no roster, no schedule.
+//   · Publish = ONE update on the named app at students/<sid> = { summary, meta:{familyId,kid,name,at} }, sid = <familyId>_<kid>,
+//     the kid's display name from the roster (cap). Debounced: at most once per 60 s; a hash of the summary sits in HA_LS so an
+//     unchanged summary is never re-sent and boot sends only what changed since the last publish. Only when signed in, never in
+//     dry run, never while the season is locked.
+//   · Release read-back (§4): one listener each on release/<classId>/all and release/<classId>/students/<sid>. A key there is a
+//     deck key or a station id; each matching deck whose hold is still set gets ONE targeted removal of
+//     mastery/<kid>_settings/cat_hold/<deck> in the family database (db && !_dryRun()). Never sets a hold; idempotent; a notice
+//     "🌿 <deck> released by your teacher" (toast + the card). classId = cfg.classId, else students/<sid>/class read once.
+//   · release/locked = true on the Envirothon project: publishing stops (summaries stay), the card says "season closed".
+//     Nothing in Howe is ever locked by it.
+const ENVM_APP="envirothon", ENVM_MIN_MS=60000, ENVM_DAYS=30, ENVM_WEAK=5, ENVM_RECENT=14, ENVM_BOOT_TRIES=40;
+const _envm={app:null,auth:null,edb:null,user:null,locked:false,classOf:{},subs:{},timer:null,lastAt:0,lastPub:0,tries:0,busy:false,err:"",notices:[]};
+function envmCfg(){ try{ const c=(typeof window!=="undefined"&&window.HA_FAMILY&&window.HA_FAMILY.envirothon)||null; return (c&&c.firebase&&typeof c.firebase==="object"&&c.firebase.databaseURL)?c:null; }catch(e){ return null; } }
+function envmFamilyId(){ const c=envmCfg(); if(c&&c.familyId) return String(c.familyId); try{ return String((window.HA_FAMILY&&window.HA_FAMILY.familyId)||"howe"); }catch(e){ return "howe"; } }
+function envmSid(kid){ return envmFamilyId()+"_"+kid; }
+// The Envirothon unit on this family: the starter id first, else any unit whose cards live in code.
+function envmUnit(){
+  const us=(typeof unitStudies!=="undefined"&&unitStudies)||{};
+  if(typeof ENV_UNIT_ID!=="undefined"&&us[ENV_UNIT_ID]) return us[ENV_UNIT_ID];
+  for(const k in us){ if(us[k]&&typeof envCardsInCode==="function"&&envCardsInCode(us[k])) return us[k]; }
+  return null;
+}
+// The kids mirrored: the config's list (if given) filtered to the unit's enrolled kids, else every enrolled kid.
+function envmKids(){
+  if(!envmCfg()) return [];
+  const u=envmUnit(), en=(u&&u.enrolled)||{}, c=envmCfg();
+  const all=Object.keys(en).filter(k=>en[k]);
+  return (Array.isArray(c.kids)&&c.kids.length)?c.kids.filter(k=>en[k]):all;
+}
+function envmDayKey(ms){ return new Date(ms).toISOString().slice(0,10).replace(/-/g,""); }   // the studyLog's key format (mstTodayKey)
+function envmKeyMs(k){ k=String(k||""); return Date.UTC(+k.slice(0,4),+k.slice(4,6)-1,+k.slice(6,8)); }
+function envmDaysBetween(a,b){ return Math.round((envmKeyMs(b)-envmKeyMs(a))/86400000); }
+function envmShift(k,n){ return envmDayKey(envmKeyMs(k)+n*86400000); }
+function envmMastered(it){
+  const mTier=(typeof MAST_MASTERY_TIER_DEFAULT!=="undefined")?MAST_MASTERY_TIER_DEFAULT:"monthly";
+  if(typeof mastTierAtLeast==="function") return mastTierAtLeast(it.tier,mTier);
+  const o=["daily","every_other_day","every_third_day","weekly","bi_weekly","monthly","learned","graduated"]; return o.indexOf(it.tier||"daily")>=o.indexOf(mTier);
+}
+function envmTierIx(t){ const o=(typeof MAST_TIER_ORDER!=="undefined"&&MAST_TIER_ORDER)||["daily","every_other_day","every_third_day","weekly","bi_weekly","monthly","learned","graduated"]; const i=o.indexOf(t||"daily"); return i<0?0:i; }
+function envmCtr(){ return {total:0,new:0,waiting:0,learning:0,active:0,mastered:0,held:false,correct:0,miss:0,acc:null,c14:0,m14:0,acc14:null,last:null}; }
+function envmBucket(c,it){ if(it.status==="parked") c.waiting++; else if(it.status==="introduction") c.learning++; else if(envmMastered(it)) c.mastered++; else c.active++; }
+function envmAcc(c){ c.acc=(c.correct+c.miss)?Math.round(c.correct/(c.correct+c.miss)*100):null; c.acc14=(c.c14+c.m14)?Math.round(c.c14/(c.c14+c.m14)*100):null; }
+// PURE. ctx = {M: masteryData, u: the unit record, now: ms} — every input is passed or read from memory; nothing is fetched.
+function envSummary(kid,ctx){
+  ctx=ctx||{};
+  const M=ctx.M||((typeof masteryData!=="undefined"&&masteryData)||{});
+  const u=ctx.u||envmUnit();
+  const now=(ctx.now!=null)?ctx.now:Date.now(), today=envmDayKey(now);
+  const decks=((u&&u.decks)||[]).filter(d=>d&&d.key);
+  const isDeck={}; decks.forEach(d=>{ isDeck[d.key]=true; });
+  let items=M[kid]; if(!Array.isArray(items)) items=Object.values(items||{});
+  items=items.filter(i=>i&&isDeck[i.subject]);
+  const st=M[kid+"_settings"]||{}, hold=st.cat_hold||{};
+  let bank=M[kid+"_custom_items"]; if(!Array.isArray(bank)) bank=Object.values(bank||{});
+  const bankN={}; bank.forEach(b=>{ if(b&&b.cat&&isDeck[b.cat]) bankN[b.cat]=(bankN[b.cat]||0)+1; });
+  const byDeck={}, byConcept={}, conceptOf={}, byId={};
+  items.forEach(i=>{ if(i.id) byId[i.id]=i; });
+  decks.forEach(d=>{
+    const c=byDeck[d.key]=envmCtr(); c.held=!!hold[d.key];
+    const its=items.filter(i=>i.subject===d.key), byName={}; its.forEach(i=>{ byName[i.prompt]=i; });
+    const cards=Array.isArray(d.cards)?d.cards.filter(Boolean):null;
+    c.total=cards?cards.length:Math.max(d.n||0,bankN[d.key]||0,its.length);
+    its.forEach(i=>envmBucket(c,i));
+    c.new=Math.max(0,c.total-its.length);
+    if(!cards) return;
+    cards.forEach(card=>{
+      const ck=(d.station||"")+"|"+(card.family||card.group||"General");
+      conceptOf[d.key+"|"+card.name]=ck;
+      const cc=byConcept[ck]||(byConcept[ck]=Object.assign(envmCtr(),{held:true}));
+      cc.total++; cc.held=cc.held&&!!hold[d.key];
+      const it=byName[card.name]; if(it) envmBucket(cc,it); else cc.new++;
+    });
+  });
+  // Study sittings: accuracy per deck / concept, the study days, the misses per card.
+  const sl=(M.studyLog||{})[kid]||{}, dayAgg={}, missBy={};
+  Object.keys(sl).forEach(sid=>{ const byDay=sl[sid]||{}; Object.keys(byDay).forEach(dk=>{
+    const e=byDay[dk]; if(!e||!/^\d{8}$/.test(dk)) return;
+    let its=e.items; if(!Array.isArray(its)) its=its?Object.values(its):[];
+    const recent=envmDaysBetween(dk,today)<ENVM_RECENT; let n=0,cc=0,mm=0;
+    its.forEach(x=>{
+      if(!x||!isDeck[x.deck]) return; n++;
+      const tgt=[byDeck[x.deck]]; const ck=conceptOf[x.deck+"|"+x.name]; if(ck&&byConcept[ck]) tgt.push(byConcept[ck]);
+      tgt.forEach(c=>{ if(x.result==="c"){ c.correct++; if(recent) c.c14++; } else if(x.result==="m"){ c.miss++; if(recent) c.m14++; } if(!c.last||dk>c.last) c.last=dk; });
+      if(x.result==="c") cc++; else if(x.result==="m"){ mm++; missBy[x.deck+"|"+x.name]=(missBy[x.deck+"|"+x.name]||0)+1; }
+    });
+    if(!n) return;
+    let secs=0; if(Array.isArray(e.sits)) e.sits.forEach(s=>{ secs+=(s&&s.secs)||0; }); else secs=e.secs||0;
+    if(its.length&&n<its.length) secs=Math.round(secs*n/its.length);   // a mixed sitting (Daily Study) gives this unit its share
+    const da=dayAgg[dk]||(dayAgg[dk]={n:0,c:0,m:0,secs:0}); da.n+=n; da.c+=cc; da.m+=mm; da.secs+=secs;
+  }); });
+  Object.keys(byDeck).forEach(k=>envmAcc(byDeck[k])); Object.keys(byConcept).forEach(k=>envmAcc(byConcept[k]));
+  // Mom's drills: a miss there counts toward the card's miss total (the weak list) — not toward accuracy or the streak (her 8.9).
+  const hist=(M.history||{})[kid]||{};
+  Object.keys(hist).forEach(dk=>{ const e=hist[dk]; let its=e&&e.items; if(!Array.isArray(its)) its=its?Object.values(its):[];
+    its.forEach(x=>{ if(!x||x.result!=="m") return; const it=byId[x.id]; if(!it) return; missBy[it.subject+"|"+it.prompt]=(missBy[it.subject+"|"+it.prompt]||0)+1; }); });
+  // Streak: consecutive study days ending today or yesterday.
+  const dayKeys=Object.keys(dayAgg).sort();
+  const streak={days:0,last:dayKeys.length?dayKeys[dayKeys.length-1]:null};
+  if(streak.last&&envmDaysBetween(streak.last,today)<=1){ const set=new Set(dayKeys); let k=streak.last; while(set.has(k)){ streak.days++; k=envmShift(k,-1); } }
+  const days={}; dayKeys.slice(-ENVM_DAYS).forEach(k=>{ days[k]=dayAgg[k]; });
+  // Weakest cards: m×2 + drop_count, lower tier first; the front only; ≤5 per deck; decks with nothing weak are left out.
+  const weak={};
+  decks.forEach(d=>{
+    const rows=items.filter(i=>i.subject===d.key).map(i=>({n:i.prompt,m:missBy[d.key+"|"+i.prompt]||0,d:i.drop_count||0,t:i.tier||"daily"})).filter(r=>r.m+r.d>0);
+    rows.sort((a,b)=>(b.m*2+b.d)-(a.m*2+a.d)||envmTierIx(a.t)-envmTierIx(b.t)||String(a.n).localeCompare(String(b.n)));
+    if(rows.length) weak[d.key]=rows.slice(0,ENVM_WEAK);
+  });
+  const out={unitVer:(u&&(u.starterVer||u.ver))||1,at:now,byDeck,byConcept,streak,weak,days};
+  // Pre / post tests (ENVTEST writes mastery/<kid>_tests/<station> = {pre:{right,n,date,…}, post:{best:{right,n,date},…}, graduated}) — read defensively.
+  const T=M[kid+"_tests"]; if(T&&typeof T==="object"){ const tests={};
+    Object.keys(T).forEach(stn=>{ const r=T[stn]; if(!r||typeof r!=="object") return; const o={};
+      if(r.pre&&typeof r.pre==="object") o.pre={right:+r.pre.right||0,n:+r.pre.n||0,date:r.pre.date||null};
+      const best=r.post&&r.post.best; if(best&&typeof best==="object") o.post={best:{right:+best.right||0,n:+best.n||0,date:best.date||null}};
+      if(r.graduated) o.graduated=(typeof r.graduated==="object")?{date:r.graduated.date||null,right:+r.graduated.right||0,n:+r.graduated.n||0}:true;
+      if(Object.keys(o).length) tests[stn]=o; });
+    if(Object.keys(tests).length) out.tests=tests; }
+  return out;
+}
+function envmHash(s){ const o=Object.assign({},s); delete o.at; const str=JSON.stringify(o); let h=5381; for(let i=0;i<str.length;i++) h=((h*33)^str.charCodeAt(i))>>>0; return h.toString(36)+":"+str.length; }
+// The named app — only once the default app and `db` exist (initFb), never before (the default-app guard reads firebase.apps.length).
+function envmReady(){
+  const cfg=envmCfg(); if(!cfg) return false;
+  if(_envm.app) return true;
+  if(typeof db==="undefined"||!db||typeof firebase==="undefined"||!firebase.apps||!firebase.apps.length) return false;
+  try{
+    const have=(firebase.apps||[]).filter(a=>a&&a.name===ENVM_APP)[0];
+    _envm.app=have||firebase.initializeApp(cfg.firebase,ENVM_APP);
+    _envm.edb=_envm.app.database();
+    _envm.auth=(typeof _envm.app.auth==="function")?_envm.app.auth():null;
+    if(_envm.auth&&typeof _envm.auth.onAuthStateChanged==="function") _envm.auth.onAuthStateChanged(u=>{ _envm.user=u||null; _envm.busy=false; envmAuthChanged(); });
+    return true;
+  }catch(e){ _envm.err=String((e&&e.message)||e); _envm.app=null; return false; }
+}
+// The hook (one guarded line at each site): "study" | "drill" | "enroll" | "boot" (the first mastery arrival = the catch-up:
+// whatever changed since the hash in HA_LS goes out). Returns false whenever the block is inert.
+function envMirrorOn(why){
+  try{
+    if(!envmCfg()||!envmReady()) return false;
+    envmSchedule(why); return true;
+  }catch(e){ _envm.err=String((e&&e.message)||e); return false; }
+}
+// Not publishable yet: the units listener has not delivered, or the Envirothon unit's cards are still loading (envirothon.js).
+function envmWaiting(){
+  if(typeof _haUnitsReady!=="undefined"&&!_haUnitsReady) return true;
+  const u=envmUnit(); if(!u) return false;
+  return !!(typeof envCardsInCode==="function"&&envCardsInCode(u))&&!(u.decks||[]).every(d=>!d||Array.isArray(d.cards));
+}
+// Anything to send? The summary's hash against the one HA_LS remembers for each mirrored kid (a sitting in another deck changes nothing).
+function envmDirty(){
+  let d=false;
+  envmKids().forEach(kid=>{ if(d) return; try{ const prev=JSON.parse((typeof HA_LS!=="undefined"?HA_LS.getItem("ha_envm_"+envmSid(kid)):null)||"null"); if(!prev||prev.h!==envmHash(envSummary(kid))) d=true; }catch(e){ d=true; } });
+  return d;
+}
+// Debounce: a change publishes now if the last publish is 60 s old, else once when the 60 s are up (one timer, however many saves).
+function envmSchedule(why){
+  _envm.why=why;
+  if(_envm.timer||!envmDirty()) return;
+  const wait=Math.max(0,_envm.lastAt+ENVM_MIN_MS-Date.now());
+  if(!wait){ envmPublishAll(); return; }
+  _envm.timer=setTimeout(()=>{ _envm.timer=null; try{ envmPublishAll(); }catch(e){} },wait);
+}
+// ONE update per kid whose summary changed; the hash in HA_LS says what was last sent from any device this browser is.
+function envmPublishAll(){
+  if(!envmReady()||!_envm.user||_envm.locked) return 0;
+  if(typeof _dryRun==="function"&&_dryRun()) return 0;
+  if(envmWaiting()){ if(!_envm.timer&&(++_envm.tries)<=ENVM_BOOT_TRIES) _envm.timer=setTimeout(()=>{ _envm.timer=null; try{ envmPublishAll(); }catch(e){} },3000); return 0; }   // boot: the units / cards are still coming — look again in 3 s
+  _envm.tries=0;
+  let n=0; envmKids().forEach(kid=>{ try{ if(envmPublishKid(kid)) n++; }catch(e){ _envm.err=String((e&&e.message)||e); } });
+  if(n){ _envm.lastAt=Date.now(); _envm.lastPub=_envm.lastAt; }
+  envmCardRefresh();
+  return n;
+}
+function envmPublishKid(kid,force){
+  const s=envSummary(kid), h=envmHash(s), sid=envmSid(kid), key="ha_envm_"+sid;
+  let prev=null; try{ prev=JSON.parse((typeof HA_LS!=="undefined"?HA_LS.getItem(key):null)||"null"); }catch(e){}
+  if(!force&&prev&&prev.h===h) return false;
+  const meta={familyId:envmFamilyId(),kid:kid,name:(typeof cap==="function")?cap(kid):String(kid),at:s.at};
+  const p=_envm.edb.ref("students/"+sid).update({summary:s,meta:meta});
+  try{ if(typeof HA_LS!=="undefined") HA_LS.setItem(key,JSON.stringify({h:h,at:s.at})); }catch(e){}
+  if(p&&typeof p.catch==="function") p.catch(err=>{ _envm.err=String((err&&err.message)||err); try{ if(typeof HA_LS!=="undefined") HA_LS.removeItem(key); }catch(e){} envmCardRefresh(); });   // refused / offline: forget the hash so the next save resends
+  return true;
+}
+// Signed in → the lock listener, the class id, the release listeners, then a publish. Signed out → listeners off.
+function envmAuthChanged(){
+  if(!_envm.edb) return;
+  if(!_envm.user){ envmDetach(); envmCardRefresh(); return; }
+  if(!_envm.subs.locked){ const r=_envm.edb.ref("release/locked"); const fn=s=>{ const v=s&&typeof s.val==="function"?s.val():null; const was=_envm.locked; _envm.locked=(v===true)||!!(v&&typeof v==="object"&&v.locked===true); if(was&&!_envm.locked) envmSchedule("unlock"); envmCardRefresh(); }; r.on("value",fn); _envm.subs.locked={r,fn}; }
+  envmKids().forEach(kid=>{
+    const cfg=envmCfg(); if(cfg.classId) _envm.classOf[kid]=String(cfg.classId);
+    if(_envm.classOf[kid]) envmRelAttach(kid);
+    else _envm.edb.ref("students/"+envmSid(kid)+"/class").once("value",s=>{ const v=s&&typeof s.val==="function"?s.val():null; if(v){ _envm.classOf[kid]=String(v); envmRelAttach(kid); } envmCardRefresh(); });
+  });
+  envmSchedule("signin"); envmCardRefresh();
+}
+function envmDetach(){ Object.keys(_envm.subs).forEach(k=>{ const s=_envm.subs[k]; try{ s.r.off("value",s.fn); }catch(e){} }); _envm.subs={}; if(_envm.timer){ try{ clearTimeout(_envm.timer); }catch(e){} _envm.timer=null; } }
+function envmRelAttach(kid){
+  const cid=_envm.classOf[kid]; if(!cid||!_envm.edb) return;
+  [["all","release/"+cid+"/all"],["me","release/"+cid+"/students/"+envmSid(kid)]].forEach(pr=>{
+    const sk=kid+"|"+pr[0]; if(_envm.subs[sk]) return;
+    const r=_envm.edb.ref(pr[1]), fn=s=>{ try{ envmRelease(kid,s&&typeof s.val==="function"?s.val():null); }catch(e){ _envm.err=String((e&&e.message)||e); } };
+    r.on("value",fn); _envm.subs[sk]={r,fn};
+  });
+}
+// A release record {<deckKey>|<station>: truthy}: clear each matching deck's hold once — the family database's one targeted removal.
+function envmRelease(kid,rel){
+  if(!envmCfg()||!rel||typeof rel!=="object") return 0;
+  const u=envmUnit(); if(!u) return 0;
+  const M=(typeof masteryData!=="undefined"&&masteryData)||{}, st=M[kid+"_settings"], hold=(st&&st.cat_hold)||null; if(!hold) return 0;
+  const open=[];
+  Object.keys(rel).forEach(k=>{ if(!rel[k]) return; (u.decks||[]).forEach(d=>{ if(d&&d.key&&(d.key===k||d.station===k)&&hold[d.key]&&open.indexOf(d.key)<0) open.push(d.key); }); });
+  open.forEach(dk=>{
+    delete hold[dk];
+    if(typeof db!=="undefined"&&db&&!(typeof _dryRun==="function"&&_dryRun())) db.ref("mastery/"+kid+"_settings/cat_hold/"+dk).remove();
+    envmNotice("\u{1F33F} "+dk+" released by your teacher");
+  });
+  if(open.length){ envmSchedule("release"); if(typeof renderAllSoon==="function") renderAllSoon(); }
+  return open.length;
+}
+function envmNotice(msg){ _envm.notices.unshift({at:Date.now(),msg:msg}); if(_envm.notices.length>10) _envm.notices.length=10; try{ console.log("[HA] ENVMIRROR",msg); }catch(e){} try{ if(typeof gwShowToast==="function") gwShowToast(msg); }catch(e){} }
+// ── Settings ▸ 🌿 Envirothon (Mom only) ──
+function envmEsc(v){ return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
+function envmWhen(ms){ try{ return new Date(ms).toLocaleString([],{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}); }catch(e){ return String(ms); } }
+function envmStateLine(){
+  if(!envmCfg()) return "not set up";
+  if(_envm.locked) return "season closed — the teacher's project is locked; nothing is sent until it reopens";
+  if(_envm.busy) return "signing in…";
+  if(!_envm.user) return "not signed in on this device";
+  return "signed in as "+String(_envm.user.email||_envm.user.uid||"")+(_envm.lastPub?" · last mirrored "+envmWhen(_envm.lastPub):" · nothing mirrored yet");
+}
+function envMirrorCardHtml(){
+  if(!envmCfg()||typeof momHere!=="function"||!momHere()) return "";
+  return '<div class="rules-wrap"><div class="rules-hdr">\u{1F33F} Envirothon</div>'+
+    '<div class="rules-sub">Sends a summary of the Envirothon study (counts, accuracy, streak, weakest terms — never the cards) to the teacher\'s Envirothon project, and opens a station here when she sends it out. Sign in once on each device the study happens on.</div>'+
+    '<div class="rules-card open"><div class="rules-card-body" id="envm-body">'+envmBodyHtml()+'</div></div></div>';
+}
+function envmBodyHtml(){
+  const kids=envmKids();
+  let h='<div class="rules-row"><div class="rules-label">Status</div><div style="font-size:12.5px;font-weight:700;color:'+(_envm.locked?'#b45309':(_envm.user?'#15803d':'#6b7280'))+'">'+envmEsc(envmStateLine())+'</div></div>';
+  h+='<div class="rules-row"><div class="rules-label">Mirrored</div><div style="font-size:12px">'+(kids.length?kids.map(k=>envmEsc((typeof cap==="function")?cap(k):k)+' <span style="color:var(--muted)">('+envmEsc(envmSid(k))+')</span>').join(", "):'<span style="color:var(--muted)">nobody enrolled in the Envirothon unit yet</span>')+'</div></div>';
+  if(!_envm.user){
+    h+='<form onsubmit="envmSignIn(event)" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 0">'+
+      '<input id="envm-e" type="email" autocomplete="username" placeholder="email" required style="flex:1;min-width:140px;padding:7px 9px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:\'DM Sans\',sans-serif">'+
+      '<input id="envm-p" type="password" autocomplete="current-password" placeholder="password" required style="flex:1;min-width:120px;padding:7px 9px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:\'DM Sans\',sans-serif">'+
+      '<button type="submit" style="padding:7px 14px;border-radius:9px;border:none;background:#15803d;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">\u{1F33F} Envirothon: sign in</button></form>';
+  } else {
+    h+='<div style="display:flex;gap:8px;padding:6px 0"><button onclick="envmSendNow()" style="padding:6px 12px;border-radius:9px;border:1.5px solid var(--border);background:#fff;color:#1f2937;font-size:12px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">Send now</button>'+
+      '<button onclick="envmSignOut()" style="padding:6px 12px;border-radius:9px;border:1.5px solid #fecaca;background:#fff;color:#b91c1c;font-size:12px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">Sign out</button></div>';
+  }
+  if(_envm.err) h+='<div style="font-size:11px;color:#b5394a;padding:2px 0">'+envmEsc(_envm.err)+'</div>';
+  if(_envm.notices.length) h+='<div style="font-size:11px;color:var(--muted);padding:4px 0 0;line-height:1.5">'+_envm.notices.slice(0,3).map(n=>envmEsc(n.msg)+' <span style="opacity:.7">'+envmEsc(envmWhen(n.at))+'</span>').join("<br>")+'</div>';
+  h+='<div style="font-size:11px;color:var(--muted);padding:6px 0 0;line-height:1.45">\u{1F512} The password goes to the Envirothon project only and is not kept anywhere in this app.</div>';
+  return h;
+}
+function envmCardRefresh(){ try{ if(typeof document==="undefined") return; const el=document.getElementById("envm-body"); if(el) el.innerHTML=envmBodyHtml(); }catch(e){} }
+function envmSignIn(ev){
+  if(ev&&ev.preventDefault) ev.preventDefault();
+  if(typeof momHere!=="function"||!momHere()||!envmReady()||!_envm.auth) return false;
+  const e=((document.getElementById("envm-e")||{}).value||"").trim(), p=(document.getElementById("envm-p")||{}).value||"";
+  if(!e||!p) return false;
+  _envm.busy=true; _envm.err=""; envmCardRefresh();
+  try{ _envm.auth.signInWithEmailAndPassword(e,p).then(()=>{ _envm.busy=false; envmCardRefresh(); }).catch(err=>{ _envm.busy=false; _envm.err=String((err&&err.message)||err); envmCardRefresh(); }); }
+  catch(err){ _envm.busy=false; _envm.err=String((err&&err.message)||err); envmCardRefresh(); }
+  return true;
+}
+function envmSignOut(){ if(typeof momHere!=="function"||!momHere()||!_envm.auth) return; try{ _envm.auth.signOut(); }catch(e){} }
+function envmSendNow(){ if(typeof momHere!=="function"||!momHere()||!envmReady()||!_envm.user||_envm.locked) return 0; if(typeof _dryRun==="function"&&_dryRun()) return 0; let n=0; envmKids().forEach(kid=>{ try{ if(envmPublishKid(kid,true)) n++; }catch(e){ _envm.err=String((e&&e.message)||e); } }); if(n){ _envm.lastAt=Date.now(); _envm.lastPub=_envm.lastAt; } envmCardRefresh(); return n; }
+// ENVMIRROR_END
 function unitAllNudges(kid){ let out=[]; haKidUnits(kid).forEach(u=>{ out=out.concat(unitPlanNudges(u,kid)); }); return out; }
 function unitDismissNudge(unitId,kid,key){
   if(!momHere()) return; // skipping a planned step is Mom's call
@@ -46260,6 +47093,286 @@ function unitPicsSave(){
   if(typeof document!=="undefined"){ const el=document.getElementById("content"); if(el&&typeof renderUnits==="function") renderUnits(el); }
 }
 // UNIT_PICS_END
+// ENVIDFLASH_START — ⚡ ID Flash + the ID decks' pictures (step 6 of PLAN_envirothon_2026-10-27.md; the sprint verdict,
+// DESIGN_envirothon_sprint_verdict_2026-10-27.md: "no general sprint … one narrow speed-criterion component is worth building:
+// ID Flash for the three Identification decks, where mastered means named correctly within about 10 seconds, three times in
+// a row, on different pictures"). Howe-free: the kid id comes from the caller; nothing here assumes which family runs it.
+//   · THE PICTURES live in the repo (envirothon/pics/<deck>/<item>/<n>.jpg — 361 free-to-reuse photos at 600 px, 15 MB, built
+//     by envirothon/build_pics.py; envirothon/pics/index.json = card name → [{url, credit, shot}]). The index is fetched ONCE
+//     on demand (envPicsLoad, the envirothon.js pattern) and NEVER written to the database: envPicsOn puts each pictured
+//     card's first picture on the unit record IN MEMORY as the shared visual {imageUrl, credit} — the exact shape UNIT_PICS
+//     saves — so the study card, the Mom drill, the Units tab and the games pick it up through mastGetVisual with no new
+//     render path. A picture Mom saved herself wins. In study the picture is the front (the deck's flipFace is "name"), and
+//     envPicCycle hands mstCardPic a DIFFERENT picture of the item on every show.
+//   · ID FLASH: a kid-facing door on the unit's study start (and a 🎮 Games entry) for the "· ID" decks only, once a deck is
+//     released (its cat_hold cleared). The cards of those decks are "<item> · attribute" (20 Beaver cards share the Beaver
+//     pictures), so ID Flash — "what is this?" — runs per ITEM (species / tool), which is how the design counts it too
+//     ("fluent 31 of 40 species"). A sitting: up to 12 items, each a picture with a 10 s bar; the kid picks (3 lures from the
+//     same deck, _matchLures) or types the name (mstTypedOk, the study's own checker, over the item's accepted names — the
+//     item plus every way its cards name it); ✓/✗ and the name after; the time per show is recorded. FLUENT = the last three
+//     CORRECT shows were on three DIFFERENT pictures, each under 10 s. A fluent item leaves ID Flash; the cards' own ladder
+//     (new → learning → mastered) and spaced review are untouched.
+//   · Writes, at the end of a sitting only: mastery/<kid>_idflash/<deckKey>/<itemKey> = {shows:[{pic,ok,secs,at}×last 5],
+//     fluent, at} (itemKey = mastDefKey(item); ONE multi-path update on mastery/<kid>_idflash, every path targeted) and the
+//     day's entry under mastery/studyLog/<kid>/idflash/<yyyymmdd> in the shape _mstSaveInner writes (items {id,name,deck,
+//     result} merged into the day), so Scores, the streak and the weekly report count it. Dry run: runs and scores on the
+//     screen, writes nothing, says so. Nothing speaks; no confetti. A kid without the unit sees every screen byte-identical.
+const ENVFLASH_SECS=10, ENVFLASH_SITTING=12, ENVFLASH_KEEP=5, ENVFLASH_NEED=3, ENVFLASH_SID="idflash";
+const ENVPICS_URL="envirothon/pics/index.json";
+let _envPicsIdx=null, _envPicsP=null, _envPicsFail=false;
+function envPicsIndex(){ return _envPicsIdx; }
+// The index, fetched once (cache-bust only on GitHub Pages, like envirothon.js). On arrival every hydrated unit gets its pictures.
+function envPicsLoad(fetchFn){
+  if(_envPicsIdx) return Promise.resolve(_envPicsIdx);
+  if(_envPicsP) return _envPicsP;
+  const f=fetchFn||((typeof fetch==="function")?(u=>fetch(u)):null);
+  if(!f) return Promise.reject(new Error("no fetch"));
+  const url=(typeof location!=="undefined"&&/github\.io$/.test(location.hostname))?(ENVPICS_URL+"?v="+Date.now()):ENVPICS_URL;
+  _envPicsP=Promise.resolve().then(()=>f(url)).then(r=>{ if(!r||!r.ok) throw new Error("pics index "+(r&&r.status)); return r.json(); })
+    .then(j=>{ if(!j||typeof j!=="object"||Array.isArray(j)) throw new Error("pics index shape"); _envPicsIdx=j; envPicsApplyAll(); return j; })
+    .catch(e=>{ _envPicsP=null; _envPicsFail=true; throw e; });
+  return _envPicsP;
+}
+// The pictures of one card: [{url, credit, shot}] or null. Only the "· ID" decks of a code-held unit this family has.
+function envPicsDeckOn(deck){ const us=(typeof unitStudies!=="undefined"&&unitStudies)||{}; for(const k in us){ const u=us[k]; if(u&&typeof envCardsInCode==="function"&&envCardsInCode(u)&&(u.decks||[]).some(d=>d&&d.key===deck)) return true; } return false; }
+function envPicsFor(deck,name){ const idx=_envPicsIdx; if(!idx||!/\u00b7 ID$/.test(String(deck||""))||!envPicsDeckOn(deck)) return null; const a=idx[name]; return (Array.isArray(a)&&a.length&&a[0]&&a[0].url)?a:null; }
+// In memory only: each pictured card's first picture becomes the unit's shared visual {imageUrl, credit} unless Mom saved one.
+function envPicsApply(u){
+  if(!u||!_envPicsIdx||!(typeof envCardsInCode==="function"&&envCardsInCode(u))) return 0;
+  let n=0;
+  (u.decks||[]).forEach(d=>{ if(!d||!d.key) return; (d.cards||[]).forEach(c=>{ if(!c||!c.name) return;
+    const pics=envPicsFor(d.key,c.name); if(!pics) return;
+    const key=d.key+"_"+c.name; if(!u.visuals) u.visuals={};
+    const v=u.visuals[key]; if(v&&typeof v==="object"&&v.imageUrl) return;   // a picture Mom chose stays
+    u.visuals[key]={imageUrl:String(pics[0].url),credit:String(pics[0].credit||"")}; n++; }); });
+  return n;
+}
+// When the index arrives: the screens that draw a card's picture are the Units tab and the Mastery / Kids' Corner study — redraw those only.
+function envPicsApplyAll(){
+  const us=(typeof unitStudies!=="undefined"&&unitStudies)||{}; let n=0; Object.keys(us).forEach(k=>{ n+=envPicsApply(us[k]); });
+  if(n&&typeof tab!=="undefined"&&typeof document!=="undefined"){
+    if(tab==="units"){ const el=document.getElementById("content"); if(el&&typeof renderUnits==="function") renderUnits(el); }
+    else if((tab==="mastery"||tab==="kids")&&typeof _mastRe==="function") _mastRe(); }
+  return n;
+}
+// Called by envHydrate for every code-held unit (each time unitStudies arrives): apply the index, or fetch it the first time.
+function envPicsOn(u){
+  if(!u||!(typeof envCardsInCode==="function"&&envCardsInCode(u))) return false;
+  if(_envPicsIdx) return envPicsApply(u)>=0;
+  if(!_envPicsFail) envPicsLoad().catch(()=>{});
+  return false;
+}
+// Study: a different picture of the item each show. Keyed by the item's picture set, so consecutive cards of one item
+// (Beaver · tracks, Beaver · diet …) move through the set too. Re-draws of the same show (a flip) keep the same picture.
+let _envPicShow={state:null,map:{},last:{}};
+function envPicCycle(card){
+  if(!card||typeof mstState==="undefined"||!mstState) return "";
+  const pics=envPicsFor(card.deck,card.name); if(!pics||pics.length<2) return "";
+  if(_envPicShow.state!==mstState) _envPicShow={state:mstState,map:{},last:_envPicShow.last||{}};
+  const setKey=String(pics[0].url), showKey=card.deck+"_"+card.name+"|"+(card.key||"")+"|"+((typeof mstHist!=="undefined"&&mstHist)?mstHist.length:0);
+  if(_envPicShow.map[showKey]==null){ const prev=_envPicShow.last[setKey]; const i=(prev==null)?0:(prev+1)%pics.length; _envPicShow.map[showKey]=i; _envPicShow.last[setKey]=i; }
+  return String(pics[_envPicShow.map[showKey]].url);
+}
+// ── ID Flash ──
+function envFlashItemOf(c){ return String((c&&(c.item||String(c.name||"").split(" \u00b7 ")[0]))||"").trim(); }
+function envFlashHold(kid){ return ((((typeof masteryData!=="undefined"&&masteryData)||{})[kid+"_settings"]||{}).cat_hold)||{}; }
+// The released, pictured ID decks of the code-held units this kid is enrolled in: [{unit, key, items:[{item, key, names, pics}]}].
+function envFlashDecks(kid){
+  const out=[]; if(!kid||!_envPicsIdx||typeof masteryData==="undefined") return out;
+  const us=(typeof unitStudies!=="undefined"&&unitStudies)||{}, hold=envFlashHold(kid);
+  Object.keys(us).forEach(uid=>{ const u=us[uid];
+    if(!u||!(typeof envCardsInCode==="function"&&envCardsInCode(u))||!(u.enrolled&&u.enrolled[kid])) return;
+    (u.decks||[]).forEach(d=>{ if(!d||!d.key||d.kind!=="id"||hold[d.key]) return;
+      const by={}, items=[];
+      (d.cards||[]).forEach(c=>{ if(!c||!c.name) return; const item=envFlashItemOf(c); if(!item) return;
+        let e=by[item]; if(!e){ e=by[item]={item:item,key:(typeof mastDefKey==="function")?mastDefKey(item):item,names:[item],pics:null}; items.push(e); }
+        const pre=String(c.name).split(" \u00b7 ")[0].trim(); if(pre&&e.names.indexOf(pre)<0) e.names.push(pre);
+        if(!e.pics){ const p=envPicsFor(d.key,c.name); if(p) e.pics=p; } });
+      const pictured=items.filter(e=>e.pics);
+      if(pictured.length) out.push({unit:u,key:d.key,items:pictured}); }); });
+  return out;
+}
+function envFlashState(kid,deck,itemKey){ const s=(((typeof masteryData!=="undefined"&&masteryData)||{})[kid+"_idflash"]||{})[deck]; const e=s&&s[itemKey]; return (e&&typeof e==="object")?e:null; }
+function envFlashShows(st){ let a=st&&st.shows; if(!a) return []; if(!Array.isArray(a)) a=Object.values(a); return a.filter(x=>x&&typeof x==="object"); }
+// THE RULE: the last three CORRECT shows, on three DIFFERENT pictures, each under 10 s.
+function envFlashFluent(shows){
+  const ok=(shows||[]).filter(s=>s&&s.ok===true).slice(-ENVFLASH_NEED);
+  if(ok.length<ENVFLASH_NEED) return false;
+  if(!ok.every(s=>typeof s.secs==="number"&&s.secs<ENVFLASH_SECS)) return false;
+  return new Set(ok.map(s=>String(s.pic))).size===ENVFLASH_NEED;
+}
+function envFlashNext(prev,show){ const shows=envFlashShows(prev).concat([show]).slice(-ENVFLASH_KEEP); return {shows:shows,fluent:envFlashFluent(shows),at:show.at}; }
+function envFlashCount(kid,d){ let f=0; (d.items||[]).forEach(e=>{ const st=envFlashState(kid,d.key,e.key); if(st&&st.fluent) f++; }); return {fluent:f,total:(d.items||[]).length}; }
+function envFlashLine(kid,d){ const c=envFlashCount(kid,d); return "\u26A1 "+c.fluent+" of "+c.total+" fluent"; }
+// A sitting's items: never a fluent one; the ones already started first (oldest show first), then unseen ones shuffled.
+function envFlashPool(kid,decks,n,rnd){
+  rnd=rnd||Math.random; const seen=[], fresh=[];
+  (decks||[]).forEach(d=>{ (d.items||[]).forEach(e=>{ const st=envFlashState(kid,d.key,e.key); if(st&&st.fluent) return;
+    const c={deck:d.key,item:e.item,key:e.key,names:e.names,pics:e.pics,st:st,at:(st&&st.at)||0};
+    (st&&envFlashShows(st).length?seen:fresh).push(c); }); });
+  seen.sort((a,b)=>(a.at-b.at)||(a.item<b.item?-1:a.item>b.item?1:0));
+  for(let i=fresh.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); const t=fresh[i]; fresh[i]=fresh[j]; fresh[j]=t; }
+  return seen.concat(fresh).slice(0,n||ENVFLASH_SITTING);
+}
+// The picture for this show: one the item has NOT been shown on lately (three different ones is the goal), else the least recent.
+function envFlashPicFor(c,rnd){
+  rnd=rnd||Math.random; const recent=envFlashShows(c.st).map(s=>String(s.pic));
+  const unseen=c.pics.filter(p=>recent.indexOf(String(p.url))<0);
+  if(unseen.length) return unseen[Math.floor(rnd()*unseen.length)];
+  let best=c.pics[0], bi=Infinity; c.pics.forEach(p=>{ const i=recent.lastIndexOf(String(p.url)); if(i<bi){ bi=i; best=p; } });
+  return best;
+}
+// Pick mode: the item + 3 other items of the same deck (the study's own lure picker when it's there), shuffled.
+function envFlashLures(c,decks,rnd){
+  rnd=rnd||Math.random; const d=(decks||[]).find(x=>x.key===c.deck);
+  const pool=((d&&d.items)||[]).filter(e=>e.item!==c.item).map(e=>({id:e.item,name:e.item}));
+  let l=[]; try{ if(typeof _matchLures==="function") l=_matchLures({id:c.item,name:c.item},pool,e=>e.name,3).map(x=>x.it.name); }catch(e){ l=[]; }
+  if(l.length<3){ const rest=pool.map(p=>p.name).filter(n=>l.indexOf(n)<0); while(l.length<3&&rest.length) l.push(rest.splice(Math.floor(rnd()*rest.length),1)[0]); }
+  const chips=l.map(n=>({ok:false,name:n})).concat([{ok:true,name:c.item}]);
+  for(let i=chips.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); const t=chips[i]; chips[i]=chips[j]; chips[j]=t; }
+  return chips;
+}
+function envFlashNameOk(typed,names){
+  const t=String(typed==null?"":typed); if(!t.trim()) return false;
+  if(typeof mstTypedOk==="function") return (names||[]).some(n=>mstTypedOk(t,n));
+  const norm=s=>String(s==null?"":s).toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+  return (names||[]).some(n=>norm(n)===norm(t));
+}
+let envFlash=null;        // the sitting on this device: {kid, deckKeys, mode, cards:[{deck,item,key,names,pics,pic,lures,st}], i, startedAt, drawnAt, shownAt, ans, picked, results:[{deck,item,key,pic,ok,secs,at}], done, timer, dry}
+const envFlashMode={};    // kid → "pick" | "type", this device only
+function envFlashSetMode(kid,m){ envFlashMode[kid]=(m==="type")?"type":"pick"; if(typeof _mastRe==="function") _mastRe(); }
+function envFlashOpen(kid,deckKey){
+  const decks=envFlashDecks(kid).filter(d=>!deckKey||deckKey==="all"||d.key===deckKey); if(!decks.length) return null;
+  const cards=envFlashPool(kid,decks); if(!cards.length) return null;
+  cards.forEach(c=>{ c.pic=envFlashPicFor(c); c.lures=envFlashLures(c,decks); });
+  envFlash={kid:kid,deckKeys:decks.map(d=>d.key),mode:envFlashMode[kid]||"pick",cards:cards,i:0,startedAt:Date.now(),drawnAt:null,shownAt:null,ans:null,picked:null,results:[],done:null,timer:null,
+    dry:!!((typeof _dryRun==="function")&&_dryRun())};
+  if(typeof _mastRe==="function") _mastRe();
+  return envFlash;
+}
+function envFlashImgReady(){ if(!envFlash||envFlash.ans||envFlash.shownAt) return; envFlash.shownAt=Date.now(); envFlashTimerStart(); }
+function envFlashTimerStart(){ envFlashTimerStop(); if(!envFlash||typeof setInterval!=="function") return; envFlash.timer=setInterval(envFlashTick,100); envFlashTick(); }
+function envFlashTimerStop(){ if(envFlash&&envFlash.timer){ clearInterval(envFlash.timer); envFlash.timer=null; } }
+function envFlashTick(){
+  if(!envFlash||typeof document==="undefined") return;
+  const bar=document.getElementById("envflash-bar"), txt=document.getElementById("envflash-secs"); if(!bar) return;
+  const el=envFlash.shownAt?(Date.now()-envFlash.shownAt)/1000:0, left=Math.max(0,ENVFLASH_SECS-el);
+  bar.style.width=(100*left/ENVFLASH_SECS)+"%"; bar.style.background=left>0?"#16a34a":"#dc2626";
+  if(txt) txt.textContent=left>0?(Math.ceil(left)+" s"):("over "+ENVFLASH_SECS+" s");
+  if(left<=0) envFlashTimerStop();
+}
+function envFlashSecs(){ const t0=envFlash.shownAt||envFlash.drawnAt||Date.now(); return Math.round((Date.now()-t0)/100)/10; }
+function envFlashAnswer(ok,typed){
+  if(!envFlash||envFlash.ans||envFlash.done) return; const c=envFlash.cards[envFlash.i]; if(!c) return;
+  envFlashTimerStop(); const secs=envFlashSecs();
+  envFlash.ans={ok:!!ok,secs:secs,typed:typed==null?null:String(typed)};
+  envFlash.results.push({deck:c.deck,item:c.item,key:c.key,pic:String(c.pic.url),ok:!!ok,secs:secs,at:Date.now()});
+  if(typeof _mastRe==="function") _mastRe();
+}
+function envFlashPickTap(i){ if(!envFlash||envFlash.ans) return; const c=envFlash.cards[envFlash.i], ch=c&&c.lures&&c.lures[i]; if(!ch) return; envFlash.picked=i; envFlashAnswer(!!ch.ok,ch.name); }
+function envFlashCheckTyped(){
+  if(!envFlash||envFlash.ans) return; const inp=(typeof document!=="undefined")?document.getElementById("envflash-in"):null; const v=inp?inp.value:"";
+  if(!String(v).trim()) return; const c=envFlash.cards[envFlash.i]; if(!c) return; envFlashAnswer(envFlashNameOk(v,c.names),v);
+}
+function envFlashNextCard(){
+  if(!envFlash||!envFlash.ans) return;
+  envFlash.ans=null; envFlash.picked=null; envFlash.drawnAt=null; envFlash.shownAt=null; envFlash.i++;
+  if(envFlash.i>=envFlash.cards.length){ envFlashFinish(); return; }
+  if(typeof _mastRe==="function") _mastRe();
+}
+// Stop early keeps what was answered (it's real practice); nothing answered → nothing to keep.
+function envFlashQuit(){ if(envFlash&&!envFlash.done&&envFlash.results.length){ envFlashFinish(); return; } envFlashTimerStop(); envFlash=null; if(typeof _mastRe==="function") _mastRe(); }
+// The end of a sitting: the fluency states (one multi-path update), the day's study-log entry (merged), the summary.
+function envFlashFinish(){
+  if(!envFlash||envFlash.done) return null; envFlashTimerStop();
+  const f=envFlash, kid=f.kid, res=f.results, dry=f.dry, md=masteryData;
+  const live=!!((typeof db!=="undefined")&&db&&!dry&&res.length);
+  const upd={}, newly=[]; let states=md[kid+"_idflash"]; if(!states||typeof states!=="object") states=md[kid+"_idflash"]={};
+  res.forEach(r=>{ const prev=envFlashState(kid,r.deck,r.key); const next=envFlashNext(prev,{pic:r.pic,ok:r.ok,secs:r.secs,at:r.at});
+    if(!states[r.deck]||typeof states[r.deck]!=="object") states[r.deck]={}; states[r.deck][r.key]=next; upd[r.deck+"/"+r.key]=next;
+    if(next.fluent&&!(prev&&prev.fluent)&&newly.indexOf(r.item)<0) newly.push(r.item); });
+  const secs=Math.max(1,Math.round((Date.now()-f.startedAt)/1000));
+  const todayKey=(typeof mstTodayKey==="function")?mstTodayKey():new Date().toISOString().slice(0,10).replace(/-/g,"");
+  let pn=null; try{ if(typeof mastGetPrintNum==="function") pn=mastGetPrintNum(kid); }catch(e){ pn=null; }
+  const logItems=res.map(r=>({id:ENVFLASH_SID+":"+r.key,name:r.item,deck:r.deck,result:r.ok?"c":"m"}));
+  const correct=res.filter(r=>r.ok).length, miss=res.length-correct, total=res.length;
+  const prev=(((md.studyLog||{})[kid]||{})[ENVFLASH_SID]||{})[todayKey]||null;
+  let entry={date:todayKey,printNum:pn,total:total,correct:correct,miss:miss,shown:0,secs:secs,items:logItems,sits:[{secs:secs,total:total}]};
+  if(prev){ const pi=Array.isArray(prev.items)?prev.items:Object.values(prev.items||{});
+    entry={date:todayKey,printNum:pn,total:(prev.total||0)+total,correct:(prev.correct||0)+correct,miss:(prev.miss||0)+miss,shown:(prev.shown||0),secs:secs,
+      items:pi.concat(logItems),sits:(Array.isArray(prev.sits)?prev.sits:[{secs:prev.secs==null?null:prev.secs,total:prev.total||0}]).concat([{secs:secs,total:total}])}; }
+  if(total){
+    if(!md.studyLog) md.studyLog={}; if(!md.studyLog[kid]) md.studyLog[kid]={}; if(!md.studyLog[kid][ENVFLASH_SID]) md.studyLog[kid][ENVFLASH_SID]={};
+    md.studyLog[kid][ENVFLASH_SID][todayKey]=entry;
+  }
+  if(live){ db.ref("mastery/"+kid+"_idflash").update(upd); db.ref("mastery/studyLog/"+kid+"/"+ENVFLASH_SID+"/"+todayKey).set(entry); }
+  f.done={total:total,correct:correct,miss:miss,secs:secs,newly:newly,dry:dry,saved:live,upd:upd,entry:total?entry:null};
+  if(typeof _mastRe==="function") _mastRe();
+  return f.done;
+}
+// ── screens ──
+function _envFlashEsc(s){ return (typeof mstEsc==="function")?mstEsc(s):String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function _envFlashJs(s){ return String(s==null?"":s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;"); }
+const _ENVFLASH_BTN="min-height:48px;padding:0 22px;border-radius:14px;border:none;background:#16a34a;color:#fff;font-size:15px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif";
+// The door: the released ID decks (of this session when one is given), each with its "⚡ n of m fluent" line and Go.
+function envFlashDoorHtml(kid,session){
+  if(!kid) return "";
+  let decks=envFlashDecks(kid); if(session){ const sd=session.decks||[]; decks=decks.filter(d=>sd.indexOf(d.key)>=0); }
+  if(!decks.length) return "";
+  const esc=_envFlashEsc, js=_envFlashJs, mode=envFlashMode[kid]||"pick";
+  let h='<div style="background:#f0fdf4;border:2px solid #86efac;border-radius:20px;padding:16px 18px;margin-bottom:16px;font-family:\'DM Sans\',sans-serif">';
+  h+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div style="flex:1;min-width:140px;font-size:18px;font-weight:800;color:#166534">\u26A1 ID Flash</div><div style="display:flex;gap:6px">';
+  ["pick","type"].forEach(m=>{ const on=mode===m; h+='<button onclick="envFlashSetMode(\''+js(kid)+'\',\''+m+'\')" style="padding:6px 12px;border-radius:999px;border:2px solid '+(on?'#166534':'#bbf7d0')+';background:'+(on?'#166534':'#fff')+';color:'+(on?'#fff':'#166534')+';font-size:12px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">'+(m==="pick"?'\u{1F446} Pick':'\u2328\uFE0F Type')+'</button>'; });
+  h+='</div></div>';
+  h+='<div style="font-size:12px;color:var(--muted);font-weight:600;margin:4px 0 8px;line-height:1.4">A picture, '+ENVFLASH_SECS+' seconds, name it. Three quick rights on three different pictures and it\u2019s fluent.</div>';
+  let open=0;
+  decks.forEach(d=>{ const c=envFlashCount(kid,d), left=c.total-c.fluent; if(left) open++;
+    h+='<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #dcfce7"><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;color:#1f2937">'+esc(d.key)+'</div><div style="font-size:12px;font-weight:700;color:#15803d">'+esc(envFlashLine(kid,d))+'</div></div>'
+      +(left?'<button onclick="envFlashOpen(\''+js(kid)+'\',\''+js(d.key)+'\')" style="'+_ENVFLASH_BTN+';min-height:44px;padding:0 18px;font-size:14px">Go</button>':'<span style="font-size:12px;font-weight:800;color:#15803d">All fluent \u2713</span>')+'</div>'; });
+  if(decks.length>1&&open>1) h+='<div style="text-align:center;margin-top:10px"><button onclick="envFlashOpen(\''+js(kid)+'\',\'all\')" style="min-height:44px;padding:0 22px;border-radius:14px;border:2px solid #16a34a;background:#fff;color:#166534;font-size:14px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">Mix the decks</button></div>';
+  return h+'</div>';
+}
+// The sitting on the screen (or its summary). Timing starts when the picture has loaded (onload; 1.5 s fallback).
+function envFlashSittingHtml(){
+  const f=envFlash; if(!f) return "";
+  const esc=_envFlashEsc;
+  if(f.done){ const d=f.done;
+    let h='<div style="background:#f0fdf4;border:2px solid #86efac;border-radius:20px;padding:24px;text-align:center;font-family:\'DM Sans\',sans-serif">';
+    h+='<div style="font-size:32px;margin-bottom:8px">\u26A1</div><div style="font-size:17px;font-weight:800;color:#166534;margin-bottom:6px">ID Flash done</div>';
+    h+='<div style="font-size:14px;color:var(--muted);font-weight:600">'+d.total+' picture'+(d.total===1?'':'s')+' \u00b7 '+d.correct+' right \u00b7 '+d.miss+' missed \u00b7 '+d.secs+' s</div>';
+    if(d.newly.length) h+='<div style="margin-top:8px;font-size:14px;font-weight:800;color:#15803d">Now fluent: '+esc(d.newly.join(", "))+'</div>';
+    if(d.dry) h+='<div style="margin-top:8px;font-size:12px;font-weight:800;color:#b45309">Dry run \u2014 scored here only, nothing saved.</div>';
+    h+='<div style="margin-top:14px"><button onclick="envFlashQuit()" style="'+_ENVFLASH_BTN+'">Done</button></div>';
+    return h+'</div>'; }
+  const c=f.cards[f.i]; if(!c) return "";
+  if(!f.drawnAt) f.drawnAt=Date.now();
+  let h='<div style="font-family:\'DM Sans\',sans-serif">';
+  h+='<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);font-weight:700;margin-bottom:8px"><span>\u26A1 ID Flash \u00b7 '+(f.i+1)+' of '+f.cards.length+'</span><span>'+esc(c.deck)+'</span></div>';
+  h+='<div style="height:10px;border-radius:5px;background:#e5e7eb;overflow:hidden"><div id="envflash-bar" style="height:100%;width:'+(f.ans?'0':'100')+'%;background:#16a34a"></div></div>';
+  h+='<div id="envflash-secs" style="text-align:right;font-size:12px;font-weight:800;color:var(--muted);margin:4px 0 8px">'+(f.ans?(f.ans.secs+' s'):(ENVFLASH_SECS+' s'))+'</div>';
+  h+='<div style="background:#fff;border:2px solid #e5e7eb;border-radius:18px;padding:12px;text-align:center"><img src="'+esc(c.pic.url)+'" alt="" onload="envFlashImgReady()" style="max-width:100%;max-height:52vh;border-radius:12px;object-fit:contain"></div>';
+  if(f.ans){
+    h+='<div style="margin-top:12px;text-align:center;font-size:22px;font-weight:800;color:'+(f.ans.ok?'#16a34a':'#dc2626')+'">'+(f.ans.ok?'\u2713':'\u2717')+' '+esc(c.item)+'</div>';
+    if(!f.ans.ok&&f.ans.typed) h+='<div style="text-align:center;font-size:13px;color:var(--muted);font-weight:600">you said: '+esc(f.ans.typed)+'</div>';
+    if(c.pic.credit) h+='<div style="text-align:center;font-size:10.5px;color:var(--muted);margin-top:4px">'+esc(c.pic.credit)+'</div>';
+    h+='<div style="text-align:center;margin-top:12px"><button onclick="envFlashNextCard()" style="'+_ENVFLASH_BTN+';min-height:52px;padding:0 34px;font-size:16px">'+(f.i+1<f.cards.length?'Next \u25B6':'Finish')+'</button></div>';
+  } else if(f.mode==="type"){
+    h+='<div style="display:flex;gap:8px;margin-top:12px"><input id="envflash-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="What is this?" onkeydown="if(event.key===\'Enter\'){event.preventDefault();envFlashCheckTyped();}" style="flex:1;min-width:0;min-height:48px;padding:0 14px;border:2px solid #d1d5db;border-radius:12px;font-size:16px;font-family:\'DM Sans\',sans-serif">'
+      +'<button onclick="envFlashCheckTyped()" style="'+_ENVFLASH_BTN+';padding:0 18px">Check</button></div>';
+  } else {
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">'+(c.lures||[]).map((ch,i)=>'<button onclick="envFlashPickTap('+i+')" style="min-height:52px;padding:8px 10px;border-radius:14px;border:2px solid #d1d5db;background:#fff;color:#1f2937;font-size:15px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">'+esc(ch.name)+'</button>').join("")+'</div>';
+  }
+  h+='<div style="text-align:center;margin-top:16px"><a href="javascript:void(0)" onclick="envFlashQuit()" style="font-size:13px;color:var(--muted);text-decoration:underline;cursor:pointer">'+(f.results.length?'Stop here (keeps what you did)':'Quit for now')+'</a></div>';
+  if(typeof setTimeout==="function"&&typeof document!=="undefined") setTimeout(()=>{ if(envFlash!==f||f.ans||f.done||f.cards[f.i]!==c) return;
+    if(!f.shownAt) envFlashImgReady(); else if(!f.timer) envFlashTimerStart();
+    const inp=document.getElementById("envflash-in"); if(inp&&document.activeElement!==inp) inp.focus(); },f.shownAt?0:1500);
+  return h+'</div>';
+}
+function envFlashRunningHtml(kid){ return (envFlash&&kid&&envFlash.kid===kid)?envFlashSittingHtml():""; }
+// 🎮 Games entry (GAMES_LIST): available once a released ID deck has pictures; the same door and sitting as on the study start.
+function envFlashAvail(kid){ try{ return envFlashDecks(kid).length>0; }catch(e){ return false; } }
+function envFlashGameHtml(){ const kid=(typeof masteryKid!=="undefined")?masteryKid:null; if(!kid) return ""; const r=envFlashRunningHtml(kid); return '<div style="padding:12px 0">'+(r||envFlashDoorHtml(kid,null))+'</div>'; }
+// ENVIDFLASH_END
 
 function renderNotebook(el){
   const con=el||document.getElementById("content"); if(!con)return;
@@ -53248,6 +54361,7 @@ function undoMomMove(id){
     if(ps) savePaceSubject((weekData.tasks.find(x=>x.id===id)||{}).who,rec.adjusted.subjectKey,{...ps,adjust:((ps.adjust|0)-(rec.adjusted.by|0))});
   }
   if(rec&&rec.pulledFrom&&typeof mvtUndo==="function") mvtUndo(id,rec);   // 📅 MOVETODAY: back to its own day
+  if(rec&&rec.setTime&&typeof fdtOnUndo==="function") fdtOnUndo(id);   // ⏰ FIXEDDAYTIME: the pin goes with the move
   delete momMoves[id]; sv(WK+"_momMoves",momMoves);
   if(db) db.ref(WK+"/momMoves/"+id).remove();
   dbg("undo mom move id="+id);
@@ -55999,8 +57113,13 @@ const MAST_INTRO_HINTS={Letters:"say each letter out loud",Numbers:"count out lo
 //     for the information line. owPlanAdd is pure (no writes, no db); owApplyAdd re-checks every row at apply time (another
 //     device may have added it) and writes only §10's paths: record set · card append by index · bank entry by transaction.
 //     A bank entry never carries `def` (it would turn a flip card into a recite card, §2.4). Mom-only; dry-run inert.
-//   · Not in this PR: owAtOpen + the mastBankEligible hook and the mint hook (PR 2), every screen (PR 3), the notebook line
-//     (PR 4), family wording + deck_defs writers (PR 5), Lincoln's migration (PR 6). §17's four questions are still hers.
+//   · PR 2 (her yes 2026-10-27 evening, §16 item 2, §5.2, §8.5): owAtOpen — when an "add" opens; owGateNames — the ONE hook in
+//     mastBankEligible that covers all six automatic-start callers (§2.3); owMintPatch — the record's back and card fields on a
+//     card the three builders mint. Mom's explicit ▶ Start (mastPullItem) stays ungated, as RS4K_GATE does. Her §17 answers:
+//     Transfer = copy only (PR 3); family wording = ask every time, no pre-tick (PR 5); kids' view = no difference (PR 3);
+//     the migration (PR 6) will write the percent cards with at:{subject, lid, label} and the order-of-operations cards with
+//     at:null — nothing written here.
+//   · Not in this PR: every screen (PR 3), the notebook line (PR 4), family wording + deck_defs writers (PR 5), the migration (PR 6).
 const OW_KINDS={add:1,wording:1,link:1};
 const OW_CARD_FIELDS=["review_mode","knowledge_type","type","generationRule","generated","problemCount","imageUrl","emoji","example","sentence"];
 const OW_NONE={};
@@ -56194,6 +57313,52 @@ function owApplyAdd(plan){
   _owIdx[kid]=null;   // the local map changed in place; the index rebuilds on the next read
   try{ if(typeof _mastRe==="function") _mastRe(); }catch(e){}
   return res;
+}
+// ── PR 2 · Opens at a lesson ──
+// §5.2 when an "add" opens. at = null → open · {subject, lid} → open when the lesson's index ≤ the index of the first not-done
+// lesson (he opens the words the day he STARTS the lesson, as RS4K_GATE); the whole book done → open · {lesson:n} / {ch:n} →
+// mastGateChapter(kid, cat_gate[deck].subject) ≥ n. Every doubt (unstamped subject, lid not in the list, no gate, no chapter)
+// fails OPEN — the RS4K_GATE rule: a surprise never silently starves a deck. deck = the record's deck (for the chapter gate).
+function owAtOpen(kid,at,deck){
+  if(!at||typeof at!=="object") return true;
+  try{
+    if(at.lid!=null&&at.subject){
+      const sk=String(at.subject);
+      if(typeof lidStamped==="function"&&!lidStamped(kid,sk)) return true;
+      const ids=(typeof lidsFor==="function")?lidsFor(kid,sk):null; if(!Array.isArray(ids)) return true;
+      const i=ids.indexOf(String(at.lid)); if(i<0) return true;
+      const done=(typeof lidDoneIdx==="function")?lidDoneIdx(kid,sk):null; if(!done) return true;
+      let first=-1; for(let n=0;n<ids.length;n++){ if(!done.has(n)){ first=n; break; } }
+      if(first<0) return true;   // whole book done
+      return i<=first;
+    }
+    const n=(at.lesson!=null&&at.lesson!=="")?Number(at.lesson):((at.ch!=null&&at.ch!=="")?Number(at.ch):null);
+    if(n==null||!isFinite(n)) return true;
+    const g=((((typeof masteryData!=="undefined"&&masteryData)||{})[kid+"_settings"]||{}).cat_gate||{})[deck]; const sk=g&&g.subject;
+    if(!sk||typeof mastGateChapter!=="function") return true;
+    const cur=mastGateChapter(kid,sk); if(cur==null) return true;
+    return cur>=n;
+  }catch(e){ return true; }
+}
+// §5.2 the one hook — mastBankEligible's names minus the Our-words "add" records for (kid, cat) whose spot is not reached.
+// No records → the very same array back (every caller byte-for-byte today's). A word whose spot is reached starts like any
+// bank word (intro cap, sessions, Mix) — nothing new in the ladder.
+function owGateNames(kid,cat,names){
+  if(!Array.isArray(names)||!names.length) return names;
+  const idx=owIndex(kid); if(!idx.size) return names;
+  const out=names.filter(n=>{ const e=idx.get(String(cat)+"\u0001"+String(n)); const a=e&&e.add; return !(a&&a.at&&!owAtOpen(kid,a.at,cat)); });
+  return out.length===names.length?names:out;
+}
+// §8.5 the mint hook, at the end of the three card builders (mastApplyScores' inline mint, mastMintFromBank, mastPullItem): a
+// live "add" record for (item.subject, item.prompt) puts its card fields on the new card and, when it carries a back, that
+// back — and the card is what the record says (card.review_mode, else flash), even if a bank def had just made it recite.
+// No write of its own — the caller's existing card write carries it.
+function owMintPatch(kid,item){
+  if(!item||item.subject==null||item.prompt==null) return item;
+  const rec=owRec(kid,item.subject,item.prompt,"add"); if(!rec) return item;
+  const c=rec.card||{}; OW_CARD_FIELDS.forEach(f=>{ if(c[f]!=null) item[f]=c[f]; });
+  if(rec.back){ item.answer=String(rec.back); item.review_mode=c.review_mode||"flash"; }
+  return item;
 }
 // OURWORDS_END
 function mastGetDef(kid,prompt,deck){
@@ -57636,7 +58801,8 @@ function mastGateChapter(kid,sk){
 }
 // The bank names a deck may AUTOMATICALLY mint right now, in bank order. Ungated → the full bank.
 function mastBankEligible(kid,cat){
-  const all=mastFullBank(kid)[cat]||[];
+  let all=mastFullBank(kid)[cat]||[];
+  if(typeof owGateNames==="function") all=owGateNames(kid,cat,all);   // 📝 OURWORDS PR 2: an Our-words add waits for its spot (§5.2); no records = the same list
   if((((masteryData[kid+"_settings"]||{}).cat_hold)||{})[cat]) return [];   // 📘 AAS words: only a test result / check-up / problem word puts them on the ladder
   const g=((masteryData[kid+"_settings"]||{}).cat_gate||{})[cat];
   if(!g||(!g.subject&&!g.fam)) return all;
@@ -57791,6 +58957,7 @@ function mastDueItems(kid,pn){
   const _owned=(typeof mstOwnedIds==="function")?mstOwnedIds(kid):null;
   const due=items.filter(i=>mastIsDue(i,pn)&&!mastIsNeverDrill(i)&&!mastIsParked(i)&&!(_owned&&_owned.has(i.id)));  // R5: never-drill items never assemble; parked issue-words are held out
   due.sort((a,b)=>MAST_TIER_ORDER.indexOf(a.tier||"daily")-MAST_TIER_ORDER.indexOf(b.tier||"daily"));
+  const _env=(typeof envDrillSplit==="function")?envDrillSplit(kid,due):null, _envJ=l=>(_env&&typeof envDrillJoin==="function")?envDrillJoin(_env,l):l;   // 🌿 ENVDRILLFIRST: his Envirothon cards leave the pool before the guards and go back on the front
   const _mk=masteryKid; masteryKid=kid; const settings=mastDrillSettings(); masteryKid=_mk;
   // Return-day softener (max_overdue_per_drill, 0 = off — Adrienne 2026-10-05): after a run of
   // missed school days every slot that came due meanwhile stacks onto the first drill back
@@ -57848,11 +59015,73 @@ function mastDueItems(kid,pn){
         took=false;
         for(const c of rotated){ if(pick.size>=learnCap) break; const nx=byC[c].shift(); if(nx){ pick.add(nx); took=true; } }
       }
-      return capped.filter(i=>i.status!=="introduction"||pick.has(i));
+      return _envJ(capped.filter(i=>i.status!=="introduction"||pick.has(i)));   // 🌿 ENVDRILLFIRST
     }
   }
-  return capped;
+  return _envJ(capped);   // 🌿 ENVDRILLFIRST
 }
+// ENVDRILLFIRST_START — 🌿 Envirothon cards come FIRST in the Mom drill and sit outside its caps and minimums (her decision
+// 2026-10-27: "I would like him to also be in our drills … He will have a study session, but it will work its way to the
+// drills … it would need to be priority of anything because I don't want him to get behind his teammates because of the
+// guards. So maybe they are not counted in his minimums"; DESIGN_envirothon_console_2026-10-27.md 8.10, PLAN §2).
+//   · Which cards: the decks of this family's Envirothon unit (unitStudies/<ENV_UNIT_ID>.decks — read from the record, never
+//     a literal list), for a kid enrolled in it (u.enrolled[kid]). Anyone else, or no unit: the builder runs exactly as before.
+//   · They leave the builder's pool BEFORE its guards run (envDrillSplit, in mastDueItems right after the due sort), so the
+//     return-day softener (max_overdue_per_drill), the per-deck cap + learning floor and the daily learning cap
+//     (max_learn_per_drill) count only his OTHER subjects — they get their full seats, and a day with only Envirothon due
+//     still pulls the others' learning floor. Then they go back on the FRONT of the drill (envDrillJoin, at both returns):
+//     every one that is due, reviews ahead of learning cards, at most ENV_DRILL_MAX (15) a drill — a ceiling of my own
+//     choosing, flagged for her; the rest come the next drill. Inside the drill they shuffle within their deck like any other.
+//   · A held deck (cat_hold — the teacher hasn't sent it out) never rides, even if a card exists in it.
+//   · The study session's hand-off is untouched: a card the 🌿 session owns (mstOwnedIds) never reaches this builder, so what
+//     arrives here is what the session handed off (at/after handOffAt, bi-weekly by default).
+//   · The screen: a thin "🌿 Envirothon first" strip over the slideshow while an Envirothon card is up, and a divider in the
+//     quiz list between the Envirothon decks and the rest. Nothing else changes; results save exactly as today
+//     (mastery/history, the item's ladder) — this block writes nothing, so dry run is unchanged.
+const ENV_DRILL_MAX=15;
+// The Envirothon deck keys for `kid`'s drill: a Set (held decks included — the split drops them), or null when this family
+// has no Envirothon unit or the kid is not enrolled in it. Null = the builder is byte-for-byte today's.
+function envDrillDecks(kid){
+  try{
+    if(typeof ENV_UNIT_ID==="undefined"||!kid) return null;
+    const u=((typeof unitStudies!=="undefined"&&unitStudies)||{})[ENV_UNIT_ID];
+    if(!u||!(u.enrolled||{})[kid]) return null;
+    const s=new Set(); (u.decks||[]).forEach(d=>{ if(d&&d.key) s.add(d.key); });
+    return s.size?s:null;
+  }catch(e){ return null; }
+}
+function envDrillIs(kid,item){ const d=envDrillDecks(kid); return !!(d&&item&&d.has(item.subject)); }
+// Pull the Envirothon cards out of `due` (in place, order kept) before the guards. Returns them (a held deck's cards are
+// dropped — they ride nowhere), or null when nothing applies (then `due` is untouched).
+function envDrillSplit(kid,due){
+  const decks=envDrillDecks(kid); if(!decks||!Array.isArray(due)) return null;
+  const hold=(((typeof masteryData!=="undefined"&&masteryData)||{})[kid+"_settings"]||{}).cat_hold||{};
+  const env=[], rest=[];
+  due.forEach(i=>{ if(!(i&&decks.has(i.subject))) rest.push(i); else if(!hold[i.subject]) env.push(i); });
+  if(rest.length===due.length) return null;
+  due.length=0; rest.forEach(i=>due.push(i));
+  return env;
+}
+// Put them back on the front: reviews first, then learning cards, at most ENV_DRILL_MAX; then the builder's list as it came.
+function envDrillJoin(env,list){
+  if(!env||!env.length) return list;
+  const rev=env.filter(i=>i.status!=="introduction"), learn=env.filter(i=>i.status==="introduction");
+  return rev.concat(learn).slice(0,ENV_DRILL_MAX).concat(list||[]);
+}
+// Slideshow: a thin strip while the card on screen is an Envirothon card ("🌿 Envirothon first · 2 / 5"); "" otherwise.
+function envDrillStripHtml(kid,item,list,base){
+  if(!envDrillIs(kid,item)) return "";
+  let n=0, at=0; (list||[]).slice(0,base==null?undefined:base).forEach((i,ix)=>{ if(envDrillIs(kid,i)){ n++; if(i===item) at=n; } });
+  return '<div style="margin:0 0 8px;padding:4px 12px;border-radius:999px;border:1px solid #86efac;background:#f0fdf4;color:#15803d;font-size:11px;font-weight:700;text-align:center">\u{1F33F} Envirothon first'+(n?' \u{00B7} '+at+' / '+n:'')+'</div>';
+}
+// Quiz list: the divider goes above the FIRST deck that is not Envirothon when an Envirothon deck came before it; "" otherwise.
+function envDrillQuizDivHtml(kid,cat,cats){
+  if(!cats||!cats.length||envDrillIs(kid,{subject:cat})) return "";
+  const ix=cats.indexOf(cat); if(ix<1||!envDrillIs(kid,{subject:cats[0]})) return "";
+  for(let k=1;k<ix;k++){ if(!envDrillIs(kid,{subject:cats[k]})) return ""; }
+  return '<div style="margin:6px 14px 2px;border-top:1px solid #86efac;color:#15803d;font-size:10px;font-weight:700;text-align:center;line-height:0"><span style="background:var(--card,#fff);padding:0 8px">\u{1F33F} Envirothon first \u{00B7} then the rest</span></div>';
+}
+// ENVDRILLFIRST_END
 
 let mastLogMode=false;
 let mastLogScores={};  // {itemId: "c"|"m"|"~"}
@@ -58053,6 +59282,7 @@ function mastApplyScores(items,due,scores,pn,_jset,opts){
               if((cat==="Animals"||cat==="Dinosaurs")&&MAST_ANIMAL_EMOJI[next]) newItem.emoji=MAST_ANIMAL_EMOJI[next];
               const _apVis=mastGetVisual(cat,next);
               if(_apVis){ if(typeof _apVis==="string") newItem.emoji=_apVis; else if(_apVis.imageUrl) newItem.imageUrl=_apVis.imageUrl; }
+              if(typeof owMintPatch==="function") owMintPatch(masteryKid,newItem);   // 📝 OURWORDS PR 2: the record's back and card fields
               items.push(newItem); minted.push(newItem);
             }
           }
@@ -58311,6 +59541,7 @@ function mastSaveResults(){
   if(!masteryData.history) masteryData.history={};
   if(!masteryData.history[masteryKid]) masteryData.history[masteryKid]={};
   masteryData.history[masteryKid][today.replace(/-/g,"")]=histEntry;
+  if(typeof envMirrorOn==="function") envMirrorOn("drill");   // 🌿 ENVMIRROR: a drill saved → the Envirothon summary (debounced; inert without the config block)
   try{HA_LS.setItem("ha_mastery",JSON.stringify(masteryData));}catch(e){}
   try{ checkDrillsGraduation(masteryKid,_preDrillsDone); }catch(e){}
 
@@ -58842,6 +60073,7 @@ function mastMintFromBank(cat,name,items){
   if((cat==="Animals"||cat==="Dinosaurs")&&MAST_ANIMAL_EMOJI[name]) item.emoji=MAST_ANIMAL_EMOJI[name];
   const vis=mastGetVisual(cat,name);
   if(vis){ if(typeof vis==="string") item.emoji=vis; else if(vis.imageUrl) item.imageUrl=vis.imageUrl; }
+  if(typeof owMintPatch==="function") owMintPatch(kid,item);   // 📝 OURWORDS PR 2: the record's back and card fields
   return item;
 }
 // Start a dormant deck now: pull its first cards into Learning (up to the intro cap);
@@ -58902,6 +60134,7 @@ function mastPullItem(cat,name){
     if(typeof vis==="string") item.emoji=vis;
     else if(vis.imageUrl) item.imageUrl=vis.imageUrl;
   }
+  if(typeof owMintPatch==="function") owMintPatch(kid,item);   // 📝 OURWORDS PR 2: the record's back and card fields (Mom's ▶ Start itself is not gated)
   items.push(item);
   masteryData[kid]=items;
   mastPutCards(kid,items,[item]);
@@ -60796,6 +62029,7 @@ function mstSessions(kid) {
       typeAnswer: !!rec.typeAnswer,   // ⌨️ MST_TYPEANS
       budgetRole: (rec.budgetRole === "fixed" || rec.budgetRole === "pace" || rec.budgetRole === "rest") ? rec.budgetRole : null,   // 🎯 NEWBUDGET
       unit: rec.unit, stage: rec.stage, stageTo: rec.stageTo, perDay: rec.perDay, quick: rec.quick, untested: rec.untested,   // 🩺 CHECKUP (+stageTo: CKSPAN)
+      lessonFrom: rec.lessonFrom, lessonTo: rec.lessonTo,   // CKORDER: the lesson range Mom set ("through L4 Lesson 4") was saved but never read back — every level's whole list was asked
       howto: (typeof mstHowtoClean === "function") ? mstHowtoClean(rec.howto) : ""   // 📋 MST_HOWTO
     });
   });
@@ -61388,9 +62622,15 @@ function ckResultTier(res){
 // the day, so a stop and a resume show the same next card. ckPlan itself stays in card order (the families' state, "the 5 hardest
 // first", the pass/full/done rules and its tests are untouched); only what Mom is shown and grades is mixed. Nothing is written.
 function ckSeed(str){ let h=2166136261; for(let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,16777619)>>>0; } return h>>>0; }
-function ckMix(queue,kid,sid,dk){
+function ckMix(queue,kid,sid,dk,inFam){
   const out=(queue||[]).slice(); let x=ckSeed(String(kid)+"|"+String(sid)+"|"+String(dk))||1;
   const rnd=function(){ x^=x<<13; x>>>=0; x^=x>>>17; x^=x<<5; x>>>=0; return x/4294967296; };   // xorshift32: tiny, deterministic
+  if(inFam){   // CKORDER: a SPELLING check-up keeps the plan's lesson order (Book 1 Lesson 1 → …); only the words inside one lesson mix
+    const groups=[], at={};
+    out.forEach(q=>{ const k=String((q&&q.slug)||(q&&q.fam)||""); if(at[k]==null){ at[k]=groups.length; groups.push([]); } groups[at[k]].push(q); });
+    const res=[]; groups.forEach(g=>{ for(let i=g.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); const t=g[i]; g[i]=g[j]; g[j]=t; } g.forEach(q=>res.push(q)); });
+    return res;
+  }
   for(let i=out.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); const t=out[i]; out[i]=out[j]; out[j]=t; }
   return out;
 }
@@ -61404,10 +62644,21 @@ function ckSession(kid,sid){ try{ return (mstSessions(kid)||[]).find(s=>s.sid===
 function ckSpanCards(u,session){
   if(!u||typeof _ustCards!=="function") return [];
   const a=+session.stage||0, b=Math.max(a,+session.stageTo||a);
-  if(b<=a) return _ustCards(u,a);
-  const out=[]; for(let st=a;st<=b;st++) _ustCards(u,st).forEach(c=>out.push(Object.assign({},c,{family:"L"+st+" \u00b7 "+(c.family||"All")})));
+  if(b<=a) return ckLessonOrder(u,_ustCards(u,a));
+  const out=[]; for(let st=a;st<=b;st++) ckLessonOrder(u,_ustCards(u,st)).forEach(c=>out.push(Object.assign({},c,{family:"L"+st+" \u00b7 "+(c.family||"All")})));
   return out;
 }
+// CKORDER_START (her words 2026-10-28: "it should be doing 3 of each lesson in each book. And it should start at book 1, lesson 1,
+// and do the 3. It doesn't matter if those 3 mix up … we need to be progressing through that in the order in which it was created").
+// A level's cards come deck by deck (words, then phonograms, rules, sound spellings), so a lesson with no words (Level 1 Lessons
+// 1–6) sat after Lesson 24. When the unit numbers its families (famSort: the AAS books), the level is put in lesson order first —
+// stable, so cards inside a lesson keep their own order. Units without numbered families (the facts path) are untouched.
+function ckLessonOrder(u,cards){
+  if(!(u&&u.famSort)) return cards;
+  const num=c=>(c&&c.lesson!=null)?+c.lesson:((typeof _ustFamNum==="function"&&_ustFamNum(c))||0);
+  return cards.map((c,i)=>({c,i})).sort((x,y)=>(num(x.c)-num(y.c))||(x.i-y.i)).map(x=>x.c);
+}
+// CKORDER_END
 function ckCards(session){
   const u=(typeof unitStudies!=="undefined"&&unitStudies)?unitStudies[session.unit]:null;
   const all=(u&&typeof _ustCards==="function")?ckSpanCards(u,session):[];   // CKSPAN
@@ -61440,7 +62691,7 @@ function ckRenderHtml(kid,session){
   const cards=ckCards(session);
   if(!cards.length) return '<div style="'+box+'">This check-up’s unit isn’t in your family yet.</div>';
   const st=ckState(kid,session.sid), p=ckPlan(cards,session,st), dk=ckDayKey();
-  p.queue=ckMix(p.queue,kid,session.sid,dk);   // CKMIX: the asked order is mixed for the sitting
+  p.queue=ckMix(p.queue,kid,session.sid,dk,ckIsSpelling(session));   // CKMIX: the asked order is mixed for the sitting (CKORDER: a spelling check-up mixes inside each lesson only)
   const running=ckRun&&ckRun.kid===kid&&ckRun.sid===session.sid;
   const left=Math.min(p.queue.length,ckTodayLeft(session,st,dk,running?ckRun.extra:0));
   let h='<div style="'+box+'"><div style="font-size:22px;font-weight:800;color:#0f766e">\u{1FA7A} '+ckEsc(session.name||"Check-up")+'</div>';
@@ -61527,7 +62778,7 @@ function ckTap(r,name){
   const cards=ckCards(s), dk=ckDayKey();
   const st=JSON.parse(JSON.stringify(ckState(kid,sid)));
   const p=ckPlan(cards,s,st); if(!p.queue.length){ ckStop(); return; }
-  p.queue=ckMix(p.queue,kid,sid,dk);   // CKMIX: the same mixed order the screen showed
+  p.queue=ckMix(p.queue,kid,sid,dk,ckIsSpelling(s));   // CKMIX: the same mixed order the screen showed
   const it=name?p.queue.find(x=>x&&String(x.card.name)===String(name)):p.queue[0]; if(!it) return;   // CKWRITTEN: a named row, else the front card
   const secs=name?null:Math.round((Date.now()-ckRun.ts)/100)/10;   // the written list has no clock
   const prevM=ckFamState(st,s,it.slug).m;
@@ -63154,6 +64405,7 @@ function mstFlipBtn(session,rec){
 function mstCardPic(card){
   if(!card) return "";
   try{
+    { const _ep=(typeof envPicCycle==="function")?envPicCycle(card):""; if(_ep) return _ep; }   // ⚡ ENVIDFLASH: a different picture of the item each show
     let items=masteryData[masteryKid]; if(!Array.isArray(items)) items=Object.values(items||{});
     const it=items.find(i=>i&&(card.id?i.id===card.id:(i.prompt===card.name&&i.subject===card.deck)));
     if(it&&it.imageUrl) return String(it.imageUrl);
@@ -63592,6 +64844,7 @@ function renderMastStudy(opts){
     h+='</div>';
   }
   if(session.kind==="checkup"&&typeof ckRenderHtml==="function") return h+ckRenderHtml(kid,session);   // 🩺 CHECKUP
+  if(typeof envFlashRunningHtml==="function"){ const _ef=envFlashRunningHtml(kid); if(_ef) return h+_ef; }   // ⚡ ENVIDFLASH: a running ID Flash sitting
   const pn=mastGetPrintNum(kid);
   const todayLog=mstLogGet(kid,session.sid);
   let pile={reviews:[],learning:[],newNames:[]};
@@ -63606,6 +64859,8 @@ function renderMastStudy(opts){
   h+='</div>';
   if(typeof mstHowtoHtml==="function") h+=mstHowtoHtml(kid,session);   // 📋 MST_HOWTO
   if(typeof mstControlsHtml==="function") h+=mstControlsHtml(session);   // 📋 MST_HOWTO_CTL: the buttons as they are now (✓/✗, Back, typed answers)
+  if(typeof envtStartHtml==="function") h+=envtStartHtml(kid,session);   // 📝 ENVTEST: the open check-in / final tops the 🌿 start
+  if(typeof envFlashDoorHtml==="function") h+=envFlashDoorHtml(kid,session);   // ⚡ ENVIDFLASH: the door, released ID decks of this session only
   const running=mstState&&mstSid===session.sid;
   if(running){
     let prog={done:0,total:0,remaining:0,againCount:0};
@@ -63979,6 +65234,7 @@ function _mstSaveInner(){
   if(!masteryData.studyLog[kid]) masteryData.studyLog[kid]={};
   if(!masteryData.studyLog[kid][sid]) masteryData.studyLog[kid][sid]={};
   masteryData.studyLog[kid][sid][todayKey]=entry;
+  if(typeof envMirrorOn==="function") envMirrorOn("study");   // 🌿 ENVMIRROR: a sitting saved → the Envirothon summary (debounced; inert without the config block)
   try{ HA_LS.setItem("ha_mastery",JSON.stringify(masteryData)); }catch(e){}
 
   mstDone={correct:correct,miss:miss,shown:shown,total:total,secs:secs};
@@ -66590,12 +67846,14 @@ const GAMES_LIST=[
   {key:"match",  emoji:"\u{1F3AF}", label:"Match",       view:"match", style:"match",  available:k=>_gamesMatchPairs(k).length>0, render:c=>buildMatchHtml(c)},
   {key:"memory", emoji:"\u{1F9E0}", label:"Memory flip", view:"match", style:"memory", available:k=>_gamesMatchPairs(k).length>0, render:c=>buildMatchHtml(c)},
   {key:"which",  emoji:"\u{1F446}", label:"Which one?",  view:"which",                 available:k=>whichDecks(_gamesItems(k)).length>0, render:c=>buildWhichHtml(c)},
+  {key:"idflash",emoji:"\u26A1",     label:"ID Flash",    view:"idflash",               available:k=>typeof envFlashAvail==="function"&&envFlashAvail(k), render:c=>envFlashGameHtml(c)},   // ⚡ ENVIDFLASH
 ];
 const gamesLast={};   // kid → key of the last game played on this device
 function gamesFor(k){ return GAMES_LIST.filter(g=>{ try{ return !!g.available(k); }catch(e){ return false; } }); }
 // The game on screen: a GAMES_LIST key, "" for the bare Games section, null when Mastery isn't in Games.
 function gamesCurrentKey(){
   if(mastView==="which") return "which";
+  if(mastView==="idflash") return "idflash";   // ⚡ ENVIDFLASH
   if(mastView==="match") return matchStyle==="memory"?"memory":"match";
   return mastView==="games"?"":null;
 }
@@ -67493,6 +68751,7 @@ function _renderMasteryInner(el){
     mastSlideCardsHtml=slideList.map((it,ix)=>buildSlideCard(it,ix>=_slBase));
     h+='<div style="padding:10px 14px">';
     if(typeof deckInstrStripHtml==="function") h+=deckInstrStripHtml(masteryKid,(slideList[mastSlideIdx]||{}).subject);   // DECKINSTR: strip follows the card on screen (every arrow/score re-renders)
+    if(typeof envDrillStripHtml==="function") h+=envDrillStripHtml(masteryKid,slideList[mastSlideIdx],slideList,_slBase);   // 🌿 ENVDRILLFIRST: thin strip while an Envirothon card is up
     h+=mastSlideCardsHtml[mastSlideIdx];
     if(slideList[mastSlideIdx]&&mastSlideIdx<_slBase) mastShowMeAutoSay(slideList[mastSlideIdx].id+"|"+pn);   // SHOWME_CUE: say the word once as the card comes up
 
@@ -67518,6 +68777,7 @@ function _renderMasteryInner(el){
       quizItems.forEach(it=>{ if(!qCats[it.subject]) qCats[it.subject]=[]; qCats[it.subject].push(it); });
       Object.entries(qCats).forEach(([qcat,qitems])=>{
         const qEmoji=catE3[qcat]||"";
+        if(typeof envDrillQuizDivHtml==="function") h+=envDrillQuizDivHtml(masteryKid,qcat,Object.keys(qCats));   // 🌿 ENVDRILLFIRST: divider between the Envirothon decks and the rest
         h+='<div class="mast-section"><div class="mast-section-lbl">'+qEmoji+' '+qcat+' <span class="cnt">'+qitems.length+'</span></div>';
         if(typeof deckInstrStripHtml==="function") h+=deckInstrStripHtml(masteryKid,qcat);   // DECKINSTR
         qitems.forEach((it,i)=>{
@@ -68654,7 +69914,7 @@ function _mlQueueLayCore(tasks){
     const isToday=function(t){ return t&&_mlDayOf(t)===_todayDay; };
     const movable=function(t){
       return isToday(t)&&!String(t.id||"").endsWith("_c")&&!t._eowOverflow&&!t._dayDrop   // DAYDROP: in the "didn't fit" box, not on the timeline
-        &&!/lunch/i.test(t.title||"")&&!t.famBlock   // 👨‍👩‍👧 family time is held like lunch
+        &&!/lunch/i.test(t.title||"")&&!t.famBlock&&!(typeof fdtHeld==="function"&&fdtHeld(t))   // 👨‍👩‍👧 family time is held like lunch · ⏰ FIXEDDAYTIME: so is a card Mom set a time for
         &&!_mlFinished(t.id,t);
     };
     const mine={}, momQ={};
@@ -68718,7 +69978,7 @@ function _mlQueueLayCore(tasks){
     const _lw=_mlLunchWin();
     const _famLay={};   // LIVINGDAY_FAM: famAuto card id → laid minute (filled below)
     const lunchOf=function(k){
-      return tasks.filter(function(x){ return isToday(x)&&x.who===k&&(/lunch/i.test(x.title||"")||(x.famBlock&&!_mlFinished(x.id,x))); })   // a checked family card is over at its check (fixedOf has it)
+      return tasks.filter(function(x){ return isToday(x)&&x.who===k&&(/lunch/i.test(x.title||"")||((x.famBlock||(typeof fdtHeld==="function"&&fdtHeld(x)))&&!_mlFinished(x.id,x))); })   // a checked family card is over at its check (fixedOf has it) · ⏰ FIXEDDAYTIME: a set-time card holds like family time
         .map(function(x){ const a=(_famLay[x.id]!==undefined)?_famLay[x.id]:toMin(x.time); return [a,a+(x.dur||30)]; })
         .concat(_lw?[_lw]:[]);
     };
@@ -68832,6 +70092,7 @@ function _mlQueueLayCore(tasks){
       _blkIv.push([st,st+b.mins]); _mlBlkLaid[b.key]=st;
     }); }catch(e){}
     try{ if(typeof kitPrepBlocksOpen==="function") kitPrepBlocksOpen().forEach(function(b){ _blkIv.push([b.startMin,b.startMin+b.mins]); _mlBlkLaid[b.key]=b.startMin; }); }catch(e){}   // 🍳 MEALPREP_BLOCK: at its time
+    try{ if(typeof fdtHeld==="function") tasks.forEach(function(x){ if(x&&isToday(x)&&_mr(x)&&fdtHeld(x)&&!_mlFinished(x.id,x)) _blkIv.push([toMin(x.time),toMin(x.time)+(x.dur||20)]); }); }catch(e){}   // ⏰ FIXEDDAYTIME: a Mom-required card set for a time holds Mom there — her other cards step over it
     const newTimes={}; const momWait={};
     Object.keys(_famLay).forEach(function(id){ newTimes[id]=_famLay[id]; });   // LIVINGDAY_FAM
     seq.forEach(function(e){
@@ -69343,7 +70604,7 @@ function dsRetime(tasks){
           const S=Math.max(S0,_floor||0), _ks=((((typeof currData!=="undefined"&&currData)||{}).subjects)||{})[k]||{};
           let f=null;
           tasks.forEach(function(x){ if(!x||x.day!==d||x.who!==k||!x.time||_ck(x)) return;
-            if(!x.famAuto&&(x.famBlock||(typeof fxIsClass==="function"&&fxIsClass(_ks[x.subjectKey])))) return;
+            if(!x.famAuto&&(x.famBlock||(typeof fxIsClass==="function"&&fxIsClass(_ks[x.subjectKey]))||(typeof fdtHeld==="function"&&fdtHeld(x)))) return;   // ⏰ FIXEDDAYTIME: a set-time card is held like a class
             const m=toMin(x.time); if(f===null||m<f) f=m; });
           if(f!==null) mx=Math.max(mx,S-f);
         });
@@ -69358,7 +70619,7 @@ function dsRetime(tasks){
       const S0=toMin(starts[kid]); if(!S0) return;
       let S=Math.max(S0,_floor||0);
       const _subs=((((typeof currData!=="undefined"&&currData)||{}).subjects)||{})[kid]||{};
-      const _isClass=function(t){ return !!(t&&t.famBlock)||(typeof fxIsClass==="function"&&fxIsClass(_subs[t.subjectKey])); };   // 👨‍👩‍👧 family time too
+      const _isClass=function(t){ return !!(t&&t.famBlock)||(typeof fxIsClass==="function"&&fxIsClass(_subs[t.subjectKey]))||(typeof fdtHeld==="function"&&fdtHeld(t)); };   // 👨‍👩‍👧 family time too · ⏰ FIXEDDAYTIME: a set-time card
       // A scheduled class WINS its time — even over the morning notebook (her rule 2026-09-23). If one
       // of this kid's classes today is running when the day would start, the day starts when it ENDS,
       // so nothing is pulled on top of the class (German 10:00–10:45 → notebook stays 10:45).
@@ -75957,6 +77218,12 @@ function gwAutoBalance(dayData,lateStart,skipDays,todayISO){
             const dstTasks=(dayData[dk]||{})[kid]||{};
             if(dstTasks[key]!==undefined){            // this move would stack the subject on dk
               if(capFor(kid,key,DEFAULT_DAY_CAP)===1) continue;     // 6c-2: cap 1 (reflex, dictation) never stacks
+              // CKDAYBOUND_START — a day-bound subject (Daily tracking, or a card that drops when missed: a 🩺 check-up's card)
+              // runs once on each of its days and never stacks either. The balancer evened DeWalt's week 4 (laid 2026-10-25)
+              // by pulling the fourth-grader's Mon–Thu "Checkup Spelling" cards onto her light Friday — five there, none Mon–Thu —
+              // and her sister's Wednesday one onto Friday: it was the only cap-less, un-planned subject allowed on Friday.
+              if(subjects[key]&&(subjects[key].noCarry||subjects[key].tracking==="daily")) continue;
+              // CKDAYBOUND_END
               if(!allowStack) continue;                // pass 1: keep subjects spread across days
               if(dayTotals[ld2]-dayTotals[dk]<=STACK_GAP_MIN) continue; // pass 2: only to close a big gap
             }
@@ -77253,7 +78520,7 @@ function seGuardCtx(extra){
     win:day=>{ const ov=(_sd.overrides||{})[day]||{}; return {start:toMin(ov.start||_sd.defaultStart||"10:00 AM"),end:toMin(ov.end||_sd.defaultEnd||"4:15 PM"),lunchStart:_r.lunchStart,lunchEnd:_r.lunchEnd}; },
     kidOff:(kid,day)=>{ try{ const ds=iso(day); return !!(ds&&typeof smapIsKidOff==="function"&&smapIsKidOff(kid,ds)); }catch(e){ return false; } },
     isClass:t=>{ try{ return !!(t&&t.famBlock)||(typeof mvtHeldToday==="function"&&mvtHeldToday(t))||   // 📅 MOVETODAY: held where Mom put it today
-      (typeof fxIsClass==="function"&&fxIsClass(subj(t))); }catch(e){ return false; } },   // 👨‍👩‍👧 family time too
+      (typeof fxIsClass==="function"&&fxIsClass(subj(t)))||(typeof fdtHeld==="function"&&fdtHeld(t)); }catch(e){ return false; } },   // 👨‍👩‍👧 family time too · ⏰ FIXEDDAYTIME: a set-time card
     isLesson:t=>{ try{ if(t.subjectKey==="morning_nb"||t.subjectKey==="closing_nb"||/notebook/i.test(t.title||"")) return false;
       if(typeof subjNoCarry==="function"&&subjNoCarry(t)) return false; return typeof planBacked==="function"&&!!planBacked(t.who,t.subjectKey); }catch(e){ return false; } },
     ahead:(kid,sk)=>{ try{ return (typeof planPace==="function")?(planPace(kid,sk).score||0):0; }catch(e){ return 0; } },   // vs the CURRENT plan
