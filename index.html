@@ -4999,7 +4999,7 @@ function renderAll(){
   } finally { try{ if(typeof cdRenderEnd==="function") cdRenderEnd(_cdR0); }catch(e){} }   // ⏱ CDBOOTS
 }
 function _renderAllInner(){
-  try{ if(tab==="schedule"&&!momSchedView){ _momSuspend(); if(kid==="mom") kid="all"; } else _momResume(); }catch(e){}   // 🧒 KIDSLENS
+  try{ if(tab==="schedule"&&!momSchedView&&kid!=="mom"){ _momSuspend(); } else _momResume(); }catch(e){}   // 🧒 KIDSLENS · 👩 MOMCHIP (2026-11-02): under the Mom chip the switch's real state shows — her tools when it's on, her view alone when off
   // 👩 MSV: Mom mode went off somewhere else (a Notebook/Units lock, a check-up relock) while Mom's Day ▸ Schedule was open →
   // back to the Mom's Day door, never the code box on the schedule.
   try{ if(momSchedView&&tab==="schedule"&&!momHereReal()){ momDayIn=false; msvExit(); tab="moms-plan"; mpSubView="cal"; document.querySelectorAll(".nav-tab").forEach(b=>b.classList.toggle("active",b.dataset.tab==="moms-plan")); ["sched-subtabs","day-tabs","kid-filter","week-strip","msv-bar"].forEach(id=>{ const e=document.getElementById(id); if(e) e.style.display="none"; }); } }catch(e){}
@@ -5144,9 +5144,15 @@ function dayPct(d){
 }
 
 // ── KID FILTER ────────────────────────────────────────────────────
+// MOMCHIP_START — 👩 Mom first in the kid row on the main Schedule too (her ask 2026-11-02: "a Mom tab on the main schedule
+// showing her schedule with nothing code-gated unless the switch is on"). Switch off: the chip shows her agenda (Mom Needed |
+// May Need Mom, laundry / prep / house rows) as a view only — no code box under the row (the Mom switch in the header is the
+// one door), every Mom tool stays off. Switch on: the same view with her tools, because under the Mom chip KIDSLENS no longer
+// sets Mom mode aside (the All / kid chips still do — the kids' Schedule stays exactly the kids' Schedule). Tapping Mom never
+// turns the switch off (MOMSWITCH: the switch is the only off). Mom's Day ▸ Schedule (MSV) is unchanged. No Firebase writes.
 function renderKidFilter(){
   document.getElementById("kid-filter").innerHTML=
-    ((typeof momSchedView!=="undefined"&&momSchedView)?["mom","all",...ROSTER]:["all",...ROSTER]).map(k=>{   // 👩 MSV: Mom first on Mom's Day · 🧒 KIDSLENS: no Mom chip on the kids' Schedule
+    ["mom","all",...ROSTER].map(k=>{   // 👩 Mom first — on Mom's Day ▸ Schedule (MSV) and on the main Schedule (MOMCHIP)
       const isActive = (k===kid&&!(k==="all"&&typeof helperViewActive==="function"&&helperViewActive())) || (k==="mom" && momModeActive);
       return '<button class="kid-btn'+(isActive?" active":"")+'" data-kid="'+k+'" onclick="selKid(\''+k+'\')">'+
         (k==="mom" && momModeActive ? "✓ Mom" : cap(k))+'</button>';
@@ -5158,41 +5164,15 @@ function renderKidFilter(){
         ? '<button class="star-chip" onclick="goToStars()" title="Tap for '+cap(kid)+'’s Stars">⭐ '+bankBalance(kid)+'</button>'
         : '');
   const pinBar=document.getElementById("mom-pin-bar");
-  if(pinBar){
-    if(kid==="mom" && !momModeActive){
-      pinBar.style.display="block";
-      pinBar.innerHTML='<div style="font-size:13px;font-weight:700;color:#b5394a;margin-bottom:6px">Enter Admin Code</div>'+
-        '<input id="mom-pin-input" type="password" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off" '+
-        'style="width:100px;text-align:center;font-size:20px;letter-spacing:6px;padding:8px 10px;border:2px solid var(--border);border-radius:8px;font-family:monospace" '+
-        'oninput="checkMomPin(this.value)"/>'+
-        '<div id="mom-pin-err" style="font-size:11px;color:#b5394a;margin-top:4px;min-height:14px"></div>';
-      setTimeout(()=>{const i=document.getElementById("mom-pin-input");if(i)i.focus();},50);
-    } else {
-      pinBar.style.display="none";
-    }
-  }
+  if(pinBar){ pinBar.style.display="none"; pinBar.innerHTML=""; }   // MOMCHIP: the "Enter Admin Code" box under the row is retired — the header's Mom switch is the one door (checkMomPin stays for the record)
 }
+// MOMCHIP_END
 function selKid(k){
   try{ helperView=null; }catch(e){}   // 🙋 leave a helper's list
   // 👩 MSV (her rule 2026-10-08): inside Mom's Day Mom mode is ALWAYS on — the 👩 Mom chip only shows Mom's view; it never
-  // turns Mom mode off and never asks for the code (the code is asked at the Mom's Day door).
-  if(k==="mom"&&typeof momSchedView!=="undefined"&&momSchedView){ kid="mom"; schedShowAdmin=false; renderAll(); window.scrollTo({top:0,behavior:'smooth'}); return; }
-  if(k==="mom"){
-    if(momModeActive){
-      if(kid==="mom"){
-        // Already on the agenda → tapping Mom again exits Mom mode.
-        haMomOff(); kid="all"; schedShowAdmin=false; renderAll();
-      } else {
-        // In Mom mode but peeking at a kid → tapping Mom returns to the agenda (stays unlocked/red).
-        kid="mom"; schedShowAdmin=false; renderAll();
-        window.scrollTo({top:0,behavior:'smooth'});
-      }
-    } else {
-      kid="mom"; schedShowAdmin=false; renderAll();
-      window.scrollTo({top:0,behavior:'smooth'});
-    }
-    return;
-  }
+  // turns Mom mode off and never asks for the code. 👩 MOMCHIP (2026-11-02): the same on the main Schedule — the chip shows her
+  // view (tools only with the switch on); tapping it again never turns the switch off (it used to: the switch is the only off).
+  if(k==="mom"){ kid="mom"; schedShowAdmin=false; renderAll(); window.scrollTo({top:0,behavior:'smooth'}); return; }
   if(!momModeActive) momPinUnlocked=false;
   kid=k; schedShowAdmin=false; renderAll();
 }
@@ -9155,8 +9135,9 @@ function renderSchedule(el){
   }
 
   // Mom view: a two-column, time-aligned agenda (Mom Needed | May Need Mom) instead of the
-  // single-column kid schedule. Mom mode always unlocks, so no Skylight-lock handling here.
-  if(kid==="mom" && unlocked){
+  // single-column kid schedule. No lock handling here: the morning-routine gate is the kids' (MOMCHIP 2026-11-02: with the
+  // switch off the chip is her view alone, and it still shows — it used to fall into the kids' blurred list).
+  if(kid==="mom"){
     h+=momAgendaHtml(tasks);
   } else if(kid==="all"){
     // No whole-view gate here: allAgendaHtml locks each kid's column on its own.
@@ -14805,7 +14786,8 @@ function llSyncKidRows(){ if(typeof slState==="undefined"||typeof activeWk!=="fu
         if(want&&!(cur&&cur.done)){ slState[sk]={done:true,ts:ts,pts:0,bid:null,auto:"line"}; ch=true; }
         else if(!want&&cur&&cur.done&&cur.auto==="line"){ slState[sk]={done:false,ts:"",pts:null,bid:null}; ch=true; } });
       if(ch){ n++; const done=p[0]==="morning"?((typeof morningComplete==="function")&&morningComplete(kid,dn)):((typeof rtComplete==="function")&&rtComplete(p[0],kid,dn)), fk=wk+"_"+dn+"_"+kid+"_"+p[0], fc=slState[fk];
-        if(!!(fc&&fc.done)!==!!done) slState[fk]={done:!!done,ts:done?ts:""}; } }); });
+        if(!!(fc&&fc.done)!==!!done) slState[fk]={done:!!done,ts:done?ts:""};
+        if(p[0]==="morning"&&done&&!(fc&&fc.done)&&typeof dsAutoStart==="function"&&!(typeof _dryRun==="function"&&_dryRun())) dsAutoStart(kid); } }); });   // LL_DAYSTART (Adrienne's "all yeses" 2026-11-02, from Kenzie's Monday): when the line's tick is what finishes the Morning list, the kid's day starts here, same as toggleMorningStep's flip — live 11/2 Kenzie's list finished at 9:17 on Mom's 🫧 Start and she had no dayStart at all. Today only (dn is _todayDay); dsAutoStart never moves a start already set; the school-start floor is applied where it's read (MMDAYFLOOR, the day-start re-time)
   if(n&&before&&typeof slSaveChanged==="function") slSaveChanged(wk,before);
   return n; }
 // ✓ / un-✓ on a line row (laundryKidHook hands it over). Today only — back-filling another day starts nothing.
@@ -39370,7 +39352,13 @@ function dcTodayGroups(){
 }
 function dcOpen(bid,taskId){
   const groups=dcTodayGroups(); if(!groups.length){ try{ if(typeof gwShowToast==="function") gwShowToast("\u{1F3E1} No family time on today\u2019s schedule."); }catch(e){} return false; }
-  let g=null; if(taskId) g=groups.find(x=>x.copies.some(t=>t.id===taskId))||null; if(!g&&bid) g=groups.find(x=>x.bid===bid&&!x.done)||groups.find(x=>x.bid===bid)||null; if(!g) g=groups.find(x=>!x.done)||groups[0];
+  let g=null; if(taskId) g=groups.find(x=>x.copies.some(t=>t.id===taskId))||null; if(!g&&bid) g=groups.find(x=>x.bid===bid&&!x.done)||groups.find(x=>x.bid===bid)||null;
+  // DCGONE (her yes 2026-11-02, "all yeses"): a card whose family time was deleted in Settings opens NOTHING — never whichever
+  // other family time is on today. Live DeWalt 11/2: the deleted Fact Review block's 🏡 cards stayed on the week (by design, until
+  // the week is planned again), and "Open today's card" opened History. Only a door with no card or block named (the Corner tile,
+  // dcOpen()) picks the first family time of the day.
+  if(!g&&(bid||taskId)){ try{ if(typeof gwShowToast==="function") gwShowToast("\u{1F3E1} This family time was taken out in Settings \u2014 \u{1F504} Regenerate takes its card off the week."); }catch(e){} return false; }
+  if(!g) g=groups.find(x=>!x.done)||groups[0];
   dcState={bid:g.bid,key:g.key,taskId:taskId||null,words:{},from:(typeof tab!=="undefined")?tab:null}; dcLog={};
   dcRe(); try{ window.scrollTo(0,0); }catch(e){} return true;
 }
@@ -39487,6 +39475,7 @@ function dcRunsToday(){ try{ return dcTodayGroups().length>0; }catch(e){ return 
 // each kid's family card (famRowHTML's hook): "Open today's card" — today's card, not yet done
 function dcCardBtnHTML(t,done){
   if(done||!t||!t.famBlock) return ""; try{ if(((typeof effectiveDay==="function")?effectiveDay(t):t.day)!==_todayDay) return ""; }catch(e){ return ""; }
+  try{ if(typeof famDefs==="function"&&!famDefs()[t.famBlock]) return ""; }catch(e){}   // DCGONE: its family time was deleted — no door to someone else's
   return '<button onclick="event.stopPropagation();dcOpen(\''+dcJ(t.famBlock)+'\',\''+dcJ(t.id)+'\')" style="margin-top:6px;margin-left:6px;padding:6px 12px;border-radius:10px;border:1.5px solid #c4b5fd;background:#faf5ff;color:#5b21b6;font-size:12px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">\u{1F4FA} Open today\u2019s card</button>';
 }
 // Kids' Corner's picker: a 🏡 tile when a family block runs today
@@ -70522,11 +70511,11 @@ function mpBuildRound(kid,items,dn,rnd){
   for(let k=0;k<Math.max(list.length,known.length);k++){ if(list[k]) q.push({pid:list[k].id,list:true}); if(known[k]) q.push({pid:known[k].id,list:false}); }
   return {q,pool,modes,listIds:list.map(i=>i.id)};
 }
-function mpOpen(kid){
+function mpOpen(kid,from){   // from: "study" when the finish screen of the kid's last study session opened it (📚 STUDYEND)
   if(!mpOn(kid)) return false;
   try{ if(typeof bbAudioUnlock==="function") bbAudioUnlock(); }catch(e){}   // the button tap unlocks the ding / bonk (iPad)
   const items=mpItems(kid), dn=mpDayNum(kid), R=mpBuildRound(kid,items,dn);
-  mpUI={kid,dn,dk:mpDayKey(),q:R.q,i:0,cur:null,pool:R.pool,modes:R.modes,shows:{},changed:{},out:{},log:[],t0:Date.now(),secs:mpCfg(kid).secs,phase:R.q.length?"play":"done",grow:null,lock:false,saved:false};
+  mpUI={kid,dn,dk:mpDayKey(),q:R.q,i:0,cur:null,pool:R.pool,modes:R.modes,shows:{},changed:{},out:{},log:[],t0:Date.now(),secs:mpCfg(kid).secs,phase:R.q.length?"play":"done",grow:null,lock:false,saved:false,from:from||null};
   if(mpUI.phase==="play") mpTurn(mpUI);
   mpRender(); if(mpUI&&mpUI.phase==="play") mpSay();
   return true;
@@ -70607,6 +70596,7 @@ function mpFinish(U){
   touched.forEach(it=>{ const k=mpKey(kid,it); if(k==null) return; upd[k+"/gp"]=it.gp||null; if(U.out[it.id]) upd[k+"/next_due"]=it.next_due; });
   Object.keys(U.ww||{}).forEach(pid=>{ const it=_mpItem(U,pid), k=it?mpKey(kid,it):null; if(k!=null) upd[k+"/ww"]=it.ww||null; });   // 🔤 SPELLBUILD: Word Workout's days, the Workout's own path
   const now=Date.now(), entry=U.log.length?{game:"practice",deck:"practice",at:now,secs:Math.max(0,Math.round((now-U.t0)/1000)),items:U.log.slice()}:null;
+  if(entry&&U.from) entry.from=U.from;   // 📚 STUDYEND: a round opened from the study's finish screen says so (one field; nothing reads it yet)
   if(entry){ try{ const G=_mpMD().gameLog||(_mpMD().gameLog={}), K=G[kid]||(G[kid]={}), D=K[U.dk]||(K[U.dk]={}); D["local_"+now]=entry; }catch(e){} }
   if(typeof db!=="undefined"&&db&&!(typeof _dryRun==="function"&&_dryRun())){
     try{ if(Object.keys(upd).length) db.ref("mastery/"+kid).update(upd); }catch(e){}
@@ -70670,6 +70660,43 @@ function mpDayChipHtml(kid,day){
     if(typeof kidOffOwnDay==="function"&&kidOffOwnDay(kid,day)) return "";
     const n=mpTodayList(kid).length; if(!n) return "";
     return '<div class="mp-day-chip" style="margin:0 0 10px"><button onclick="mpOpen(\''+kid+'\')" style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:999px;border:1.5px solid #ddd6fe;background:#f5f3ff;color:#5b21b6;font-size:13px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">\u{1F3AE} Practice · '+n+' card'+(n===1?'':'s')+'</button></div>';
+  }catch(e){ return ""; }
+}
+// ── 📚 STUDYEND — the daily study ends in games (step 4 of the game-flag plan; her yes 2026-11-02 to the design in
+//    study-ends-in-games_design_2026-11-02.md). Her words: "do all their daily studies first … then it would go to their daily
+//    mix … games". Decided: ONE round at the END of the daily study, not after each session. After a sitting saves, the
+//    Nice work! screen gains one line: the next session to open (named sessions in their order, the Daily Mix last), or — on the
+//    last session of the day — "🎮 Now your games · N cards" (the practice round, mpOpen; a TAP, never auto: the tap unlocks the
+//    ding / bonk on iPad), or "Study done — no games needed today". The study card's check-off is unchanged (the sitting's save);
+//    the games are the last step on the screen, not a gate. Switch off = the screen as it always was. Check-ups are Mom's, never
+//    a step here. Same line in Kids' Corner (its finish screen is this one). No writes of its own. ──
+// PURE: sessions (mstSessions order), the session just saved, isDone(sid) → the next session to open, or null when none is left
+function mpStudyNext(sessions,doneSid,isDone){
+  const list=(sessions||[]).filter(s=>s&&s.sid!=null&&s.kind!=="checkup");
+  const order=list.filter(s=>s.kind!=="mix").concat(list.filter(s=>s.kind==="mix"));   // her order: named sessions first, the Daily Mix last
+  const next=order.find(s=>s.sid!==doneSid&&!isDone(s.sid));
+  return next?{sid:next.sid,name:String(next.name||""),emoji:String(next.emoji||"")}:null;
+}
+// a session is done for today when it has a today log, or has nothing to do today (no new, no due, no learning)
+function mpStudySessionDone(kid,sid){
+  try{
+    if(typeof mstLogGet==="function"&&mstLogGet(kid,sid)) return true;
+    const pile=(typeof mstPile==="function")?mstPile(kid,sid,(typeof mastGetPrintNum==="function")?mastGetPrintNum(kid):1,null):null;
+    return !pile||(!(pile.newNames||[]).length&&!(pile.reviews||[]).length&&!(pile.learning||[]).length);
+  }catch(e){ return true; }
+}
+function mpStudyDoneHtml(kid,sid){
+  try{
+    if(!kid||!mpOn(kid)) return "";
+    let sessions=[]; try{ sessions=(typeof mstSessions==="function"&&mstSessions(kid))||[]; }catch(e){ sessions=[]; }
+    const E=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    const J=s=>(typeof mstEscJs==="function")?mstEscJs(s):String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+    const next=mpStudyNext(sessions,sid,x=>mpStudySessionDone(kid,x));
+    const btn='min-height:52px;padding:0 24px;border-radius:14px;border:none;font-size:16px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif';
+    if(next) return '<div class="mp-study-next" style="margin-top:14px"><button onclick="mstPick(\''+J(next.sid)+'\')" style="'+btn+';background:#7c3aed;color:#fff">Next: '+E(next.emoji)+' '+E(next.name)+' \u2192</button></div>';
+    const n=mpTodayList(kid).length;
+    if(n) return '<div class="mp-study-games" style="margin-top:14px"><div style="font-size:13px;font-weight:700;color:#5b21b6;margin-bottom:8px">Study done \u2014 one more thing!</div><button onclick="mpOpen(\''+J(kid)+'\',\'study\')" style="'+btn+';background:#5b21b6;color:#fff">\u{1F3AE} Now your games \u00b7 '+n+' card'+(n===1?'':'s')+'</button></div>';
+    return '<div class="mp-study-done" style="margin-top:14px;font-size:15px;font-weight:800;color:#15803d">\u2B50 Study done \u2014 no games needed today</div>';
   }catch(e){ return ""; }
 }
 // ── Mom HQ ▸ ⚙ Rules: the switches (saved right away, one field each) ──
@@ -78311,6 +78338,7 @@ function renderMastStudy(opts){
     { const _mx=(session.kind==="mix"&&pile&&pile.mixLeft>0)?pile.mixLeft:0;   // MIX_FINISH: the rest of the backlog, if he wants it
       if(_mx) h+='<div style="margin-top:12px"><button onclick="mstStart()" style="min-height:48px;padding:0 24px;border-radius:14px;border:1.5px solid #7c3aed;background:#fff;color:#6d28d9;font-size:15px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">Keep going · '+_mx+' left</button><div style="font-size:11.5px;color:var(--muted);margin-top:6px">Today\'s Mix is done \u2713 \u2014 this is extra, and every card counts.</div></div>'; }
     if(typeof cpReviewMoreHtml==="function") h+=cpReviewMoreHtml(session,pile,"done");   // 🔁 CPREVIEW: Keep going · N left after a capped 🌿 sitting
+    if(typeof mpStudyDoneHtml==="function") h+=mpStudyDoneHtml(kid,session.sid);   // 📚 STUDYEND: the next session, or the games on the last one
     h+='</div>';
   } else {
     const donePile=!(pile.newNames||[]).length&&!(pile.reviews||[]).length&&!(pile.learning||[]).length;
@@ -92039,6 +92067,36 @@ function gwMergeCarry(dayInput,carry){
     }
   }
 }
+// CARRYMAX_START — a carried lesson never breaks the subject's max per day (her rule 2026-11-02: "it should be looking at the
+// max 1 per day"). Live DeWalt week 5, Regenerate Mon 11/2 6:57 PM: the balancer put Taylor's Saxon 42 on Monday (today, after
+// school), Monday was laid from now so 42 ran past the cutoff, and gwMergeCarry added it onto Tuesday's Saxon 43 — two Saxon
+// lessons Tuesday, none Wednesday, though Saxon (plan-backed) is capped at 1 a day. Now, after the merge, a day that a carry
+// pushed over capFor keeps its first `cap` lessons (lowest first — the order gwMergeCarry keeps) and the rest carry on to the
+// next school day in order, exactly like a cutoff leftover (the week's end rolls them as before). Only subjects that were
+// carried in are looked at; a day the balancer stacked on purpose (cap 2+) is untouched. Returns the overflow carry, or null.
+function gwCapCarry(dayInput,carry){
+  let over=null;
+  for(const kid of Object.keys(carry||{})){
+    for(const sk of Object.keys(carry[kid]||{})){
+      const v=(dayInput[kid]||{})[sk]; if(!Array.isArray(v)) continue;
+      const cap=(typeof capFor==="function")?capFor(kid,sk,DEFAULT_DAY_CAP):DEFAULT_DAY_CAP;
+      if(!(cap>=1)||v.length<=cap) continue;
+      dayInput[kid][sk]=cap===1?v[0]:v.slice(0,cap);
+      if(!over) over={}; if(!over[kid]) over[kid]={};
+      over[kid][sk]=v.slice(cap);
+    }
+  }
+  return over;
+}
+// Two carries → one, a's lessons first (a = the day's own cutoff drops, b = what its max sent on: drops are among the kept,
+// so they are the lower lessons).
+function gwJoinCarry(a,b){
+  if(!a) return b||null; if(!b) return a;
+  const c=JSON.parse(JSON.stringify(a));
+  for(const kid of Object.keys(b)){ if(!c[kid]) c[kid]={}; for(const sk of Object.keys(b[kid])) c[kid][sk]=(c[kid][sk]||[]).concat(b[kid][sk]); }
+  return c;
+}
+// CARRYMAX_END
 function gwCarryToAssignments(carry){
   const out={};
   for(const kid of Object.keys(carry)){ out[kid]={}; for(const sk of Object.keys(carry[kid])){ const v=carry[kid][sk]; out[kid][sk]=v.length===1?v[0]:v.slice(); } }
@@ -92207,7 +92265,8 @@ function generateWeek(config){
     const dn=WDAY_MAP[d.getDay()];
     if(!dn||skipSet.has(dn)||!dates[dn]) continue;
     // Re-home the previous day's past-cutoff leftovers into this day, in lesson order.
-    if(_carry){ if(!balanced[dk]) balanced[dk]={}; gwMergeCarry(balanced[dk],_carry); _carry=null; }
+    let _capOver=null;   // 🔢 CARRYMAX: what this day's max per day sends on to the next day
+    if(_carry){ if(!balanced[dk]) balanced[dk]={}; gwMergeCarry(balanced[dk],_carry); _capOver=gwCapCarry(balanced[dk],_carry); _carry=null; }
     _lastDk=dk;
 
     const idPrefix=d.getFullYear()+"d"+dayOfYear(d)+"_";
@@ -92265,7 +92324,7 @@ function generateWeek(config){
       const _dayBound=!!(_s.noCarry||_s.tracking==="daily"||dp.key==="reflex"||dp.key==="retrieval");
       if(!_dayBound&&String(dp.reason||"").includes("CUTOFF")) _cut.push(dp); else allDropped.push(dp);
     });
-    _carry=_cut.length?gwCarryFromDrops(_cut):null;
+    _carry=gwJoinCarry(_cut.length?gwCarryFromDrops(_cut):null,_capOver);   // 🔢 CARRYMAX: + the lessons over this day's max
   }
   // Leftovers off the last weekday spill to a synthesized Saturday (unless the family
   // turned Saturday-overflow off); whatever still doesn't fit rolls to next week — the
