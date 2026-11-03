@@ -3210,7 +3210,7 @@ function haClaimSchedLock(kind,cb,_attempt){
       // genuine competing regen/autogen aborts immediately.
       var holder=null; try{ holder=snap&&snap.val(); }catch(e){}
       var att=_attempt||0;
-      if((kind==="regen"||kind==="autogen")&&att<16&&(!holder||holder.kind==="cascade")){
+      if((kind==="regen"||kind==="autogen"||kind==="relay")&&att<16&&(!holder||holder.kind==="cascade")){   // RELAY: a re-lay from a tap waits ~8 s for a passing sweep too
         setTimeout(function(){ haClaimSchedLock(kind,cb,att+1); },500);
         return;
       }
@@ -3716,6 +3716,10 @@ function attachWeekListeners(wk){
   const r8sw=db.ref(wk+"/eveningSweep");
   r8sw.on("value",s=>{ eveningSweeps=s.val()||{}; });
   fbWeekRefs.push(r8sw);
+  // 🔁 RELAY: what the last re-lays moved (the line on the day banner + Undo, on every Mom device)
+  const r8rl=db.ref(wk+"/relayLog");
+  r8rl.on("value",s=>{ relayLogData=s.val()||{}; if(typeof renderAllSoon==="function") renderAllSoon(); });
+  fbWeekRefs.push(r8rl);
 
   // 👩 Mom-loop hold — "once checked, who has it has it". One tiny value; every device
   // agrees on who has STARTED with Mom (see mlOnCheck / mlHold).
@@ -8486,7 +8490,7 @@ function schedRenderDayOffPicker(dn){
     p+='<button onclick="schedToggleKidOff(\''+k+'\',\''+ds+'\')" style="padding:6px 14px;border-radius:16px;border:1.5px solid '+(offByOverride?'transparent':'var(--border)')+';background:'+(offByOverride?c:'#fff')+';color:'+(offByOverride?'#fff':'var(--text)')+';font-size:12px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">'+cap(k)+(offByOverride?' · off':(offWhy?' · '+esc(offWhy):''))+'</button>';
   });
   p+='</div>';
-  p+='<div style="font-size:10px;color:var(--muted);margin-top:6px">Tap to toggle a sick/off day — the same per-kid override as Admin → Calendar. Generation and catch-up skip an off kid; regenerate afterward to reflow their lessons.</div>';
+  p+='<div style="font-size:10px;color:var(--muted);margin-top:6px">Tap to toggle a sick/off day — the same per-kid override as Admin → Calendar. Generation and catch-up skip an off kid; their lessons for that day move into the rest of the week by themselves (Undo on the banner for 15 minutes).</div>';
   p+='</div>';
   return p;
 }
@@ -8502,12 +8506,15 @@ function schedToggleKidOff(k,ds){
     db.ref("calendar/kidOverrides/"+k+"/"+ds).set(entry);
     calendarData.kidOverrides=calendarData.kidOverrides||{};
     (calendarData.kidOverrides[k]=calendarData.kidOverrides[k]||{})[ds]=entry;
-    // 😷 Off TODAY takes effect now: the cascade moves their unfinished lessons into the rest
-    // of the week (same lock + debounce as every other sweep). A future date still waits for
-    // that morning's sweep, or a regenerate.
+    // 🔁 RELAY (her yes 2026-11-03): off on ANY day of the week on the board takes effect now — the one re-lay door moves
+    // their unfinished lessons into the rest of the week and the day banner says what moved (Undo for 15 min puts the mark
+    // and the cards back). A date outside this week has nothing on the board to move.
     const _offToday=(typeof routineDateISO==="function"&&routineDateISO(_todayDay)===ds);
-    if(_offToday&&typeof schedCascade==="function") schedCascade();
-    gwShowToast(_offToday?cap(k)+" is off today — moving their lessons into the rest of the week":cap(k)+" marked off — regenerate to reflow their lessons");
+    const _dn=(typeof stDayNameOf==="function")?stDayNameOf(ds):"", _onBoard=_offToday||!!(_dn&&typeof stDsOf==="function"&&stDsOf(_dn)===ds);
+    const _when=_offToday?"today":((typeof stDateWords==="function")?stDateWords(ds):ds);
+    if(_onBoard&&typeof relayWeek==="function") relayWeek("kidoff",{label:"😷 "+cap(k)+" off "+_when,undo:[{p:"calendar/kidOverrides/"+k+"/"+ds,gone:true}]});
+    else if(_offToday&&typeof schedCascade==="function") schedCascade();
+    gwShowToast(_onBoard?cap(k)+" is off "+_when+" — moving their lessons into the rest of the week":cap(k)+" marked off "+_when);
   }
   renderAll();
 }
@@ -9029,6 +9036,7 @@ function renderSchedule(el){
   if(day===_todayDay&&kid!=="all"&&kid!=="mom"){ try{ h+=hrKidButtonHTML(kid); }catch(e){} }   // 🙋 NEEDMOM: the kid's own page (hidden when Mom is here)
   if(day===_todayDay&&momHere()&&!momSchedView){ try{ const _hr=hrMomCardHTML((kid!=="all"&&kid!=="mom")?kid:null); if(_hr) h+='<div style="margin:0 0 10px">'+_hr+'</div>'; }catch(e){} }   // 🙋 NEEDMOM: who asked for Mom → ✓ Helped
   if(momHere()&&schedDayOffOpen) h+=schedRenderDayOffPicker(day);
+  if(momHere()){ try{ if(typeof relayLineHTML==="function") h+=relayLineHTML(day); }catch(e){} }   // 🔁 RELAY: what the last re-lay moved · Undo
   if(day===_todayDay&&kid!=="all"&&kid!=="mom"&&typeof hhCleanOn==="function"&&hhCleanOn(_todayStr())){ try{ h+=hhCleanPanelHTML(kid,_todayStr(),day); }catch(e){} }   // 🧽 CLEANINGDAY: Go clean on a normal day
 
   if(CONSTRAINT[day]){
@@ -37730,17 +37738,19 @@ function dtCheck(st){
 function dtSave(){
   const st=dtState; if(!st||!momHere()) return;
   const err=dtCheck(st); if(err){ st.err=err; dtRender(); return; }
+  const _was=(typeof dtUndoSnap==="function")?dtUndoSnap(st.iso):null;   // 🔁 RELAY: the leaves as they were, for Undo
   if(!stWrite(dtUpd(st))) return;
   const words=dtWords(st), when=(st.iso===stTodayIso())?"Today":stDateWords(st.iso);
-  dtClose(); if(typeof schedCascade==="function") schedCascade(); if(typeof renderAll==="function") renderAll();
+  dtClose(); if(typeof relayWeek==="function") relayWeek("daytimes",{label:"⏰ "+when+" "+fromMin(st.s)+"–"+fromMin(st.e),undo:_was}); else if(typeof schedCascade==="function") schedCascade(); if(typeof renderAll==="function") renderAll();   // 🔁 RELAY: through the one door
   if(typeof gwShowToast==="function") gwShowToast("⏰ "+when+": school "+words);
 }
 // "Back to normal": both of the date's leaves go; the day follows Settings again.
 function dtClear(iso){
   iso=iso||(dtState&&dtState.iso); if(!momHere()||!stIsoOk(iso)) return;
   const upd={}; upd["config/rules/schoolDay/byDate/"+iso]=null; upd["config/rules/schoolDay/lunchByDate/"+iso+"/all"]=null;
+  const _was=(typeof dtUndoSnap==="function")?dtUndoSnap(iso):null;   // 🔁 RELAY: the leaves as they were, for Undo
   if(!stWrite(upd)) return;
-  dtClose(); if(typeof schedCascade==="function") schedCascade(); if(typeof renderAll==="function") renderAll();
+  dtClose(); if(typeof relayWeek==="function") relayWeek("daytimes",{label:"⏰ "+((iso===stTodayIso())?"Today":stDateWords(iso))+" back to normal",undo:_was}); else if(typeof schedCascade==="function") schedCascade(); if(typeof renderAll==="function") renderAll();   // 🔁 RELAY: through the one door
   if(typeof gwShowToast==="function") gwShowToast("⏰ "+((iso===stTodayIso())?"Today":stDateWords(iso))+" back to the usual school times");
 }
 function dtRender(){
@@ -42241,6 +42251,187 @@ const _histOwnsCard=(h,t)=>!h||!h.who||!h.title||(h.who===t.who&&_sameLesson(h.t
 // sweep consults subjNoCarry (curriculum card flags); running before currData arrives
 // would silently read every "Drops that day" flag as false and sweep day-bound work
 // forward. The curriculum once() re-arms this when it answers last.
+// RELAY_START — 🔁 ONE RE-LAY DOOR (her yes 2026-11-03 "yes to all and go to all"; PLAN_day_adjust_2026-10-29 step 4, slice 1;
+// the design: side-session note living-step4_design_2026-11-03.md). Every edit that should re-lay the week on the board goes
+// through relayWeek(why,info): a day off this week (😷 — step 3, which never reached main), ⏰ a date's own school times, and
+// the 8 PM sweep / ⏩ push (through _rlwRun inside their own lock). It is the SAME sweep the app already trusts — cascadeIntraWeek
+// + runCascade, with the school-end guard inside safeWriteTasks — behind one lock claim ("relay", retried against a passing
+// sweep) and one 2 s wait (ten taps → one run). No third engine. Around the run: a snapshot of every card's day / time before,
+// a diff after → week<N>/relayLog/<ts> = {label, dev, at, n, moves, removed, undo}, the newest 10 kept (targeted removes), and
+// one line on the day banner (Mom lens): "⏰ Wed, Nov 5 11:00 AM–2:00 PM → 6 cards moved (3 for each of two kids) · Undo". Undo
+// (Mom, 15 min): the trigger's own paths go back to what they were (the kid's mark, the date's leaves) AND the listed cards go
+// back where they were — only cards still unchecked, unclaimed and not moved since; one multi-path update, targeted. A
+// tripwire in _debug if a claimed / started / set-time / Mom-moved card changed DAY (the sweep never does; checked cards
+// are the ts-heal's to move). Called only by a tap or the clock, never by a listener, so no device re-lays because another
+// one did. ?dryrun=1: the sweep runs in this device's memory, nothing is written. Pure helpers (_rlwSnapOf, _rlwDiff,
+// _rlwWords, _rlwUndoUpd) are sliced by test_relay_week.js.
+const RLW_WAIT_MS=2000, RLW_UNDO_MS=15*60*1000, RLW_KEEP=10, RLW_MAX_MOVES=80, RLW_MAX_REMOVED=20;
+let relayLogData={};      // mirror of week<N>/relayLog (listener in attachWeekListeners)
+let _rlwPend=null, _rlwTimer=null;
+// relayWeek("kidoff",{label:"😷 <Kid> off Wed, Nov 5", undo:[{p:"calendar/kidOverrides/<kid>/<iso>", gone:true}]})
+function relayWeek(why,info){
+  info=info||{};
+  if(!_rlwPend) _rlwPend={whys:[],labels:[],undo:[],at:Date.now()};
+  _rlwPend.whys.push(String(why||"relay"));
+  if(info.label&&_rlwPend.labels.indexOf(info.label)<0) _rlwPend.labels.push(String(info.label));
+  // ten taps → one Undo back to BEFORE the first: a path's first "was" wins
+  (info.undo||[]).forEach(function(u){ if(u&&u.p&&!_rlwPend.undo.some(x=>x.p===u.p)) _rlwPend.undo.push(u.gone?{p:u.p,gone:true}:{p:u.p,was:(u.was===undefined?null:u.was)}); });
+  try{ clearTimeout(_rlwTimer); }catch(e){}
+  _rlwTimer=setTimeout(function(){ _rlwFire(0); },RLW_WAIT_MS);
+}
+function _rlwFire(att){
+  const pend=_rlwPend; if(!pend) return;
+  const ready=(typeof fbCheckedLoaded==="undefined"||fbCheckedLoaded)&&(typeof fbTasksLoaded==="undefined"||fbTasksLoaded)&&(typeof fbHistoryLoaded==="undefined"||fbHistoryLoaded)&&(typeof fbCurrLoaded==="undefined"||fbCurrLoaded);
+  if(!ready||(typeof lockHeldByOther==="function"&&lockHeldByOther())){
+    if(att<20){ _rlwTimer=setTimeout(function(){ _rlwFire(att+1); },500); return; }   // ~10 s for a passing sweep / the data
+    _rlwPend=null; if(typeof gwShowToast==="function") gwShowToast("Another device is updating the schedule — the week catches up on its next sweep"); return;
+  }
+  _rlwPend=null;
+  if(typeof haClaimSchedLock!=="function"||typeof cascadeIntraWeek!=="function") return;
+  haClaimSchedLock("relay",function(release){
+    if(!release){ if(typeof gwShowToast==="function") gwShowToast("Another device is updating the schedule — the week catches up on its next sweep"); return; }
+    try{ _rlwRun(pend,function(){ cascadeIntraWeek(); if(typeof runCascade==="function") runCascade(); }); }
+    finally{ release(); }
+  });
+}
+// ── pure: the snapshot and the diff ──
+// o = {checked, claimed, momMoves, todayDay, nowMin, isHeld(t)}  →  {id:{d,t,cf,eo,ck,cl,st,fx,w,ti,card}}
+function _rlwSnapOf(tasks,o){
+  const out={}; o=o||{}; const ck=o.checked||{}, cl=o.claimed||{}, mm=o.momMoves||{};
+  (tasks||[]).forEach(function(t){
+    if(!t||!t.id||String(t.id).endsWith("_c")) return;
+    let st=false; try{ st=!!(o.todayDay&&t.day===o.todayDay&&o.nowMin!=null&&toMin(t.time)<=o.nowMin); }catch(e){}
+    let fx=!!t.famBlock||!!mm[t.id]; try{ if(!fx&&o.isHeld) fx=!!o.isHeld(t); }catch(e){}
+    out[t.id]={d:t.day,t:t.time,cf:t.cascadedFrom||null,eo:!!t._eowOverflow,ck:!!ck[t.id],cl:!!cl[t.id],st:st,fx:fx,w:t.who||"",ti:String(t.title||"").slice(0,48),card:Object.assign({},t)};
+  });
+  return out;
+}
+// → {n, moves:[{id,who,ti,from:{d,t,cf,eo},to:{d,t}}], removed:[card…], locked:[id…]}. A checked or claimed card is never a
+// "move" (the ts-heal owns checked cards; claimed work is frozen) — a claimed / started / held card that changed DAY trips the wire.
+function _rlwDiff(before,tasks){
+  const out={n:0,moves:[],removed:[],locked:[]}; const seen={};
+  (tasks||[]).forEach(function(t){
+    if(!t||!t.id||String(t.id).endsWith("_c")) return; seen[t.id]=true;
+    const b=before[t.id]; if(!b) return;
+    const dayCh=(t.day!==b.d), ch=dayCh||(t.time!==b.t)||(!!t._eowOverflow!==b.eo);
+    if(!ch) return;
+    if(dayCh&&(b.cl||b.st||b.fx)) out.locked.push(t.id);
+    if(b.ck||b.cl) return;
+    out.moves.push({id:t.id,who:b.w,ti:b.ti,from:{d:b.d,t:b.t,cf:b.cf,eo:b.eo},to:{d:t.day,t:t.time}});
+  });
+  Object.keys(before).forEach(function(id){ if(!seen[id]&&!before[id].ck&&!before[id].cl) out.removed.push(before[id].card); });
+  out.n=out.moves.length+out.removed.length;
+  return out;
+}
+function _rlwWords(e){
+  if(!e) return "";
+  const per={}; (e.moves||[]).forEach(function(m){ per[m.who]=(per[m.who]||0)+1; });
+  const kids=Object.keys(per).map(function(k){ return cap(k)+" "+per[k]; }).join(", ");
+  const nm=(e.moves||[]).length, nr=(e.removed||[]).length;
+  let s=(e.label||"Re-laid")+" → "+nm+" card"+(nm===1?"":"s")+" moved"+(kids?" ("+kids+")":"");
+  if(nr) s+=" · "+nr+" to next week";
+  if(e.locked&&e.locked.length) s+=" · ⚠ "+e.locked.length+" held card"+(e.locked.length===1?"":"s")+" changed day";
+  if(e.undone) s+=" · undone";
+  return s;
+}
+// one run: snapshot → fn() (the sweep) → diff → log + line. Used by relayWeek and by the 8 PM sweep / ⏩ push inside their lock.
+function _rlwRun(pend,fn){
+  pend=pend||{};
+  const tasks=(typeof weekData!=="undefined"&&weekData&&weekData.tasks)||[];
+  const now=new Date();
+  const before=_rlwSnapOf(tasks,{checked:(typeof checked!=="undefined"&&checked)||{},claimed:(typeof claimed!=="undefined"&&claimed)||{},momMoves:(typeof momMoves!=="undefined"&&momMoves)||{},
+    todayDay:(typeof _todayDay!=="undefined")?_todayDay:null,nowMin:now.getHours()*60+now.getMinutes(),
+    isHeld:function(t){ return (typeof fdtHeld==="function"&&fdtHeld(t))||(typeof mvtHeldToday==="function"&&mvtHeldToday(t)); }});
+  fn();
+  const after=(typeof weekData!=="undefined"&&weekData&&weekData.tasks)||[];
+  const d=_rlwDiff(before,after);
+  if(d.locked.length) dbg("⚠ relay tripwire ("+(pend.labels||pend.whys||[]).join(" · ")+"): held card(s) changed day — "+d.locked.join(" "));
+  if(!d.n) return d;
+  const at=Date.now();
+  const e={label:(pend.labels&&pend.labels.length?pend.labels:(pend.whys||[])).join(" · "),why:(pend.whys||[]).join(","),dev:(typeof HA_DEV_ID!=="undefined")?HA_DEV_ID:"",at:at,n:d.n,
+    moves:d.moves.slice(0,RLW_MAX_MOVES),removed:d.removed.slice(0,RLW_MAX_REMOVED)};
+  if(d.locked.length) e.locked=d.locked;
+  if(pend.undo&&pend.undo.length) e.undo=pend.undo;
+  relayLogData=Object.assign({},relayLogData); relayLogData[String(at)]=e;
+  const keys=Object.keys(relayLogData).sort(); const drop=[];
+  while(keys.length>RLW_KEEP) drop.push(keys.shift());
+  drop.forEach(function(k){ delete relayLogData[k]; });
+  if(typeof db!=="undefined"&&db&&!(typeof _dryRun==="function"&&_dryRun())){
+    try{ db.ref(WK+"/relayLog/"+at).set(e); drop.forEach(function(k){ db.ref(WK+"/relayLog/"+k).remove(); }); }catch(err){ dbg("relay log write: "+err); }
+  }
+  dbg("🔁 relay: "+_rlwWords(e));
+  if(typeof gwShowToast==="function") gwShowToast("🔁 "+_rlwWords(e));
+  if(typeof renderAll==="function") renderAll();
+  return d;
+}
+// the newest entry from today (local date), or null
+function _rlwLast(){
+  const keys=Object.keys(relayLogData||{}).sort(); if(!keys.length) return null;
+  const e=relayLogData[keys[keys.length-1]]; if(!e||!e.at) return null;
+  const a=new Date(e.at), n=new Date(); if(a.toDateString()!==n.toDateString()) return null;
+  return e;
+}
+function _rlwCanUndo(e,nowMs){ return !!(e&&e.undo&&e.undo.length&&!e.undone&&((nowMs||Date.now())-e.at)<RLW_UNDO_MS); }
+// the day banner line (Mom lens): what the last re-lay moved today, with Undo while it is still possible
+function relayLineHTML(){
+  if(typeof momHere==="function"&&!momHere()) return "";
+  const e=_rlwLast(); if(!e) return "";
+  const t=new Date(e.at); const hm=fromMin(t.getHours()*60+t.getMinutes());
+  return '<div class="relay-line" style="margin:6px 12px 0;font-size:12px;color:#4c1d95;background:#f5f3ff;border:1.5px solid #ddd6fe;border-radius:10px;padding:6px 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="flex:1">🔁 '+esc(hm)+' · '+esc(_rlwWords(e))+'</span>'
+    +(_rlwCanUndo(e)?'<button onclick="relayUndo(\''+esc(String(e.at))+'\')" style="padding:4px 10px;border-radius:8px;border:1.5px solid #c4b5fd;background:#fff;color:#5b21b6;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif;font-size:12px">↩ Undo</button>':'')+'</div>';
+}
+// pure: the one multi-path update an Undo writes → {upd, cards, skipped}. Trigger paths back first, then each listed card that
+// is still unchecked, unclaimed and exactly where the re-lay put it; a removed card comes back whole.
+function _rlwUndoUpd(e,tasks,o){
+  o=o||{}; const ck=o.checked||{}, cl=o.claimed||{}, wk=o.wk||""; const upd={}; let cards=0, skipped=0;
+  (e.undo||[]).forEach(function(u){ if(u&&u.p) upd[u.p]=u.gone?null:(u.was===undefined?null:u.was); });
+  const byId={}; (tasks||[]).forEach(function(t){ if(t&&t.id) byId[t.id]=t; });
+  (e.moves||[]).forEach(function(m){
+    const t=byId[m.id]; if(!t||ck[m.id]||cl[m.id]||t.day!==m.to.d||t.time!==m.to.t){ skipped++; return; }
+    upd[wk+"/tasks/"+m.id+"/day"]=m.from.d; upd[wk+"/tasks/"+m.id+"/time"]=m.from.t;
+    upd[wk+"/tasks/"+m.id+"/cascadedFrom"]=m.from.cf||null; upd[wk+"/tasks/"+m.id+"/_eowOverflow"]=m.from.eo?true:null;
+    cards++;
+  });
+  (e.removed||[]).forEach(function(c){ if(!c||!c.id||byId[c.id]||ck[c.id]) return; upd[wk+"/tasks/"+c.id]=c; cards++; });
+  upd[wk+"/relayLog/"+e.at+"/undone"]=o.now||Date.now();
+  return {upd:upd,cards:cards,skipped:skipped};
+}
+function _rlwApplyLocal(p,v){
+  const parts=String(p).split("/");
+  if(parts[0]==="calendar"&&typeof calendarData!=="undefined"&&calendarData){ let o=calendarData; for(let i=1;i<parts.length-1;i++){ if(!o[parts[i]]||typeof o[parts[i]]!=="object") o[parts[i]]={}; o=o[parts[i]]; } if(v===null) delete o[parts[parts.length-1]]; else o[parts[parts.length-1]]=v; return; }
+  if(typeof stApplyLocal==="function") stApplyLocal(p,v);
+}
+function relayUndo(at){
+  if(typeof momHere==="function"&&!momHere()) return;
+  const e=(relayLogData||{})[String(at)];
+  if(!_rlwCanUndo(e)){ if(typeof gwShowToast==="function") gwShowToast("That re-lay can't be undone any more"); return; }
+  const tasks=(typeof weekData!=="undefined"&&weekData&&weekData.tasks)||[];
+  const r=_rlwUndoUpd(e,tasks,{checked:(typeof checked!=="undefined"&&checked)||{},claimed:(typeof claimed!=="undefined"&&claimed)||{},wk:WK});
+  // this device's memory first (the listeners bring every other device along)
+  Object.keys(r.upd).forEach(function(p){
+    if(p.indexOf(WK+"/tasks/")===0){
+      const rest=p.slice((WK+"/tasks/").length).split("/"); const t=tasks.find(function(x){ return x&&x.id===rest[0]; });
+      if(rest.length===1){ if(r.upd[p]&&!t) tasks.push(Object.assign({},r.upd[p])); return; }
+      if(!t) return; if(r.upd[p]===null) delete t[rest[1]]; else t[rest[1]]=r.upd[p]; return;
+    }
+    if(p.indexOf(WK+"/relayLog/")===0) return;
+    _rlwApplyLocal(p,r.upd[p]);
+  });
+  e.undone=Date.now();
+  try{ sv(WK+"_tasks",tasks); }catch(err){}
+  if(typeof db!=="undefined"&&db&&!(typeof _dryRun==="function"&&_dryRun())){ try{ db.ref().update(r.upd); }catch(err){ dbg("relay undo write: "+err); } }   // one multi-path update, never a whole node
+  dbg("↩ relay undo "+at+": "+r.cards+" card(s) back, "+r.skipped+" left (checked or moved since), "+Object.keys(r.upd).length+" paths");
+  if(typeof gwShowToast==="function") gwShowToast("↩ Put back "+r.cards+" card"+(r.cards===1?"":"s")+(r.skipped?" ("+r.skipped+" left — checked or moved since)":""));
+  if(typeof renderAll==="function") renderAll();
+}
+// ⏰ DAYTIMES: what the date's two leaves are right now, for a day-times Undo
+function dtUndoSnap(iso){
+  const sd=((typeof rulesData!=="undefined"&&rulesData)||{}).schoolDay||{};
+  const L=(sd.byDate||{})[iso], W=(((sd.lunchByDate||{})[iso])||{}).all;
+  return [L&&typeof L==="object"?{p:"config/rules/schoolDay/byDate/"+iso,was:Object.assign({},L)}:{p:"config/rules/schoolDay/byDate/"+iso,gone:true},
+          W&&typeof W==="object"?{p:"config/rules/schoolDay/lunchByDate/"+iso+"/all",was:Object.assign({},W)}:{p:"config/rules/schoolDay/lunchByDate/"+iso+"/all",gone:true}];
+}
+// RELAY_END
 function schedCascade(){
   clearTimeout(cascadeDebounce);
   cascadeDebounce=setTimeout(()=>{
@@ -42523,18 +42714,21 @@ function cascadeIntraWeek(sweepTodayElapsed){
   const _todaySchoolOver=(function(){ try{ const _s=((rulesData||{}).schoolDay)||{}; const _v=(((_s.overrides||{})[today])||{}).end||_s.defaultEnd||"4:15 PM"; return _nowMin>=toMin((typeof dtE==="function")?dtE(today,_v):_v); }catch(e){ return false; } })();
   // 😷 Is this kid marked off TODAY by Mom's own per-kid override? (memoised per sweep)
   const _offTodayMemo={};
-  const _kidOffToday=function(who){
-    if(_offTodayMemo[who]===undefined){
+  // RELAY_OFFDAY (her yes 2026-11-03): the same mark read for ANY day of the week on the board — a later day off re-lays at once (below)
+  const _kidOffOn=function(who,dn){
+    const _k=who+"|"+dn;
+    if(_offTodayMemo[_k]===undefined){
       let off=false;
       try{
-        const ds=_cascDate(today);
+        const ds=_cascDate(dn);
         const o=(ds&&typeof calendarData!=="undefined"&&calendarData&&((calendarData.kidOverrides||{})[who]||{})[ds])||null;
         off=!!(o&&o.school===false);
       }catch(e){ off=false; }
-      _offTodayMemo[who]=off;
+      _offTodayMemo[_k]=off;
     }
-    return _offTodayMemo[who];
+    return _offTodayMemo[_k];
   };
+  const _kidOffToday=function(who){ return _kidOffOn(who,today); };
   const _dbCursor={}; // per-kid chain cursor for regen re-timed day-bound tasks (today only)
   weekData.tasks.forEach(t=>{
     if(t.id.endsWith("_c")) return;
@@ -42609,8 +42803,17 @@ function cascadeIntraWeek(sweepTodayElapsed){
       return;
     }
     const idx=dayOrder.indexOf(t.day);
-    if(idx<0||idx>todayIdx) return;
-    if(idx===todayIdx){
+    if(idx<0) return;
+    // RELAY_OFFDAY (her yes 2026-11-03; step 3 of PLAN_day_adjust_2026-10-29, built here): a kid Mom marked OFF on a LATER day
+    // of this week is not working that day either — their unfinished cards on it join the pool NOW, so "Wednesday we can't"
+    // re-lays the week on the tap (😷 on the day banner, or the Calendar's per-kid mark) instead of waiting for Wednesday
+    // morning's sweep or a Regenerate. Exactly the mark today's sick-day sweep reads (her explicit per-kid school:false —
+    // never a holiday or a co-op). Day-bound cards never reach here (a missed day is just missed); claimed work stays frozen;
+    // the off day itself is refused as a landing day by offHere / the subject-spread below.
+    if(idx>todayIdx){
+      if(!_kidOffOn(t.who,t.day)) return;
+      if(claimed&&claimed[t.id]) return;
+    } else if(idx===todayIdx){
       // Today's tasks normally stay put — no intra-day moving goalposts while the kids
       // are working. On a REGENERATION commit (sweepTodayElapsed) only ELAPSED slots
       // sweep forward. The sweep is the janitor, not the author: the generator now
@@ -78928,6 +79131,301 @@ function buildSortHtml(color){
   return h+'</div></div>';
 }
 // SORTIT_END
+// TMAP_START — 🗺 Treasure map per deck (her "yes to all and go to all" 2026-11-03 to games-later_design_2026-11-03.md #1;
+// PLAN_practice_games_2026-10-23.md §4.5 / §5 #7: "progression skin per deck, not badges … levels are the one gamification element
+// with K-12 evidence"). A PICTURE OF THE LADDER, nothing more: on the kid's Study start card, and again on the "Nice work!" card
+// after a save, one map per deck in that session — a path whose stops are the kid's own ladder rungs (Daily → … → Monthly →
+// Graduated 🏆), a count of cards at each stop, and a ship ⛵ at the deck's AVERAGE rung. Only a card climbing or dropping a rung
+// in drills / study moves the ship; games, spins and points never do (games never move cards up — plan §4.3). The plan said
+// mastery %, but that moves only when a card crosses Monthly, weeks apart; the average rung moves on every climb and is as honest.
+//   · Stops: the kid's ladder (mastDrillSettings().ladder), with Daily in front when the ladder starts higher (the harbor where a
+//     placed card may still sit). A tier off the ladder maps to the nearest rung below it (the ETA rule, _unitKidLadderCfg).
+//   · Cards: the deck's on-ladder cards exactly as mastDeckMastery counts them — not introduction, not parked, not never-drill.
+//   · "⛵ <deck> moved ahead!" on the Nice work! card: the start card remembers each deck's ship (this device, this kid + session,
+//     in memory only) and the finish compares. A deck that slipped gets no line — the map already shows where it stands.
+//   · NO writes, no db, no points, no currency, no best, no sounds. Nothing while a sitting is running (the card stays compact).
+//   · Two guarded lines in renderMastStudy (tmapStudyHtml on the orange card, tmapMovedHtml on the Nice work! card). No kid names.
+const TMAP_LBL={daily:"Daily",every_other_day:"Every other",every_third_day:"Every 3rd",weekly:"Weekly",bi_weekly:"2 weeks",monthly:"Monthly",learned:"Learned",graduated:"Treasure"};
+const TMAP_DEFAULT_LADDER=["every_other_day","weekly","bi_weekly","monthly","graduated"];
+const tmapSnap={};   // kid|sid → {deck: ship fraction} as the start card last drew it (this device, in memory)
+function _tmapOrder(){ return (typeof MAST_TIER_ORDER!=="undefined"&&Array.isArray(MAST_TIER_ORDER))?MAST_TIER_ORDER:["daily","every_other_day","every_third_day","weekly","bi_weekly","monthly","learned","graduated"]; }
+function _tmapEsc(s){ return (typeof esc==="function")?esc(s):String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+// PURE: the stops of a kid's path — their ladder, Daily first when the ladder starts above it; only tiers the app knows, in ladder order
+function tmapStops(ladder){
+  const order=_tmapOrder();
+  let l=(Array.isArray(ladder)&&ladder.length?ladder:TMAP_DEFAULT_LADDER).filter(t=>order.indexOf(t)>=0);
+  if(!l.length) l=TMAP_DEFAULT_LADDER.slice();
+  l=l.slice().sort((a,b)=>order.indexOf(a)-order.indexOf(b)).filter((t,i,arr)=>arr.indexOf(t)===i);
+  if(l[0]!=="daily") l.unshift("daily");
+  return l;
+}
+// PURE: which stop a tier sits at — the highest stop at or below it (a tier below the first stop sits at the first)
+function tmapRung(tier,stops){
+  const order=_tmapOrder(), tp=order.indexOf(tier||"daily");
+  let idx=0;
+  for(let k=0;k<stops.length;k++){ if(order.indexOf(stops[k])<=tp) idx=k; }
+  return idx;
+}
+function _tmapOnLadder(i){
+  if(!i||i.status==="introduction"||i.status==="parked") return false;
+  if(typeof mastIsNeverDrill==="function"&&mastIsNeverDrill(i)) return false;
+  return true;
+}
+// PURE: one deck's map — the count at each stop, how many cards, the ship's average rung and its fraction along the path (0 = harbor, 1 = treasure)
+function tmapDeck(items,deck,stops){
+  if(!Array.isArray(items)) items=Object.values(items||{});
+  const counts=stops.map(()=>0); let n=0, sum=0;
+  items.forEach(i=>{ if(!_tmapOnLadder(i)||(i.subject||"Other")!==deck) return; const r=tmapRung(i.tier,stops); counts[r]++; n++; sum+=r; });
+  const avg=n?sum/n:0, last=Math.max(1,stops.length-1);
+  return {deck:deck,counts:counts,n:n,avg:avg,frac:n?avg/last:0,treasure:n?counts[stops.length-1]:0};
+}
+// PURE: the decks a session's map shows — its own decks; the Daily Mix shows the decks of the kid's deck sessions (it owns their middle rungs)
+function tmapDecksFor(session,sessions){
+  if(!session) return [];
+  if(session.kind==="mix"){ const o={}; (sessions||[]).forEach(s=>{ if(s&&(s.kind==="deck"||s.kind==="all")) (s.decks||[]).forEach(d=>{ o[d]=1; }); }); return Object.keys(o).sort(); }
+  if(session.kind==="checkup") return [];
+  return (session.decks||[]).slice();
+}
+function tmapLadder(){ try{ const s=(typeof mastDrillSettings==="function")?mastDrillSettings():null; if(s&&Array.isArray(s.ladder)&&s.ladder.length) return s.ladder; }catch(e){} return TMAP_DEFAULT_LADDER; }
+function _tmapItems(kid){ if(typeof _gamesItems==="function") return _gamesItems(kid); let it=(typeof masteryData!=="undefined"&&masteryData&&masteryData[kid])||[]; if(!Array.isArray(it)) it=Object.values(it); return it; }
+function _tmapSessions(kid){ try{ return (typeof mstSessions==="function"&&mstSessions(kid))||[]; }catch(e){ return []; } }
+// Every deck map for a kid + session (decks with no on-ladder card are left out — nothing to sail yet)
+function tmapMaps(kid,session){
+  const stops=tmapStops(tmapLadder()), items=_tmapItems(kid);
+  return {stops:stops,maps:tmapDecksFor(session,_tmapSessions(kid)).map(d=>tmapDeck(items,d,stops)).filter(m=>m.n>0)};
+}
+const TMAP_CSS='<style>.tmap-row{display:flex;align-items:center;gap:10px;margin-top:8px}.tmap-name{flex:0 0 92px;font-size:12px;font-weight:800;color:#57534e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}'+
+  '.tmap-track{flex:1;position:relative;padding-top:24px;min-width:0}.tmap-line{position:absolute;top:35px;height:4px;border-radius:2px;background:#e7e5e4}'+
+  '.tmap-ship{position:absolute;top:0;font-size:22px;line-height:1;transform:translateX(-50%);transition:left .6s ease;pointer-events:none}'+
+  '.tmap-stops{display:grid;position:relative}.tmap-stop{display:flex;flex-direction:column;align-items:center;min-width:0}'+
+  '.tmap-dot{width:26px;height:26px;border-radius:50%;border:2px solid #e7e5e4;background:#fff;font-size:11px;font-weight:800;color:#78716c;display:flex;align-items:center;justify-content:center;font-family:\'DM Sans\',sans-serif}'+
+  '.tmap-dot.tmap-has{color:#fff;border-color:transparent}.tmap-dot.tmap-chest{border-color:#f59e0b;background:#fffbeb;color:#b45309;font-size:14px}'+
+  '.tmap-lbl{font-size:9px;font-weight:700;color:#a8a29e;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}</style>';
+function _tmapRowHtml(m,stops){
+  const n=stops.length, col=(typeof MAST_TIER_COL!=="undefined"&&MAST_TIER_COL)||{};
+  const left=((m.avg+0.5)/n*100).toFixed(1);
+  let h='<div class="tmap-row"><div class="tmap-name" title="'+_tmapEsc(m.deck)+'">'+_tmapEsc(m.deck)+'</div><div class="tmap-track">';
+  h+='<div class="tmap-line" style="left:'+(50/n).toFixed(1)+'%;right:'+(50/n).toFixed(1)+'%"></div>';
+  h+='<div class="tmap-ship" style="left:'+left+'%" aria-label="'+m.n+' cards, on the way to the treasure">⛵</div>';
+  h+='<div class="tmap-stops" style="grid-template-columns:repeat('+n+',1fr)">';
+  stops.forEach((t,k)=>{ const c=m.counts[k], last=k===n-1;
+    const cls='tmap-dot'+(last?' tmap-chest':(c?' tmap-has':'')), bg=(!last&&c&&col[t])?' style="background:'+col[t]+'"':'';
+    h+='<div class="tmap-stop"><div class="'+cls+'"'+bg+'>'+(last?(c?c+'\u{1F3C6}':'\u{1F3C6}'):(c||'·'))+'</div><div class="tmap-lbl">'+_tmapEsc(TMAP_LBL[t]||t)+'</div></div>'; });
+  return h+'</div></div></div>';
+}
+// The maps on the orange Study card. phase: "start" (remember each ship), "done" (draw as they stand now), anything else → nothing.
+function tmapStudyHtml(kid,session,phase){
+  if(!kid||!session||(phase!=="start"&&phase!=="done")) return "";
+  const r=tmapMaps(kid,session); if(!r.maps.length) return "";
+  if(phase==="start"){ const snap={}; r.maps.forEach(m=>{ snap[m.deck]=m.frac; }); tmapSnap[kid+"|"+session.sid]=snap; }
+  let h=TMAP_CSS+'<div style="margin-top:12px;padding-top:10px;border-top:1.5px dashed #fed7aa"><div style="font-size:11px;font-weight:800;color:#c2410c;letter-spacing:.04em;text-transform:uppercase">\u{1F5FA} Treasure map</div>';
+  r.maps.forEach(m=>{ h+=_tmapRowHtml(m,r.stops); });
+  return h+'</div>';
+}
+// The "moved ahead" line on the Nice work! card — only decks whose ship is further along than the start card remembered
+function tmapMoved(kid,session){
+  const snap=tmapSnap[kid+"|"+(session&&session.sid)]; if(!snap) return [];
+  return tmapMaps(kid,session).maps.filter(m=>snap[m.deck]!=null&&m.frac>snap[m.deck]+0.0005).map(m=>m.deck);
+}
+function tmapMovedHtml(kid,session){
+  const moved=tmapMoved(kid,session); if(!moved.length) return "";
+  return '<div style="margin-top:10px;font-size:14px;font-weight:800;color:#c2410c">'+moved.map(d=>'⛵ '+_tmapEsc(d)+' moved ahead!').join('<br>')+'</div>';
+}
+// TMAP_END
+// MOLE_START — 🐹 "Whack-a-mole" (her "yes to all and go to all" 2026-11-03 to games-later_design_2026-11-03.md #2; PLAN_practice_games_2026-10-23.md
+// Tier 3 "Whack-a-mole / Find the match": "prompt at top; answers pop; tap only the right one, ignore wrong ones; Wordwall's most-loved
+// template at ages 9–10"; demand REC + inhibition + fluency). The one game here with a clock, so it keeps plan rule 5 — "time only what is
+// already ~90% accurate": ONLY cards at the kid's gate tier or above play (gate_tier, the Sprint rule, default weekly); a learning card is
+// never timed. The prompt is Which one?'s: a picture / letter card is SAID (never written), an answer card shows its front big. Four moles
+// pop up one after another in four holes — the right answer and three of the deck's own wrong ones (plausible lures, plan rule 2) — and
+// each goes back down after MOLE_UP ms. Tap the right one before it hides → the soft ding. Tap a wrong one, or let the right one hide
+// untouched → the soft bonk, the prompt is said again, and the right mole comes back up and STAYS (no clock on a correction — plan rule 3)
+// until it is tapped. A round is MOLE_WAVES prompts (fewer when the deck is small), misses come back once at the end, then the finish:
+// "N on the first tap" against the kid's own best. No lives, no leaderboard, no points, no score against the kid.
+// Cards: Which one?'s own pool (whichPool / whichDeckModes read RAW, like Go Fish — a deck turned off for Which one? still plays here),
+// then this game's own grid cell gameDeckOn(kid,"mole",deck); a deck plays with MOLE_MIN+ gated cards that each have 2+ lures.
+// Writes (only these): <kid>_settings/match_best key "<deck> · mole" (first-tap rights, only when beaten) and the round's gameLog entry
+// (GAMELOG, game:"mole"). NEVER touches the ladder — no scores, no next_due, no study log. db && !_dryRun() only. Per-kid park /
+// restore / resume through its GAMES_LIST entry (🎲 GAMEKIT): every timer checks its own round and sequence, so a parked round's
+// moles never move; on resume the open wave's moles all come up and stay. A round dropped (Change deck, a kid switch) writes nothing.
+let moleState=null;   // {kid,deck,mix,game:"mole",t0,turns:[{pid,mode,tiles:[pid],up:{slot:1},wrong:{pid|late:1},done,first,back,hold}],i,seq,lock,grow,phase,first,of,isPB,prevBest,gameLogged}
+let _moleRandom=Math.random;   // tests seed it
+const MOLE_WAVES=10, MOLE_MIN=4, MOLE_HOLES=4, MOLE_GAP=450, MOLE_UP=2600, MOLE_BEAT=800;
+function _moleItems(kid){ return (typeof _gamesItems==="function")?_gamesItems(kid||masteryKid):[]; }
+function _moleShuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(_moleRandom()*(i+1)); const t=a[i]; a[i]=a[j]; a[j]=t; } return a; }
+function _moleRaw(fn){ const had=(typeof _gdRaw!=="undefined")?_gdRaw:null; try{ if(had!==null) _gdRaw=true; return fn(); } finally{ if(had!==null) _gdRaw=had; } }
+function moleDeckOn(kid,deck){ return (typeof _gdRaw!=="undefined"&&_gdRaw)||typeof gameDeckOn!=="function"||gameDeckOn(kid,"mole",deck); }
+function moleGate(kid){ try{ const s=(typeof masteryData!=="undefined"&&masteryData&&masteryData[(kid||masteryKid)+"_settings"])||{}; return s.gate_tier||"weekly"; }catch(e){ return "weekly"; } }
+// The Sprint rule: a card is timed only at the gate tier or above, and only once it is on the ladder
+function moleReady(it,kid){ if(!it||it.status!=="active") return false; return (typeof mastTierAtLeast==="function")?mastTierAtLeast(it.tier,moleGate(kid)):true; }
+function _moleWhichPool(items,kid){ return _moleRaw(()=>whichPool(items,WHICH_MIX,kid)); }
+function _moleModes(items,kid){ return _moleRaw(()=>whichDeckModes(items,kid)); }
+// The name a mole shows / the prompt asks for, by the deck's mode (answer mode: the BACK is the mole)
+function _moleName(it,mode){ return mode==="answer"?_whichNorm(_whichBack(it)):String(it&&it.prompt||"").trim().toLowerCase(); }
+// PURE: this wave's moles — the right card + up to MOLE_HOLES-1 different cards of ITS deck with different names (never fewer than 2 lures), shuffled into holes; null when the deck can't
+function moleTiles(it,pool,mode){
+  const seen={}; seen[_moleName(it,mode)]=1;
+  const lures=_moleShuffle((pool||[]).filter(x=>x&&x.id!==it.id&&x.subject===it.subject)).filter(x=>{ const n=_moleName(x,mode); if(!n||seen[n]) return false; seen[n]=1; return true; }).slice(0,MOLE_HOLES-1);
+  if(lures.length<2) return null;
+  return _moleShuffle([it.id].concat(lures.map(x=>x.id)));
+}
+// The cards a deck can time: Which one?'s pool, at the gate or above, with lures to pop beside them
+function molePool(items,deck,kid){
+  kid=kid||masteryKid;
+  const all=_moleWhichPool(items,kid), modes=_moleModes(items,kid);
+  return all.filter(i=>(deck===WHICH_MIX||(i.subject||"Other")===deck)&&moleReady(i,kid)&&!!moleTiles(i,all,modes[i.subject||"Other"]));
+}
+function moleDecks(items,kid){
+  kid=kid||masteryKid;
+  const n={}; molePool(items,WHICH_MIX,kid).forEach(i=>{ const d=i.subject||"Other"; n[d]=(n[d]||0)+1; });
+  return Object.keys(n).filter(d=>n[d]>=MOLE_MIN&&moleDeckOn(kid,d)).sort();
+}
+function _moleSay(st,t){
+  t=t||(st&&st.turns[st.i]); if(!st||!t) return;
+  const it=_moleItems(st.kid).find(x=>x&&x.id===t.pid);
+  if(it&&it.prompt&&!(t.mode==="answer"&&whichSilent(it))&&(typeof mastView==="undefined"||mastView==="mole")) try{ mastSpeak(_matchPlain(it.prompt)); }catch(e){} 
+}
+function moleSayAgain(){ const st=moleState; if(st&&st.phase==="play") _moleSay(st); }
+function moleStart(deck){
+  try{ if(typeof bbAudioUnlock==="function") bbAudioUnlock(); }catch(e){}   // the deck tap unlocks the ding / bonk (iPad)
+  const items=_moleItems(), mix=deck===WHICH_MIX, modes=_moleModes(items), ok=moleDecks(items), all=_moleWhichPool(items,masteryKid);
+  const pool=molePool(items,deck).filter(i=>ok.indexOf(i.subject||"Other")>=0);
+  if(pool.length<MOLE_MIN||(!mix&&!moleDeckOn(masteryKid,deck))){ moleState=null; _mastRe(); return; }   // 🎮 GAMEGRID: a deck Mom turned off for this game
+  const picks=_moleShuffle(pool.slice()).slice(0,MOLE_WAVES), turns=[];
+  picks.forEach(it=>{ const mode=modes[it.subject||"Other"], tiles=moleTiles(it,all,mode); if(tiles) turns.push({pid:it.id,mode:mode,tiles:tiles,up:{},wrong:{},done:false,first:false,back:false,hold:false}); });
+  moleState={kid:masteryKid,deck:deck,mix:mix,game:"mole",t0:Date.now(),turns:turns,i:0,seq:0,lock:false,grow:null,phase:turns.length?"play":"done",first:0,of:turns.length,isPB:false,prevBest:null,returned:{}};
+  _moleWave(moleState);
+  _mastRe();
+}
+function moleChangeDeck(){ moleState=null; _mastRe(); }   // drop the round as it stands: nothing written
+// A wave: the prompt, then the moles pop one after another; each hides MOLE_UP later unless it is the right one and the wave is on hold
+function _moleWave(st){
+  const t=st.turns[st.i]; if(!t) return;
+  const seq=++st.seq; st.lock=false; st.grow=null;
+  _moleSay(st,t);
+  t.tiles.forEach((pid,slot)=>{
+    setTimeout(()=>{ if(moleState!==st||st.seq!==seq||t.done) return; t.up[slot]=1; _mastRe();
+      setTimeout(()=>{ if(moleState!==st||st.seq!==seq||t.done||t.hold) return; _moleHide(st,t,slot); },MOLE_UP); },slot*MOLE_GAP);
+  });
+}
+function _moleHide(st,t,slot){
+  delete t.up[slot];
+  if(t.tiles[slot]===t.pid&&!t.wrong.late){   // the right one went down untouched: a miss — bring it back and hold it
+    t.wrong.late=1; _moleHold(st,t); return;
+  }
+  _mastRe();
+}
+// After any miss: the bonk, the prompt again, the right mole up and held (no clock on a correction), the wrong ones down
+function _moleHold(st,t){
+  try{ matchBonk(); }catch(e){}
+  t.hold=true; t.up={}; t.up[t.tiles.indexOf(t.pid)]=1;
+  _mastRe(); _moleSay(st,t);
+}
+function moleTap(slot){
+  const st=moleState; if(!st||st.phase!=="play"||st.lock) return;
+  const t=st.turns[st.i]; if(!t||t.done||!t.up[slot]) return;
+  const pid=t.tiles[slot];
+  if(pid!==t.pid){ t.wrong[pid]=1; _moleHold(st,t); return; }
+  t.done=true; t.first=!Object.keys(t.wrong).length;
+  if(!t.back&&t.first) st.first++;
+  // a card missed on its first wave comes back once, at the end of the round
+  if(!t.first&&!t.back&&!st.returned[t.pid]){
+    st.returned[t.pid]=1;
+    const it=_moleItems(st.kid).find(x=>x&&x.id===t.pid), tiles=it?moleTiles(it,_moleWhichPool(_moleItems(st.kid),st.kid),t.mode):null;
+    if(tiles) st.turns.push({pid:t.pid,mode:t.mode,tiles:tiles,up:{},wrong:{},done:false,first:false,back:true,hold:false});
+  }
+  try{ matchDing(); }catch(e){}
+  st.grow=slot; st.lock=true; const seq=++st.seq;
+  _mastRe();
+  setTimeout(()=>{ if(moleState===st&&st.lock&&st.seq===seq) moleNext(st); },MOLE_BEAT);
+}
+function moleNext(st){
+  st=st||moleState; if(!st||st!==moleState) return;
+  st.lock=false; st.grow=null; st.i++;
+  if(st.i>=st.turns.length){ moleFinish(st); _mastRe(); return; }
+  _moleWave(st); _mastRe();
+}
+function moleBestKey(deck){ return deck+" \u{00B7} mole"; }
+function moleFinish(st){
+  st.phase="done"; st.lock=false;
+  const kid=st.kid||masteryKid;   // GAMEKID
+  try{ if(typeof gameLogRound==="function") gameLogRound(st); }catch(e){}   // 🎮 GAMELOG: every card's first-tap result, game:"mole"
+  const s=masteryData[kid+"_settings"]||(masteryData[kid+"_settings"]={});
+  if(!s.match_best) s.match_best={};
+  const key=moleBestKey(st.deck), prev=s.match_best[key];
+  st.prevBest=prev==null?null:prev;
+  st.isPB=st.first>0&&(prev==null||st.first>prev);
+  if(st.isPB){
+    s.match_best[key]=st.first;
+    if(db&&!_dryRun()) db.ref("mastery/"+kid+"_settings/match_best").update({[key]:st.first});   // this key only
+    try{HA_LS.setItem("ha_mastery",JSON.stringify(masteryData));}catch(e){}
+  }
+  try{ if(st.of>0&&st.first===st.of&&typeof _showCelebration==="function"&&document.getElementById("celeb-overlay")) _showCelebration(kid,"\u{1F439} You got them all!",{noSong:true}); }catch(e){}
+}
+// GAMEKID → 🎲 GAMEKIT resume: the open wave's moles all come up and stay (its timers died with the switch); a beat that was mid-way settles
+function moleResume(){
+  const st=moleState; if(!st||st.phase!=="play") return;
+  if(st.lock){ st.lock=false; st.grow=null; st.i++; if(st.i>=st.turns.length){ moleFinish(st); return; } }
+  const t=st.turns[st.i]; if(!t||t.done) return;
+  st.seq++; t.hold=true; t.up={}; t.tiles.forEach((p,slot)=>{ if(!t.wrong[p]) t.up[slot]=1; });
+  _moleSay(st,t);
+}
+const MOLE_CSS='<style>.mole-hole{position:relative;aspect-ratio:1;border-radius:50%;background:radial-gradient(ellipse at 50% 70%,#8b6b47 0,#a98b66 55%,#d9cbb3 100%);overflow:hidden;-webkit-tap-highlight-color:transparent}'+
+  '.mole{position:absolute;left:8%;right:8%;top:8%;bottom:8%;border-radius:22px;border:3px solid #e2ddd6;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;transform:translateY(115%);transition:transform .22s ease-out}'+
+  '.mole.mole-up{transform:none}.mole.mole-held{border-color:#16a34a;box-shadow:0 0 0 5px #bbf7d0}.mole.mole-grow{transform:scale(1.08);border-color:#16a34a;background:#f0fdf4}'+
+  '.mole .mole-vis{transform:scale(1.1);pointer-events:none}@media(min-width:560px){.mole .mole-vis{transform:scale(1.6)}}'+
+  '.mole .mole-ans{padding:6px;text-align:center;font-weight:800;color:#292524;font-family:\'Fraunces\',serif;line-height:1.1;overflow-wrap:anywhere;pointer-events:none}</style>';
+function buildMoleHtml(color){
+  const q=s=>String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");
+  let h=MOLE_CSS+'<div style="padding:4px 14px 24px;max-width:720px;margin:0 auto">';
+  const items=_moleItems(), decks=moleDecks(items);
+  if(!decks.length){ h+='<div class="mast-none">No decks ready for Whack-a-mole yet \u{2014} it plays cards that have reached the gate level (the Sprint rule), '+MOLE_MIN+' or more in a deck.</div></div>'; return h; }
+  const st=moleState;
+  const chip=(dk,lbl)=>{ const sel=st&&st.deck===dk; return '<button onclick="moleStart(\''+q(dk)+'\')" style="padding:10px 16px;border-radius:999px;font-size:14px;font-weight:800;border:2px solid '+(sel?color:'#e2ddd6')+';background:'+(sel?color:'#fff')+';color:'+(sel?'#fff':'#57534e')+';cursor:pointer;font-family:\'DM Sans\',sans-serif">'+lbl+'</button>'; };
+  if(!st||st.phase==="done"){
+    h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 14px">';
+    decks.forEach(dk=>{ h+=chip(dk,esc(dk)); });
+    if(decks.length>1) h+=chip(WHICH_MIX,"\u{1F3B2} "+WHICH_MIX);
+    h+='</div>';
+  }
+  if(!st){ h+='<div style="font-size:15px;font-weight:700;color:#57534e">\u{1F439} Pick a deck. The answers pop up \u{2014} tap the right one before it hides!</div></div>'; return h; }
+  const s=masteryData[st.kid+"_settings"]||{}, best=(s.match_best||{})[moleBestKey(st.deck)];
+  if(st.phase==="play"){
+    const t=st.turns[st.i], tIt=t?items.find(x=>x&&x.id===t.pid):null, ans=!!(t&&t.mode==="answer"), mute=ans&&whichSilent(tIt), missed=!!(t&&Object.keys(t.wrong).length);
+    h+='<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0 4px"><div style="display:flex;gap:6px;flex-wrap:wrap">';
+    st.turns.forEach((x,ix)=>{ const cur=ix===st.i; h+='<span style="width:14px;height:14px;border-radius:50%;display:inline-block;'+(x.done?'background:'+(x.first?'#16a34a':'#f59e0b'):cur?'background:#fff;border:3px solid '+color:'background:#e7e5e4')+'"></span>'; });
+    h+='</div><span style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--muted)">'+esc(st.deck)+(best!=null?' \u{00B7} \u{1F3C6} '+best:'')+
+      '<button onclick="moleChangeDeck()" style="padding:6px 12px;border-radius:999px;border:1.5px solid #e2ddd6;background:#fff;color:#57534e;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;font-family:\'DM Sans\',sans-serif">\u{1F5C2} Change deck</button></span></div>';
+    if(ans){
+      const fr=_matchPlain(tIt&&tIt.prompt);
+      h+='<div style="display:flex;align-items:center;justify-content:center;gap:14px;margin:12px 0 8px;flex-wrap:wrap"><div style="font-family:\'Fraunces\',serif;font-size:'+(fr.length<=8?'52px':fr.length<=18?'38px':'28px')+';font-weight:800;color:#292524;text-align:center;line-height:1.1">'+esc(fr)+'</div>';
+      if(!mute) h+='<button onclick="moleSayAgain()" aria-label="Hear it again" style="width:56px;height:56px;flex:none;border-radius:50%;border:3px solid '+color+';background:#fff;color:'+color+';font-size:26px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center">\u{1F50A}</button>';
+      h+='</div>';
+    } else {
+      h+='<div style="display:flex;justify-content:center;margin:10px 0 6px"><button onclick="moleSayAgain()" aria-label="Hear it again" style="width:84px;height:84px;border-radius:50%;border:4px solid '+color+';background:#fff;color:'+color+';font-size:40px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center">\u{1F50A}</button></div>';
+    }
+    h+='<div style="text-align:center;font-size:17px;font-weight:800;color:#57534e;margin-bottom:12px">'+(missed?(t.hold?'Here it is \u{2014} tap it!':'Almost \u{2014} try again!'):(ans?'Tap the answer before it hides!':'Tap the one you hear before it hides!'))+'</div>';
+    h+='<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;max-width:460px;margin:0 auto">';
+    (t?t.tiles:[]).forEach((pid,slot)=>{
+      const it=items.find(x=>x&&x.id===pid), up=!!t.up[slot], held=up&&t.hold&&pid===t.pid, grow=st.grow===slot;
+      let inner;
+      if(ans){ const bk=_whichBack(it); inner='<span class="mole-ans" style="font-size:'+(bk.length<=3?'clamp(30px,9vw,56px)':bk.length<=7?'clamp(22px,6vw,38px)':bk.length<=13?'clamp(16px,4.2vw,26px)':'clamp(13px,3.4vw,20px)')+'">'+esc(bk)+'</span>'; }
+      else inner='<span class="mole-vis">'+(_smTileVis(it)||'')+'</span>';
+      h+='<div class="mole-hole"><div class="mole'+(up?' mole-up':'')+(held?' mole-held':'')+(grow?' mole-grow':'')+'" role="button" aria-label="Mole '+(slot+1)+'"'+(up&&!st.lock?' onclick="moleTap('+slot+')"':'')+'>'+inner+'</div></div>';
+    });
+    h+='</div></div>';
+    return h;
+  }
+  // Finish: first-tap count against the kid's own best, Play again / Mix the decks
+  h+='<div style="margin-top:6px;text-align:center;padding:16px;border-radius:18px;background:'+(st.isPB?'#f0fdf4':'#f8f7f4')+';border:2px solid '+(st.isPB?'#16a34a':'#e2ddd6')+'">';
+  h+='<div style="font-family:\'Fraunces\',serif;font-size:22px;font-weight:800">\u{1F389} You got them all!</div>';
+  h+='<div style="font-size:17px;font-weight:800;color:#57534e;margin-top:10px">\u{1F439} '+st.first+' of '+st.of+' on the first tap'+(st.isPB?' \u{2014} \u{1F3C6} new best!':(st.prevBest!=null?' \u{00B7} best '+st.prevBest:''))+'</div>';
+  h+='<div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap">';
+  h+='<button onclick="moleStart(\''+q(st.deck)+'\')" style="padding:12px 24px;border-radius:999px;border:none;background:'+color+';color:#fff;font-size:15px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">\u{1F501} Play again</button>';
+  if(decks.length>1&&!st.mix) h+='<button onclick="moleStart(\''+q(WHICH_MIX)+'\')" style="padding:12px 24px;border-radius:999px;border:2px solid '+color+';background:#fff;color:'+color+';font-size:15px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">\u{1F3B2} '+WHICH_MIX+'</button>';
+  return h+'</div></div></div>';
+}
+// MOLE_END
 // STUDYCOUNTS_START — 📚 Study sessions count everywhere (F3 of PLAN_learning_system, her yes 2026-10-24). A study
 // sitting logs to mastery/studyLog/<kid>/<sid>/<yyyymmdd>, but Scores, the Weekly report, sprint readiness (the ≥ 90%
 // untimed check) and the notebook's 🔁 review flags read only the drill's mastery/history/<kid>/<yyyymmdd>, so Lincoln —
@@ -79788,6 +80286,7 @@ function renderMastStudy(opts){
     ? ((pile.reviews||[]).length+' due')
     : ((pile.newNames||[]).length+' new · '+(pile.reviews||[]).length+' due · '+(pile.learning||[]).length+' learning'))+'</div>';
   if(typeof mstSentBackPending==="function"&&mstSentBackPending(kid,session.sid)) h+='<div style="margin-top:10px;padding:10px 12px;background:#fffbeb;border:2px solid #f59e0b;border-radius:12px;font-size:14px;font-weight:800;color:#b45309">\u21A9\uFE0F Mom sent this back. Do it again \u2014 slowly. Read every card before you flip it.</div>';   // ↩ MSTALERT
+  if(typeof tmapStudyHtml==="function") h+=tmapStudyHtml(kid,session,(mstState&&mstSid===session.sid)?"run":(mstDone?"done":"start"));   // 🗺 TMAP: one map per deck — before the sitting and after the save, never during
   if(todayLog) h+='<div style="margin-top:8px;font-size:13px;color:#16a34a;font-weight:700">Done today: '+(todayLog.total||0)+' cards'+(todayLog.miss?', '+todayLog.miss+' again':'')+'</div>';
   if(typeof envRaStartHtml==="function") h+=envRaStartHtml(kid,session);   // 🔊 ENVREADALOUD: the kid's switch, the 🌿 session only
   h+='</div>';
@@ -79829,6 +80328,7 @@ function renderMastStudy(opts){
     h+='<div style="background:#fff7ed;border:2px solid #fed7aa;border-radius:20px;padding:24px;text-align:center;font-family:\'DM Sans\',sans-serif">';
     h+='<div style="font-size:32px;margin-bottom:8px">\u{1F389}</div><div style="font-size:17px;font-weight:800;color:#16a34a;margin-bottom:6px">Nice work!</div>';
     h+='<div style="font-size:14px;color:var(--muted);font-weight:600">'+mstDone.total+' cards · '+mstDone.correct+' good · '+mstDone.miss+' again</div>';
+    if(typeof tmapMovedHtml==="function") h+=tmapMovedHtml(kid,session);   // 🗺 TMAP: "⛵ <deck> moved ahead!" for a deck whose ship sailed on this sitting
     { const _mx=(session.kind==="mix"&&pile&&pile.mixLeft>0)?pile.mixLeft:0;   // MIX_FINISH: the rest of the backlog, if he wants it
       if(_mx) h+='<div style="margin-top:12px"><button onclick="mstStart()" style="min-height:48px;padding:0 24px;border-radius:14px;border:1.5px solid #7c3aed;background:#fff;color:#6d28d9;font-size:15px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">Keep going · '+_mx+' left</button><div style="font-size:11.5px;color:var(--muted);margin-top:6px">Today\'s Mix is done \u2713 \u2014 this is extra, and every card counts.</div></div>'; }
     if(typeof cpReviewMoreHtml==="function") h+=cpReviewMoreHtml(session,pile,"done");   // 🔁 CPREVIEW: Keep going · N left after a capped 🌿 sitting
@@ -82906,6 +83406,8 @@ const GAMES_LIST=[
      park:()=>spellState, restore:v=>{ spellState=v||null; }, resume:()=>spellResume()},   // 🔤 SPELLBUILD · 🎲 GAMEKIT: its own park / restore / resume
   {key:"gofish", emoji:"\u{1F41F}", label:"Go Fish",     view:"gofish",                available:k=>typeof gofishDecks==="function"&&gofishDecks(_gamesItems(k),k).length>0, render:c=>buildGofishHtml(c),
      park:()=>gofishState, restore:v=>{ gofishState=v||null; }, resume:()=>gofishResume(), decks:k=>typeof gofishDecks==="function"?gofishDecks(_gamesItems(k),k):[]},   // 🐟 GOFISH · 🎲 GAMEKIT: its own park / restore / resume · 🎮 GAMEGRID: its own deck rule
+  {key:"mole",   emoji:"\u{1F439}", label:"Whack-a-mole", view:"mole",                 available:k=>typeof moleDecks==="function"&&moleDecks(_gamesItems(k),k).length>0, render:c=>buildMoleHtml(c),
+     park:()=>moleState, restore:v=>{ moleState=v||null; }, resume:()=>moleResume(), decks:k=>typeof moleDecks==="function"?moleDecks(_gamesItems(k),k):[]},   // 🐹 MOLE · 🎲 GAMEKIT: its own park / restore / resume · 🎮 GAMEGRID: its own deck rule
 ];
 const gamesLast={};   // kid → key of the last game played on this device
 function gamesFor(k){ return GAMES_LIST.filter(g=>{ try{ return !!g.available(k)&&(typeof gameDeckAny!=="function"||gameDeckAny(k,g)); }catch(e){ return false; } }); }   // 🎮 GAMEGRID: every deck off → the game isn't offered
@@ -84951,7 +85453,8 @@ function mlEveningSweep(force){
     if(typeof haClaimSchedLock!=="function"||typeof cascadeIntraWeek!=="function") return false;
     haClaimSchedLock("cascade",function(release){
       if(!release){ if(force&&typeof gwShowToast==="function") gwShowToast("Couldn't sweep right now — another device is updating the schedule"); return; }
-      try{ cascadeIntraWeek(true); if(typeof runCascade==="function") runCascade(); }
+      const _swp=function(){ cascadeIntraWeek(true); if(typeof runCascade==="function") runCascade(); };
+      try{ if(typeof _rlwRun==="function") _rlwRun({whys:["sweep"],labels:[force?"⏩ Leftovers pushed":"🌙 8 PM sweep"]},_swp); else _swp(); }   // 🔁 RELAY: logged → the banner line
       finally{ release(); }
       const stamp=new Date().toISOString();
       eveningSweeps=Object.assign({},eveningSweeps); eveningSweeps[_todayDay]=stamp;
@@ -94271,13 +94774,14 @@ function seGuardWeek(tasks,o){
         const iv=mine.map(t=>[tm(t.time),tm(t.time)+dur(t),t]).sort((a,b)=>a[0]-b[0]);
         let stacked=false; for(let i=1;i<iv.length;i++) if(iv[i][0]<iv[i-1][1]) stacked=true;
         const late=mov.some(t=>tm(t.time)+dur(t)>W.end);
+        const early=mov.some(t=>tm(t.time)<W.start);   // RELAY_EARLY (2026-11-03): open work laid BEFORE the day's start (⏰ a later start for this date) is not fine either — it re-lays from the start
         // 📓 live 9/24: the 8 PM sweep carried Lincoln's pulled Eggspress back to Thursday's first slot, AHEAD of his
         // Morning Notebook — a day with the notebook behind other open work is not fine either
         const _nb=mov.find(isMorn), nbBehind=!!_nb&&mov.some(t=>t!==_nb&&tm(t.time)<tm(_nb.time));
         // 💻 a card sitting on a device another kid is already using (to capacity) is not fine either
         const _lb={}; const laneBusyC=l=>_lb[l]||(_lb[l]=laneBusy(kid,di,l));
         const laneClash=mov.some(t=>{ const l=laneOf(t); if(!l) return false; const a=tm(t.time), b=a+dur(t); return laneBusyC(l).some(iv=>a<iv[1]&&iv[0]<b); });
-        if(!o.displayOnly&&!stacked&&!late&&!laneClash&&nbBehind){
+        if(!o.displayOnly&&!stacked&&!late&&!early&&!laneClash&&nbBehind){
           // only the notebook is out of place → a SWAP, never a re-pack (a re-pack can run a minute past the end and roll a
           // lesson off the week — dry-run on live 9/24 did exactly that). The notebook takes the first open card's slot, the
           // cards that were ahead of it slide back by its length; skipped if that would touch a class, a checked card or
@@ -94294,7 +94798,7 @@ function seGuardWeek(tasks,o){
           }
           return;
         }
-        if(o.displayOnly?!laneClash:(!stacked&&!late&&!laneClash)) return;          // a fine day is left alone (display pass: lane clashes only)
+        if(o.displayOnly?!laneClash:(!stacked&&!late&&!early&&!laneClash)) return;          // a fine day is left alone (display pass: lane clashes only)
         // re-lay this kid's open cards in their current order
         const busy=mine.filter(fixed).map(t=>[tm(t.time),tm(t.time)+dur(t)]);
         if(W.lunchEnd>W.lunchStart) busy.push([W.lunchStart,W.lunchEnd]);
