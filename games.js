@@ -560,9 +560,10 @@ const GF_CSS='<style>.gf-card{width:92px;height:104px;border-radius:14px;border:
 function _gfCardVis(st,pid){
   const it=_gfIt(st,pid); if(!it) return '';
   if(st.kinds[pid]==="say"){ const v=_smTileVis(it); if(v) return '<span class="gf-vis">'+v+'</span>'; }
-  return '<span class="gf-txt">'+esc(gofishName(it))+'</span>';   // an answer card shows its FRONT (the kid produces the back)
+  return '<span class="gf-txt tf">'+esc(gofishName(it))+'</span>';   // an answer card shows its FRONT (the kid produces the back)
 }
 function buildGofishHtml(color){
+  if(typeof tileFitSoon==="function") tileFitSoon();   // TILEFIT
   const q=s=>String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");
   let h=GF_CSS+'<div style="padding:4px 14px 24px;max-width:720px;margin:0 auto">';
   const items=_gfItems(), decks=gofishDecks(items);
@@ -604,11 +605,11 @@ function buildGofishHtml(color){
       else if(t.act==="type"){
         h+='<div style="display:flex;justify-content:center;margin-bottom:10px"><span style="min-width:120px;height:56px;border-radius:14px;border:3px solid '+color+';background:#fff;font-family:\'Fraunces\',serif;font-size:30px;font-weight:800;color:#292524;display:inline-flex;align-items:center;justify-content:center;padding:0 14px">'+esc(t.typed||"")+'</span></div>';
         h+='<div style="display:grid;grid-template-columns:repeat(3,64px);gap:8px;justify-content:center">';
-        ["1","2","3","4","5","6","7","8","9","back","0","ok"].forEach(k=>{ if(k==="back") h+='<button class="gf-key" onclick="gofishKey(\'back\')"'+(lock?' disabled':'')+' aria-label="Erase">\u{232B}</button>'; else if(k==="ok") h+='<button class="gf-key" onclick="gofishCheck()"'+(lock||!t.typed?' disabled':'')+' style="background:'+color+';color:#fff;border-color:transparent" aria-label="Check">\u{2714}</button>'; else h+='<button class="gf-key" onclick="gofishKey(\''+k+'\')"'+(lock?' disabled':'')+'>'+k+'</button>'; });
+        ["1","2","3","4","5","6","7","8","9","back","0","ok"].concat(typeof typeKeysPadFor==="function"?typeKeysPadFor(st):[]).forEach(k=>{ if(k==="back") h+='<button class="gf-key" onclick="gofishKey(\'back\')"'+(lock?' disabled':'')+' aria-label="Erase">\u{232B}</button>'; else if(k==="ok") h+='<button class="gf-key" onclick="gofishCheck()"'+(lock||!t.typed?' disabled':'')+' style="background:'+color+';color:#fff;border-color:transparent" aria-label="Check">\u{2714}</button>'; else h+='<button class="gf-key" onclick="gofishKey(\''+k+'\')"'+(lock?' disabled':'')+'>'+k+'</button>'; });
         h+='</div>';
       } else {
         h+='<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">';
-        (t.opts||[]).forEach((o,i)=>{ const w=!!t.wrong[o]; h+='<button class="gf-opt'+(w?' gf-wrong':'')+'" onclick="gofishPickTap('+i+')"'+(w||lock?' disabled':'')+'>'+esc(o)+'</button>'; });
+        (t.opts||[]).forEach((o,i)=>{ const w=!!t.wrong[o]; h+='<button class="tf gf-opt'+(w?' gf-wrong':'')+'" onclick="gofishPickTap('+i+')"'+(w||lock?' disabled':'')+'>'+esc(o)+'</button>'; });
         h+='</div>';
       }
       if(!lock&&st.hand.length&&sp.why!=="back") h+='<div style="text-align:center;font-size:13px;font-weight:700;color:var(--muted);margin-top:14px">Your hand \u{00B7} '+pond+'</div>'+hand(null);
@@ -1037,9 +1038,10 @@ const SORT_CSS='<style>.sort-card{position:relative;display:flex;align-items:cen
 function _sortFace(it,kind){
   if(kind==="pic") return '<span class="sort-vis" style="pointer-events:none">'+(_sortPic(it)||'')+'</span>';
   const p=String((it&&it.prompt)||""), n=_sortPlain(p).length;
-  return '<span style="pointer-events:none;font-size:'+(n<=4?'34px':n<=12?'22px':n<=40?'15px':'13px')+';overflow-wrap:anywhere">'+p+'</span>';
+  return '<span class="tf" style="pointer-events:none;font-size:'+(n<=4?'34px':n<=12?'22px':n<=40?'15px':'13px')+';overflow-wrap:anywhere">'+p+'</span>';
 }
 function buildSortHtml(color){
+  if(typeof tileFitSoon==="function") tileFitSoon();   // TILEFIT
   const q=s=>String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;"), E=s=>(typeof esc==="function")?esc(s):String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   let h=SORT_CSS+'<div class="ha-nosel" style="padding:4px 14px 24px;max-width:720px;margin:0 auto">';
   const items=_sortItems(), decks=sortDecks(items), names=sortDeckNames(decks);
@@ -1229,6 +1231,7 @@ const MOLE_CSS='<style>.mole-hole{position:relative;aspect-ratio:1;border-radius
   '.mole .mole-vis{transform:scale(1.1);pointer-events:none}@media(min-width:560px){.mole .mole-vis{transform:scale(1.6)}}'+
   '.mole .mole-ans{padding:6px;text-align:center;font-weight:800;color:#292524;font-family:\'Fraunces\',serif;line-height:1.1;overflow-wrap:anywhere;pointer-events:none}</style>';
 function buildMoleHtml(color){
+  if(typeof tileFitSoon==="function") tileFitSoon();   // TILEFIT
   const q=s=>String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");
   let h=MOLE_CSS+'<div style="padding:4px 14px 24px;max-width:720px;margin:0 auto">';
   const items=_moleItems(), decks=moleDecks(items);
@@ -1263,7 +1266,7 @@ function buildMoleHtml(color){
     (t?t.tiles:[]).forEach((pid,slot)=>{
       const it=items.find(x=>x&&x.id===pid), up=!!t.up[slot], held=up&&t.hold&&pid===t.pid, grow=st.grow===slot;
       let inner;
-      if(ans){ const bk=_whichBack(it); inner='<span class="mole-ans" style="font-size:'+(bk.length<=3?'clamp(30px,9vw,56px)':bk.length<=7?'clamp(22px,6vw,38px)':bk.length<=13?'clamp(16px,4.2vw,26px)':'clamp(13px,3.4vw,20px)')+'">'+esc(bk)+'</span>'; }
+      if(ans){ const bk=_whichBack(it); inner='<span class="mole-ans tf" style="font-size:'+(bk.length<=3?'clamp(30px,9vw,56px)':bk.length<=7?'clamp(22px,6vw,38px)':bk.length<=13?'clamp(16px,4.2vw,26px)':'clamp(13px,3.4vw,20px)')+'">'+esc(bk)+'</span>'; }
       else inner='<span class="mole-vis">'+(_smTileVis(it)||'')+'</span>';
       h+='<div class="mole-hole"><div class="mole'+(up?' mole-up':'')+(held?' mole-held':'')+(grow?' mole-grow':'')+'" role="button" aria-label="Mole '+(slot+1)+'"'+(up&&!st.lock?' onclick="moleTap('+slot+')"':'')+'>'+inner+'</div></div>';
     });
@@ -1470,6 +1473,7 @@ function _jpFinish(st){
 // GAMEKID → 🎲 GAMEKIT resume: a beat that was mid-way when the kid switched settles here (no render; the caller renders)
 function jeopResume(){
   const st=jeopState; if(!st||st.phase==="done") return;
+  if(st.jr&&typeof jeoRoundClear==="function") jeoRoundClear(st);   // 🎬 JEOROUND: back from parking → the board, not the overlay
   if(st.lock){ st.lock=false; st.open=null; if(st.phase==="back") _jpBackNext(st); else if(st.cells.every(c=>c.done)) _jpEnd(st); else { st.msg="Pick a square!"; st.say=""; } return; }
   if(st.say&&(typeof mastView==="undefined"||mastView==="jeop")) try{ mastSpeak(st.say); }catch(e){}
 }
@@ -1486,9 +1490,10 @@ function _jpStars(r){ let s=""; for(let i=0;i<=r;i++) s+="\u2605"; return s; }
 function _jpCardVis(st,pid,act){
   const it=_jpIt(st,pid); if(!it) return '';
   if(act==="say"){ const v=_smTileVis(it); if(v) return '<span class="jp-vis">'+v+'</span>'; }
-  return '<span class="jp-txt">'+esc(jeopName(it))+'</span>';   // an answer card shows its FRONT (the kid produces the back)
+  return '<span class="jp-txt tf">'+esc(jeopName(it))+'</span>';   // an answer card shows its FRONT (the kid produces the back)
 }
 function buildJeopHtml(color){
+  if(typeof tileFitSoon==="function") tileFitSoon();   // TILEFIT
   const q=s=>String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");
   let h=JP_CSS+'<div style="padding:4px 14px 24px;max-width:720px;margin:0 auto">';
   const items=_jpItems(), decks=jeopDecks(items);
@@ -1515,6 +1520,7 @@ function buildJeopHtml(color){
   h+='<span style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--muted)">'+esc(st.deck)+(best!=null?' \u{00B7} \u{1F3C6} '+best:'')+
     '<button onclick="jeopStop()" style="padding:6px 12px;border-radius:999px;border:1.5px solid #e2ddd6;background:#fff;color:#57534e;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;font-family:\'DM Sans\',sans-serif">\u{21A9} Stop</button></span></div>';
   if(st.money&&typeof jpMoneyBarHtml==="function") h+=jpMoneyBarHtml(st);   // 💵 JPMONEY: the round and the bank, big
+  if(st.jr&&typeof jeoRoundHtml==="function") h+=jeoRoundHtml(st);   // 🎬 JEOROUND: the between-rounds overlay (money boards only)
   h+='<div style="display:flex;align-items:center;gap:10px;margin:10px 0 12px;padding:12px 14px;border-radius:18px;background:#eff6ff;border:2px solid #bfdbfe"><span style="font-size:28px;line-height:1">\u{1F4FA}</span><span style="flex:1;font-size:17px;font-weight:800;color:#1e3a8a">'+esc(st.msg)+'</span>'+
     (st.say?'<button onclick="jeopSayAgain()" aria-label="Hear it again" style="width:56px;height:56px;flex:none;border-radius:50%;border:3px solid '+color+';background:#fff;color:'+color+';font-size:26px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center">\u{1F50A}</button>':'')+'</div>';
   const o=st.open, t=o?st.turns[o.t]:null, lock=st.lock;
@@ -1527,11 +1533,11 @@ function buildJeopHtml(color){
     else if(t.act==="type"){
       h+='<div style="display:flex;justify-content:center;margin-bottom:10px"><span style="min-width:120px;height:56px;border-radius:14px;border:3px solid '+color+';background:#fff;font-family:\'Fraunces\',serif;font-size:30px;font-weight:800;color:#292524;display:inline-flex;align-items:center;justify-content:center;padding:0 14px">'+esc(t.typed||"")+'</span></div>';
       h+='<div style="display:grid;grid-template-columns:repeat(3,64px);gap:8px;justify-content:center">';
-      ["1","2","3","4","5","6","7","8","9","back","0","ok"].forEach(k=>{ if(k==="back") h+='<button class="jp-key" onclick="jeopKey(\'back\')"'+(lock?' disabled':'')+' aria-label="Erase">\u{232B}</button>'; else if(k==="ok") h+='<button class="jp-key" onclick="jeopCheck()"'+(lock||!t.typed?' disabled':'')+' style="background:'+color+';color:#fff;border-color:transparent" aria-label="Check">\u{2714}</button>'; else h+='<button class="jp-key" onclick="jeopKey(\''+k+'\')"'+(lock?' disabled':'')+'>'+k+'</button>'; });
+      ["1","2","3","4","5","6","7","8","9","back","0","ok"].concat(typeof typeKeysPadFor==="function"?typeKeysPadFor(st):[]).forEach(k=>{ if(k==="back") h+='<button class="jp-key" onclick="jeopKey(\'back\')"'+(lock?' disabled':'')+' aria-label="Erase">\u{232B}</button>'; else if(k==="ok") h+='<button class="jp-key" onclick="jeopCheck()"'+(lock||!t.typed?' disabled':'')+' style="background:'+color+';color:#fff;border-color:transparent" aria-label="Check">\u{2714}</button>'; else h+='<button class="jp-key" onclick="jeopKey(\''+k+'\')"'+(lock?' disabled':'')+'>'+k+'</button>'; });
       h+='</div>';
     } else {
       h+='<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">';
-      (t.opts||[]).forEach((op,i)=>{ const w=!!t.wrong[op]; h+='<button class="jp-opt'+(w?' jp-wrong':'')+'" onclick="jeopPickTap('+i+')"'+(w||lock||t.done?' disabled':'')+'>'+esc(op)+'</button>'; });
+      (t.opts||[]).forEach((op,i)=>{ const w=!!t.wrong[op]; h+='<button class="tf jp-opt'+(w?' jp-wrong':'')+'" onclick="jeopPickTap('+i+')"'+(w||lock||t.done?' disabled':'')+'>'+esc(op)+'</button>'; });
       h+='</div>';
     }
   }
@@ -1898,9 +1904,10 @@ function _c4CellLabel(st,pid){
 function _c4CardVis(st,pid){
   const it=_c4It(st,pid); if(!it) return '';
   if((st.kinds[pid]||"say")==="say"){ const v=_smTileVis(it); if(v) return '<span class="c4-vis">'+v+'</span>'; }
-  return '<span class="c4-txt">'+esc(fourName(it))+'</span>';   // an answer card shows its FRONT (the kid produces the back)
+  return '<span class="c4-txt tf">'+esc(fourName(it))+'</span>';   // an answer card shows its FRONT (the kid produces the back)
 }
 function buildFourHtml(color){
+  if(typeof tileFitSoon==="function") tileFitSoon();   // TILEFIT
   const q=s=>String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");
   let h=C4_CSS+'<div style="padding:4px 14px 24px;max-width:720px;margin:0 auto">';
   const items=_c4Items(), decks=fourDecks(items);
@@ -1943,11 +1950,11 @@ function buildFourHtml(color){
     else if(t.act==="type"){
       h+='<div style="display:flex;justify-content:center;margin-bottom:10px"><span style="min-width:120px;height:56px;border-radius:14px;border:3px solid '+color+';background:#fff;font-family:\'Fraunces\',serif;font-size:30px;font-weight:800;color:#292524;display:inline-flex;align-items:center;justify-content:center;padding:0 14px">'+esc(t.typed||"")+'</span></div>';
       h+='<div style="display:grid;grid-template-columns:repeat(3,64px);gap:8px;justify-content:center">';
-      ["1","2","3","4","5","6","7","8","9","back","0","ok"].forEach(k=>{ if(k==="back") h+='<button class="c4-key" onclick="fourKey(\'back\')"'+(lock?' disabled':'')+' aria-label="Erase">\u{232B}</button>'; else if(k==="ok") h+='<button class="c4-key" onclick="fourCheck()"'+(lock||!t.typed?' disabled':'')+' style="background:'+color+';color:#fff;border-color:transparent" aria-label="Check">\u{2714}</button>'; else h+='<button class="c4-key" onclick="fourKey(\''+k+'\')"'+(lock?' disabled':'')+'>'+k+'</button>'; });
+      ["1","2","3","4","5","6","7","8","9","back","0","ok"].concat(typeof typeKeysPadFor==="function"?typeKeysPadFor(st):[]).forEach(k=>{ if(k==="back") h+='<button class="c4-key" onclick="fourKey(\'back\')"'+(lock?' disabled':'')+' aria-label="Erase">\u{232B}</button>'; else if(k==="ok") h+='<button class="c4-key" onclick="fourCheck()"'+(lock||!t.typed?' disabled':'')+' style="background:'+color+';color:#fff;border-color:transparent" aria-label="Check">\u{2714}</button>'; else h+='<button class="c4-key" onclick="fourKey(\''+k+'\')"'+(lock?' disabled':'')+'>'+k+'</button>'; });
       h+='</div>';
     } else {
       h+='<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">';
-      (t.opts||[]).forEach((op,i)=>{ const w=!!t.wrong[op]; h+='<button class="c4-opt'+(w?' c4-wrong':'')+'" onclick="fourPickTap('+i+')"'+(w||lock||t.done?' disabled':'')+'>'+esc(op)+'</button>'; });
+      (t.opts||[]).forEach((op,i)=>{ const w=!!t.wrong[op]; h+='<button class="tf c4-opt'+(w?' c4-wrong':'')+'" onclick="fourPickTap('+i+')"'+(w||lock||t.done?' disabled':'')+'>'+esc(op)+'</button>'; });
       h+='</div>';
     }
   }
@@ -2194,7 +2201,7 @@ function beatDecks(items,kid){
 function _beatTiles(st,pids){
   const tiles=[];
   pids.forEach(pid=>{ const it=_beatItems(st.kid).find(x=>x&&x.id===pid); if(!it) return;
-    tiles.push({pid:pid,isPrompt:true,matched:false,miss:false,html:'<span style="font-size:'+((_matchPlain(it.prompt)||"").length<=4?26:15)+'px;font-weight:800;color:#c2410c;pointer-events:none;word-break:break-word">'+(it.prompt||"")+'</span>'});
+    tiles.push({pid:pid,isPrompt:true,matched:false,miss:false,html:'<span class="tf" style="font-size:'+((_matchPlain(it.prompt)||"").length<=4?26:15)+'px;font-weight:800;color:#c2410c;pointer-events:none;word-break:break-word">'+(it.prompt||"")+'</span>'});
     tiles.push({pid:pid,isPrompt:false,matched:false,miss:false,html:_matchPairHtml(it)||""}); });
   return _beatShuffle(tiles);
 }
@@ -2272,6 +2279,7 @@ function beatResume(){ const st=beatState; if(!st||st.phase==="done") return; if
 const BEAT_CSS='<style>.beat-tile{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:16px;border:3px solid #e2ddd6;background:#fff;cursor:pointer;overflow:hidden;padding:6px;text-align:center;-webkit-tap-highlight-color:transparent;transition:transform .15s}'+
   '.beat-tile.beat-sel{border-color:#7c3aed;background:#f5f3ff;transform:scale(1.04)}.beat-tile.beat-miss{border-color:#dc2626;background:#fef2f2}.beat-tile.beat-done{opacity:0;pointer-events:none;transform:scale(.6)}</style>';
 function buildBeatHtml(color){
+  if(typeof tileFitSoon==="function") tileFitSoon();   // TILEFIT
   const q=s=>String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");
   let h=BEAT_CSS+'<div style="padding:4px 14px 24px;max-width:720px;margin:0 auto">';
   const items=_beatItems(), decks=beatDecks(items);
@@ -2714,9 +2722,10 @@ function _sureCardVis(st,t){
   const it=_sureIt(st,t.pid); if(!it) return '';
   if(t.act==="say"){ const v=_smTileVis(it); if(v) return '<span class="sure-vis">'+v+'</span>'; }
   const fr=sureName(it);
-  return '<span class="sure-txt" style="font-size:'+(fr.length<=8?'38px':fr.length<=18?'28px':'20px')+'">'+esc(fr)+'</span>';   // an answer card shows its FRONT (the kid produces the back)
+  return '<span class="sure-txt tf" style="font-size:'+(fr.length<=8?'38px':fr.length<=18?'28px':'20px')+'">'+esc(fr)+'</span>';   // an answer card shows its FRONT (the kid produces the back)
 }
 function buildSureHtml(color){
+  if(typeof tileFitSoon==="function") tileFitSoon();   // TILEFIT
   const q=s=>String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");
   let h=SURE_CSS+'<div style="padding:4px 14px 24px;max-width:720px;margin:0 auto">';
   const items=_sureItems(), decks=sureDecks(items);
@@ -2751,11 +2760,11 @@ function buildSureHtml(color){
       else if(t.act==="type"){
         h+='<div style="display:flex;justify-content:center;margin-bottom:10px"><span style="min-width:120px;height:56px;border-radius:14px;border:3px solid '+color+';background:#fff;font-family:\'Fraunces\',serif;font-size:30px;font-weight:800;color:#292524;display:inline-flex;align-items:center;justify-content:center;padding:0 14px">'+esc(t.typed||"")+'</span></div>';
         h+='<div style="display:grid;grid-template-columns:repeat(3,64px);gap:8px;justify-content:center">';
-        ["1","2","3","4","5","6","7","8","9","back","0","ok"].forEach(k=>{ if(k==="back") h+='<button class="sure-key" onclick="sureKey(\'back\')" aria-label="Erase">\u{232B}</button>'; else if(k==="ok") h+='<button class="sure-key" onclick="sureCheck()"'+(!t.typed?' disabled':'')+' style="background:'+color+';color:#fff;border-color:transparent" aria-label="Check">\u{2714}</button>'; else h+='<button class="sure-key" onclick="sureKey(\''+k+'\')">'+k+'</button>'; });
+        ["1","2","3","4","5","6","7","8","9","back","0","ok"].concat(typeof typeKeysPadFor==="function"?typeKeysPadFor(st):[]).forEach(k=>{ if(k==="back") h+='<button class="sure-key" onclick="sureKey(\'back\')" aria-label="Erase">\u{232B}</button>'; else if(k==="ok") h+='<button class="sure-key" onclick="sureCheck()"'+(!t.typed?' disabled':'')+' style="background:'+color+';color:#fff;border-color:transparent" aria-label="Check">\u{2714}</button>'; else h+='<button class="sure-key" onclick="sureKey(\''+k+'\')">'+k+'</button>'; });
         h+='</div>';
       } else {
         h+='<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">';
-        (t.opts||[]).forEach((op,i)=>{ h+='<button class="sure-opt" onclick="surePickTap('+i+')">'+esc(op)+'</button>'; });
+        (t.opts||[]).forEach((op,i)=>{ h+='<button class="tf sure-opt" onclick="surePickTap('+i+')">'+esc(op)+'</button>'; });
         h+='</div>';
       }
     } else {   // the flip: the answer, written — after the kid produced
@@ -3161,6 +3170,7 @@ const UJ_CSS='<style>.uj-tile{display:inline-flex;align-items:center;justify-con
   '.uj-btn{padding:12px 22px;border-radius:999px;border:none;font-size:16px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif;-webkit-tap-highlight-color:transparent}.uj-btn[disabled]{opacity:.45;cursor:default}'+
   '.uj-ghost{padding:10px 16px;border-radius:999px;border:1.5px solid #e2ddd6;background:#fff;color:#57534e;font-size:13px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif}.uj-ghost[disabled]{opacity:.45;cursor:default}</style>';
 function buildJumbleHtml(color){
+  if(typeof tileFitSoon==="function") tileFitSoon();   // TILEFIT
   const q=s=>String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");
   let h=UJ_CSS+'<div style="padding:4px 14px 24px;max-width:720px;margin:0 auto">';
   const items=_ujItems(), pools=ujPools(items), decks=Object.keys(pools);
@@ -3186,9 +3196,9 @@ function buildJumbleHtml(color){
     h+='<div style="text-align:center;font-size:17px;font-weight:800;color:'+(m==="right"?'#16a34a':m==="show"?'#b45309':'#57534e')+';margin:6px 0 4px">'+
       (m==="right"?'\u{2705} That\u2019s it!':m==="show"?'Here\u2019s how it goes \u{2014} we\u2019ll try it again later':m==="back"?'We\u2019ll come back to that one':m==="again"?'Almost \u{2014} the green ones are right. Try again!':t.back?'One more time \u{2014} put it in order':'Put the words in order')+'</div>';
     h+='<div class="uj-line" aria-label="Your sentence">';
-    t.line.forEach((wi,p)=>{ if(wi==null) h+='<span class="uj-slot" aria-label="Empty slot"></span>'; else h+='<button class="uj-tile'+(t.locked[p]?' uj-lock':'')+(t.show?' uj-show':'')+'"'+(t.locked[p]||st.lock?' disabled':' onclick="jumbleUntap('+p+')"')+' aria-label="Word '+(p+1)+'">'+esc(t.words[wi])+'</button>'; });
+    t.line.forEach((wi,p)=>{ if(wi==null) h+='<span class="uj-slot" aria-label="Empty slot"></span>'; else h+='<button class="tf uj-tile'+(t.locked[p]?' uj-lock':'')+(t.show?' uj-show':'')+'"'+(t.locked[p]||st.lock?' disabled':' onclick="jumbleUntap('+p+')"')+' aria-label="Word '+(p+1)+'">'+esc(t.words[wi])+'</button>'; });
     h+='</div><div class="uj-tray">';
-    t.tiles.forEach(wi=>{ if(t.line.indexOf(wi)>=0) return; h+='<button class="uj-tile" onclick="jumbleTap('+wi+')"'+(st.lock?' disabled':'')+'>'+esc(t.words[wi])+'</button>'; });
+    t.tiles.forEach(wi=>{ if(t.line.indexOf(wi)>=0) return; h+='<button class="tf uj-tile" onclick="jumbleTap('+wi+')"'+(st.lock?' disabled':'')+'>'+esc(t.words[wi])+'</button>'; });
     h+='</div>';
     h+='<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button class="uj-btn" onclick="jumbleCheck()"'+(full&&!st.lock?'':' disabled')+' style="background:'+color+';color:#fff">\u{2714} Check</button><button class="uj-ghost" onclick="jumbleClear()"'+(st.lock?' disabled':'')+'>\u{21BA} Clear</button></div>';
     return h+'</div>';
@@ -3422,9 +3432,10 @@ const KB_CSS='<style>.kb-jar{width:150px;height:170px;margin:0 auto;border-radiu
 function _kbCardVis(st,pid,act){
   const it=_kbIt(st,pid); if(!it) return '';
   if(act==="say"){ const v=_smTileVis(it); if(v) return '<span class="kb-vis">'+v+'</span>'; }
-  return '<span class="kb-txt">'+esc(kaboomName(it))+'</span>';   // an answer card shows its FRONT (the kid produces the back)
+  return '<span class="kb-txt tf">'+esc(kaboomName(it))+'</span>';   // an answer card shows its FRONT (the kid produces the back)
 }
 function buildKaboomHtml(color){
+  if(typeof tileFitSoon==="function") tileFitSoon();   // TILEFIT
   const q=s=>String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");
   let h=KB_CSS+'<div style="padding:4px 14px 24px;max-width:720px;margin:0 auto">';
   const items=_kbItems(), decks=kaboomDecks(items);
@@ -3463,11 +3474,11 @@ function buildKaboomHtml(color){
     else if(t.act==="type"){
       h+='<div style="display:flex;justify-content:center;margin-bottom:10px"><span style="min-width:120px;height:56px;border-radius:14px;border:3px solid '+color+';background:#fff;font-family:\'Fraunces\',serif;font-size:30px;font-weight:800;color:#292524;display:inline-flex;align-items:center;justify-content:center;padding:0 14px">'+esc(t.typed||"")+'</span></div>';
       h+='<div style="display:grid;grid-template-columns:repeat(3,64px);gap:8px;justify-content:center">';
-      ["1","2","3","4","5","6","7","8","9","back","0","ok"].forEach(k=>{ if(k==="back") h+='<button class="kb-key" onclick="kaboomKey(\'back\')"'+(lock?' disabled':'')+' aria-label="Erase">\u{232B}</button>'; else if(k==="ok") h+='<button class="kb-key" onclick="kaboomCheck()"'+(lock||!t.typed?' disabled':'')+' style="background:'+color+';color:#fff;border-color:transparent" aria-label="Check">\u{2714}</button>'; else h+='<button class="kb-key" onclick="kaboomKey(\''+k+'\')"'+(lock?' disabled':'')+'>'+k+'</button>'; });
+      ["1","2","3","4","5","6","7","8","9","back","0","ok"].concat(typeof typeKeysPadFor==="function"?typeKeysPadFor(st):[]).forEach(k=>{ if(k==="back") h+='<button class="kb-key" onclick="kaboomKey(\'back\')"'+(lock?' disabled':'')+' aria-label="Erase">\u{232B}</button>'; else if(k==="ok") h+='<button class="kb-key" onclick="kaboomCheck()"'+(lock||!t.typed?' disabled':'')+' style="background:'+color+';color:#fff;border-color:transparent" aria-label="Check">\u{2714}</button>'; else h+='<button class="kb-key" onclick="kaboomKey(\''+k+'\')"'+(lock?' disabled':'')+'>'+k+'</button>'; });
       h+='</div>';
     } else {
       h+='<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">';
-      (t.opts||[]).forEach((op,i)=>{ const w=!!t.wrong[op]; h+='<button class="kb-opt'+(w?' kb-wrong':'')+'" onclick="kaboomPickTap('+i+')"'+(w||lock||t.done?' disabled':'')+'>'+esc(op)+'</button>'; });
+      (t.opts||[]).forEach((op,i)=>{ const w=!!t.wrong[op]; h+='<button class="tf kb-opt'+(w?' kb-wrong':'')+'" onclick="kaboomPickTap('+i+')"'+(w||lock||t.done?' disabled':'')+'>'+esc(op)+'</button>'; });
       h+='</div>';
     }
   } else if(st.phase==="play"){
@@ -3978,8 +3989,8 @@ function jpMoneyMsg(st,t,r){
 // _jpEnd's hook: round 1 clear → Double Jeopardy; Double Jeopardy clear → Final (more than $0 only); else the come-backs and the finish
 function jpMoneyRoundEnd(st){
   if(!st||!st.money) return false;
-  if(st.round===1){ jpMoneyRound2(st); return true; }
-  if(st.round===2&&st.bank>0) return jpMoneyFinal(st);
+  if(st.round===1){ jpMoneyRound2(st); if(typeof jeoRoundShow==="function") jeoRoundShow(st); return true; }   // 🎬 JEOROUND: "Round 2 · Double Jeopardy!"
+  if(st.round===2&&st.bank>0){ const fin=jpMoneyFinal(st); if(fin&&typeof jeoRoundShow==="function") jeoRoundShow(st); return fin; }   // 🎬 JEOROUND: "Round 3 · Final Jeopardy!"
   return false;
 }
 function jpMoneyRound2(st){
@@ -4349,5 +4360,78 @@ function buildJigHtml(color){
   return h+'</div></div>';
 }
 // JIGSAW_END
+// JEOROUND_START — 🎬 the moment between rounds (her words 2026-11-10: "when jeopardy goes to the next round make it special and let them
+// know whats happening"). Rounds exist only on a 💵 Money board (JPMONEY): round 1 Jeopardy! → round 2 Double Jeopardy! (every value
+// doubled, 2 Daily Doubles) → round 3 Final Jeopardy! (only with more than $0). The plain board has no rounds and never reaches this block.
+//   · jpMoneyRoundEnd calls jeoRoundShow once right after it builds the next round (Double Jeopardy's board / Final's bet). The overlay is
+//     full screen in the board's own navy and gold, big enough to read across the room: "Round 2" + the round's name, what changes (read
+//     from the round's own data — the values on the board, the Daily Doubles hidden, Final's category and bet limit), the bank and the
+//     squares right the first time side by side, and a rising flourish on the game's own tone (_matchTone, the ding's; no AudioContext →
+//     silent). The spoken line is JPMONEY's own (unchanged). It goes on its own after JR_MS, or on a tap / "Let's go!"; then the next
+//     board (or Final's bet) is exactly what it was before this block.
+//   · ONCE per round change (st.jrDone[round]); drawn from the state, so Stop / a kid switch / leaving the game takes it with the round,
+//     and a parked round comes back without it (jeopResume clears it). A re-draw mid-way keeps its place (negative animation delay).
+//     prefers-reduced-motion: no animation, same words.
+//   · WRITES: nothing. No points, no Firebase, no log — the round's gameLog entry is JPMONEY's as before.
+const JR_MS=4200;
+// PURE: the words for the round the board has just moved to → {kicker, name, lines:[…], stats:[{label,value,neg}]} or null
+function jeoRoundText(st){
+  if(!st||!st.money||!(st.round===2||st.round===3)) return null;
+  const played=(st.turns||[]).filter(t=>t&&!t.back&&t.done).length;
+  const stats=[{label:"Your bank",value:jpMoneyFmt(st.bank),neg:st.bank<0},{label:"Right the first time",value:(st.first||0)+" of "+played}];
+  if(st.round===2){
+    const lines=["Every square is worth double now: "+jpMoneyFmt(jpMoneyVal(st,0))+" to "+jpMoneyFmt(jpMoneyVal(st,st.rows-1))+"."];
+    const dd=(st.cells||[]).filter(c=>c.dd).length;
+    if(dd) lines.push(dd===1?"1 Daily Double is hiding on the board.":dd+" Daily Doubles are hiding on the board.");
+    return {kicker:"Round 2",name:"Double Jeopardy!",lines:lines,stats:stats};
+  }
+  const b=jpMoneyBounds(st,"final");
+  return {kicker:"Round 3",name:"Final Jeopardy!",lines:["One last question. The category is "+((st.final&&st.final.deck)||"")+".","Bet from "+jpMoneyFmt(b.min)+" up to "+jpMoneyFmt(b.max)+" — your whole bank."],stats:stats};
+}
+// jpMoneyRoundEnd's hook: the next round is built → the overlay, once for this round change
+function jeoRoundShow(st){
+  if(!jeoRoundText(st)) return false;
+  st.jrDone=st.jrDone||{}; if(st.jrDone[st.round]) return false;
+  st.jrDone[st.round]=1;
+  const seq=(st.jrSeq||0)+1; st.jrSeq=seq; st.jr={round:st.round,t0:Date.now(),seq:seq};
+  try{ if(typeof _matchTone==="function") _matchTone(st.round===3?[392,523,659,784]:[523,659,784,1047,1319],st.round===3?0.3:0.2,0.14); }catch(e){}   // a rising flourish on the game's own tone (Final: lower, slower)
+  setTimeout(()=>{ if(st.jr&&st.jr.seq===seq) jeoRoundGo(st); },JR_MS);
+  return true;
+}
+// a tap, "Let's go!", or the clock: the overlay goes and the board is as it was
+function jeoRoundGo(st){
+  st=st||jeopState; if(!st||!st.jr) return;
+  st.jr=null;
+  if(st===jeopState&&(typeof mastView==="undefined"||mastView==="jeop")) _mastRe();
+}
+function jeoRoundClear(st){ if(st) st.jr=null; }   // jeopResume's hook: a parked round comes back to its board, not to the overlay
+const JR_CSS='<style>.jr-ov{position:fixed;inset:0;z-index:19990;display:flex;align-items:center;justify-content:center;padding:24px 16px;box-sizing:border-box;overflow-x:hidden;overflow-y:auto;cursor:pointer;'+
+  'background:radial-gradient(ellipse at 50% 40%,#1d4ed8 0,#1e3a8a 55%,#0f1d4a 100%);color:#fff;font-family:\'DM Sans\',sans-serif;text-align:center;-webkit-tap-highlight-color:transparent;animation:jrIn .35s ease-out both;animation-delay:var(--jr-t)}'+
+  '.jr-ov::before{content:"";position:absolute;top:0;bottom:0;left:-40%;width:40%;background:linear-gradient(100deg,transparent,rgba(253,230,138,.28),transparent);animation:jrSweep 1.1s ease-in-out both;animation-delay:calc(var(--jr-t) + .25s);pointer-events:none}'+
+  '.jr-box{position:relative;max-width:1700px;width:100%;margin:auto}'+
+  '.jr-kick{font-size:clamp(22px,min(4vw,6vh),68px);font-weight:800;color:#bfdbfe;letter-spacing:.12em;text-transform:uppercase;animation:jrUp .45s ease-out both;animation-delay:calc(var(--jr-t) + .1s)}'+
+  '.jr-name{font-family:\'Fraunces\',serif;font-size:clamp(46px,min(10.5vw,15vh),200px);font-weight:800;line-height:1.02;color:#fde68a;text-shadow:0 4px 0 #92400e,0 0 40px rgba(253,230,138,.45);margin:.08em 0 .18em;animation:jrPop .7s cubic-bezier(.2,1.4,.4,1) both;animation-delay:calc(var(--jr-t) + .2s)}'+
+  '.jr-line{font-size:clamp(19px,min(2.9vw,4.4vh),52px);font-weight:800;color:#fff;line-height:1.25;margin:.15em auto;max-width:28em;animation:jrUp .45s ease-out both;animation-delay:calc(var(--jr-t) + .6s)}'+
+  '.jr-stats{display:flex;gap:clamp(12px,2.5vw,48px);justify-content:center;flex-wrap:wrap;margin:clamp(14px,min(3vw,4vh),52px) 0 clamp(12px,min(2.4vw,3.4vh),40px);animation:jrUp .45s ease-out both;animation-delay:calc(var(--jr-t) + .9s)}'+
+  '.jr-stat{min-width:min(42vw,420px);padding:clamp(10px,1.6vw,28px) clamp(14px,2.4vw,40px);border-radius:clamp(16px,2vw,32px);background:rgba(255,255,255,.1);border:3px solid #fde68a;box-sizing:border-box}'+
+  '.jr-stat-l{font-size:clamp(14px,min(1.8vw,2.8vh),32px);font-weight:800;color:#bfdbfe}.jr-stat-v{font-family:\'Fraunces\',serif;font-size:clamp(32px,min(5.6vw,8.5vh),104px);font-weight:800;color:#fde68a;line-height:1.1}.jr-stat-v.jr-neg{color:#fca5a5}'+
+  '.jr-go{padding:clamp(14px,1.6vw,28px) clamp(30px,3.6vw,64px);border-radius:999px;border:none;background:#fde68a;color:#1e3a8a;font-family:\'DM Sans\',sans-serif;font-size:clamp(20px,min(2.6vw,4vh),46px);font-weight:800;cursor:pointer;animation:jrUp .45s ease-out both;animation-delay:calc(var(--jr-t) + 1.1s)}'+
+  '.jr-bar{position:absolute;left:0;bottom:0;height:clamp(6px,.7vw,12px);width:100%;background:#fde68a;transform-origin:left;animation:jrBar linear both;animation-duration:'+JR_MS+'ms;animation-delay:var(--jr-t)}'+
+  '@keyframes jrIn{from{opacity:0}to{opacity:1}}@keyframes jrUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}'+
+  '@keyframes jrPop{0%{opacity:0;transform:scale(.3)}70%{opacity:1;transform:scale(1.08)}100%{opacity:1;transform:none}}'+
+  '@keyframes jrSweep{from{left:-40%}to{left:110%}}@keyframes jrBar{from{transform:scaleX(1)}to{transform:scaleX(0)}}'+
+  '@media (prefers-reduced-motion:reduce){.jr-ov,.jr-ov *{animation:none!important}.jr-ov::before,.jr-bar{display:none}}</style>';
+// buildJeopHtml's hook: the overlay over the new board while st.jr is up (past JR_MS it is simply gone)
+function jeoRoundHtml(st){
+  const tx=st&&st.jr?jeoRoundText(st):null; if(!tx) return "";
+  const el=Math.max(0,Date.now()-st.jr.t0); if(el>=JR_MS){ st.jr=null; return ""; }
+  let h=JR_CSS+'<div class="jr-ov" role="dialog" aria-modal="true" aria-label="'+esc(tx.kicker+": "+tx.name)+'" onclick="jeoRoundGo()" style="--jr-t:-'+el+'ms"><div class="jr-box">';
+  h+='<div class="jr-kick">'+esc(tx.kicker)+'</div><div class="jr-name">'+esc(tx.name)+'</div>';
+  tx.lines.forEach(l=>{ h+='<div class="jr-line">'+esc(l)+'</div>'; });
+  h+='<div class="jr-stats">'+tx.stats.map(s=>'<div class="jr-stat"><div class="jr-stat-l">'+esc(s.label)+'</div><div class="jr-stat-v'+(s.neg?' jr-neg':'')+'">'+esc(s.value)+'</div></div>').join("")+'</div>';
+  h+='<button class="jr-go" onclick="event.stopPropagation();jeoRoundGo()">Let’s go!</button>';
+  return h+'</div><div class="jr-bar"></div></div>';
+}
+// JEOROUND_END
 // ── end of games.js — the flag below tells index.html the whole file ran (haLazyReady) ──
 if(typeof window!=="undefined") window._haLazy_games=true;

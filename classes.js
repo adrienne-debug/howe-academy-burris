@@ -628,6 +628,146 @@ function cplnpReady(kid){
   }catch(e){ return false; }
 }
 // CPLINCOLNPARITY_END
+// CPMYCLASS_START — 🏫 "MY CLASS" ON HIS 🌿 TILE (2026-11-10). Her words that night: Lincoln is "missing out on seeing how many stars he gets
+// for this, how the team scores are and what his scores are like", and she wants a way to play games on JUST Envirothon while all his
+// sessions stay mixed as they are. Her yes: build it.
+// A "🏫 My class" strip under the 🌿 Envirothon start in the kid's own 📚 Study (Kids' Corner, or Dad's Day ▸ his Study: KC_PLAY's page),
+// drawn by renderMastStudy's one guarded line, ONLY while CPLINCOLN's class layer is in for him (cplnOn). Four parts, in this order:
+//   · ⭐ STARS FOR THIS — today's and the season's CLASS stars, CPPOINTS' own numbers: the summary his mirror sends the teacher (envSummary →
+//     cpPtsSum: summary.days[<today>].stars, summary.stars; informational, his Star Bank never moves). Today's "how" in CPPOINTS' words
+//     (🌿 Day done / 🌿 Part of the day · 🌿 Extra · N cards · 🎮 rounds), the week in cpPtsWeekLine's line, the rule from CPPTS.
+//   · TEAM — the class boards exactly as the class site's Team tab draws them (envsBoardsHtml, his effort row marked "(you)"), from
+//     boards/<cid> on the mirror's app: ONE on("value") listener, attached by envmRelAttach's guarded line with the mirror's other
+//     subscriptions (_envm.subs) and detached with them (envmDetach: signed out). A refused read → "Boards aren't posted yet".
+//   · MY SCORES — the class site's station rows (envsStationRowsHtml, released stations only) fed with the summary his app builds:
+//     mastered bar, in progress, check-in / final, 14-day accuracy, how far to the final.
+//   · 🎮 GAMES, JUST THIS — a door into his 🎮 Games (KC_PLAY's own kcPlayOpen) with ONE filter on: _gamesItems and gameDeckOn (GAMEGRID's
+//     per-deck rule every game reads) keep only his Envirothon decks (cplnDecks, the 15 unit decks). A chip "🌿 Envirothon only · ✕" tops
+//     the section and clears it; it clears itself when he leaves the section: the filter belongs to that one Games page (the kcPlay object
+//     the door opened) — 📚 Study, another kid, ← back, another tab or the class layer going away ends it. His own 🎮 Games button is
+//     untouched: every deck, mixed. A judged round played through the door is logged by GAMELOG like any round, and CPPOINTS' cpPtsSum
+//     already counts each day's judged Envirothon rounds from mastery/gameLog — nothing is added for it here.
+// Writes NOTHING to any database (no set / update / push / transaction): memory, plus one HA_LS key per kid for open / closed
+// (ha_cpmc_open_<kid>, open by default). No setting. Never on the class site; any other kid or family: "" — the page is what it was.
+const _cpmc={boards:{},gf:null};   // boards: <kid> → {cid, val, state:"wait"|"ok"|"refused"} · gf: the games filter {kid, play, pending, decks}
+function cpmcEsc(v){ return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function cpmcJs(v){ return String(v==null?"":v).replace(/\\/g,"\\\\").replace(/'/g,"\\'"); }
+function cpmcN(v){ v=Math.floor(Number(v)||0); return v>0?v:0; }
+// env.js here? (it always arrives before this file, but never assumed: not ready → ask for it, repaint when it lands)
+function cpmcEnv(){
+  if(typeof haLazyReady==="function"&&!haLazyReady("env")){ try{ haLazyLoad("env").then(()=>{ if(typeof renderAllSoon==="function") renderAllSoon(); }).catch(()=>{}); }catch(e){} return false; }
+  return typeof envsBoardsHtml==="function"&&typeof envsStationRowsHtml==="function"&&typeof envSummary==="function";
+}
+// the kid's own 📚 Study page right now (Kids' Corner / Dad's Day: KC_PLAY), never Mom's Mastery tab
+function cpmcStudyPage(kid){ return typeof kcPlay!=="undefined"&&!!kcPlay&&kcPlay.who===kid&&kcPlay.mode==="drills"; }
+// ── TEAM: envmRelAttach's guarded line — boards/<cid>, one listener in the mirror's subs (envmDetach takes it off with the others)
+function cpmcAttach(kid,cid,edb,subs,sid){
+  try{
+    if(!kid||!cid||!edb||!subs||(typeof envSiteOn==="function"&&envSiteOn())) return false;
+    const sk=kid+"|cpmcBoards"; if(subs[sk]) return false;
+    const rec=_cpmc.boards[kid]={cid:cid,val:null,state:"wait"};
+    const r=edb.ref("boards/"+cid);
+    const fn=s=>{ if(_cpmc.boards[kid]!==rec) return; rec.val=(s&&typeof s.val==="function")?s.val():null; rec.state="ok"; cpmcPaint(); };
+    r.on("value",fn,()=>{ if(_cpmc.boards[kid]!==rec) return; rec.val=null; rec.state="refused"; cpmcPaint(); });
+    subs[sk]={r:r,fn:fn}; return true;
+  }catch(e){ return false; }
+}
+// the boards arrived: repaint only when the strip is on screen (never under a running sitting: the strip isn't drawn then)
+function cpmcPaint(){ try{ if(typeof document!=="undefined"&&document.getElementById("cpmc-strip")&&typeof renderAllSoon==="function") renderAllSoon(); }catch(e){} }
+// ── STARS (PURE): the summary (envSummary + CPPOINTS' cpPtsSum), today's key, the week's YYYY-MM-DD dates → {today, season, how:[…], week}
+function cpmcStars(sm,today,wk){
+  const D=(sm&&sm.days)||{}, d=D[today]||null, how=[];
+  if(d&&d.cleared===true) how.push("\u{1F33F} Day done"); else if(d&&cpmcN(d.done)>0) how.push("\u{1F33F} Part of the day");
+  if(d&&d.cleared===true&&cpmcN(d.extra)>0) how.push("\u{1F33F} Extra · "+cpmcN(d.extra)+" cards");
+  const g=(d&&d.games)||{}; if(cpmcN(g.rounds)>0) how.push("\u{1F3AE} Games · "+cpmcN(g.rounds)+" round"+(cpmcN(g.rounds)===1?"":"s")+", "+Math.round(cpmcN(g.right)/Math.max(1,cpmcN(g.total))*100)+"% right");
+  const week=(wk&&typeof cpPtsWeekOf==="function"&&typeof cpPtsWeekLine==="function")?cpPtsWeekLine(cpPtsWeekOf(D,wk),null):"";
+  return {today:d?cpmcN(d.stars):0,season:cpmcN(sm&&sm.stars),how:how,week:week};
+}
+// CPPOINTS' rule in one line, from its own numbers (CPPTS)
+function cpmcRule(){
+  if(typeof CPPTS==="undefined") return "";
+  const P=CPPTS; return "Stars: "+P.done+" for a day’s cards all done ("+P.part+" for part of them), 1 per "+P.extraPer+" extra cards ("+P.extraMax+" a day at most), "+P.gLoStars+"–"+P.gHiStars+" a game round at "+P.gLo+"% right or better ("+P.gMax+" a day at most).";
+}
+function cpmcStarsHtml(kid,sm){
+  const today=(typeof cpPtxDay==="function")?cpPtxDay():null, wk=(typeof cpPtxWeekDays==="function"&&typeof cpPtxToday==="function")?cpPtxWeekDays(cpPtxToday()):null;
+  const s=cpmcStars(sm,today,wk);
+  let h='<div class="envs-card" data-cpmc="stars"><div class="envs-h2">⭐ Stars for this</div>';
+  h+='<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:baseline"><div style="font-size:22px;font-weight:900;color:#14532d">⭐ '+s.today+' <span style="font-size:13px;font-weight:800">class star'+(s.today===1?'':'s')+' today</span></div>'
+    +'<div style="font-size:15px;font-weight:800;color:#374151">⭐ '+s.season+' <span style="font-size:12px">this season</span></div></div>';
+  h+='<div style="font-size:12.5px;font-weight:700;margin-top:4px">'+(s.how.length?cpmcEsc(s.how.join(" · ")):'Nothing yet today.')+'</div>';
+  if(s.week) h+='<div class="envs-muted" style="margin-top:3px">This week: '+cpmcEsc(s.week)+'</div>';
+  const rule=cpmcRule(); if(rule) h+='<div class="envs-muted" style="margin-top:3px">'+cpmcEsc(rule)+'</div>';
+  h+='<div class="envs-muted" style="margin-top:3px">Class stars count for your class — they are not in your Star Bank.</div>';
+  return h+'</div>';
+}
+function cpmcTeamHtml(kid){
+  const rec=_cpmc.boards[kid], sid=(typeof envmSid==="function")?envmSid(kid):null;
+  let h='<div class="envs-h2" style="margin:4px 0 6px">\u{1F3C6} Team</div>';
+  if(!rec||rec.state==="refused") return h+'<div class="envs-card envs-muted" data-cpmc="noboards">Boards aren’t posted yet.</div>';
+  if(rec.state!=="ok") return h+'<div class="envs-card envs-muted" data-cpmc="boardswait">Loading the boards…</div>';
+  return h+'<div data-cpmc="boards">'+envsBoardsHtml(rec.val,sid)+'</div>';
+}
+function cpmcScoresHtml(kid,sm){
+  const rows=envsStationRowsHtml(sm,{kid:kid,released:true});
+  return '<div class="envs-card" data-cpmc="scores"><div class="envs-h2">\u{1F4CA} My scores</div>'+(rows||'<div class="envs-muted">No station has been sent out yet.</div>')+'</div>';
+}
+function cpmcGamesDoorHtml(kid){
+  const col=(typeof KID_COLOR!=="undefined"&&KID_COLOR[kid])||"#14532d";
+  return '<div style="text-align:center;margin:4px 0 8px"><button data-cpmc="gamesdoor" onclick="cpmcGames(\''+cpmcJs(kid)+'\')" style="min-height:48px;padding:0 22px;border-radius:14px;border:2px solid '+col+';background:#fff;color:'+col+';font-size:15px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">\u{1F3AE} Games, just Envirothon</button></div>';
+}
+// open / closed, per kid on this device (HA_LS), open by default
+function cpmcIsOpen(kid){ try{ return typeof HA_LS==="undefined"||HA_LS.getItem("ha_cpmc_open_"+kid)!=="0"; }catch(e){ return true; } }
+function cpmcToggle(kid){ const o=!cpmcIsOpen(kid); try{ if(typeof HA_LS!=="undefined") HA_LS.setItem("ha_cpmc_open_"+kid,o?"1":"0"); }catch(e){} try{ if(typeof renderAll==="function") renderAll(); }catch(e){} }
+// renderMastStudy's guarded line: the strip under his 🌿 start ("" for every other kid, session, page or family)
+function cpMyClassHtml(kid,session){
+  try{
+    if(!kid||!session||typeof ENV_SESSION_SID==="undefined"||session.sid!==ENV_SESSION_SID) return "";
+    if(typeof cplnOn!=="function"||!cplnOn(kid)||!cpmcStudyPage(kid)) return "";
+    if(!cpmcEnv()) return "";
+    if(typeof envsCss==="function") envsCss();   // the class site's card styles (every rule is .envs-* or body.env-site: nothing else on the page moves)
+    const open=cpmcIsOpen(kid);
+    let h='<div id="cpmc-strip" data-cpmc="strip" style="margin-top:16px;font-family:\'DM Sans\',sans-serif">';
+    h+='<button data-cpmc="toggle" onclick="cpmcToggle(\''+cpmcJs(kid)+'\')" aria-expanded="'+open+'" style="width:100%;display:flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;margin-bottom:10px;border-radius:14px;border:2px solid #bbf7d0;background:#f0fdf4;color:#14532d;font-size:15px;font-weight:900;cursor:pointer;font-family:inherit;text-align:left"><span style="flex:1">\u{1F3EB} My class</span><span>'+(open?'▾':'▸')+'</span></button>';
+    if(!open) return h+'</div>';
+    let sm=null; try{ sm=envSummary(kid); }catch(e){ sm=null; }
+    h+=cpmcStarsHtml(kid,sm);
+    h+=cpmcTeamHtml(kid);
+    h+=cpmcScoresHtml(kid,sm);
+    h+=cpmcGamesDoorHtml(kid);
+    return h+'</div>';
+  }catch(e){ return ""; }
+}
+// ── 🎮 GAMES, JUST THIS: the door — his 🎮 Games page (KC_PLAY), the filter on for that page only
+function cpmcGames(kid){
+  try{
+    if(!kid||typeof cplnOn!=="function"||!cplnOn(kid)||typeof kcPlay==="undefined"||!kcPlay||kcPlay.who!==kid||typeof kcPlayOpen!=="function") return false;
+    _cpmc.gf={kid:kid,play:null,pending:true,decks:new Set(cplnDecks(kid))};
+    kcPlayOpen("games",kid,kcPlay.from);   // the filter is on before the page picks his game (gamesOpen → gamesFor)
+    const g=_cpmc.gf; if(g&&g.pending){ if(kcPlay&&kcPlay.who===kid&&kcPlay.mode==="games"){ g.play=kcPlay; g.pending=false; } else _cpmc.gf=null; }
+    return !!_cpmc.gf;
+  }catch(e){ _cpmc.gf=null; return false; }
+}
+// is the filter on for this kid? It binds to the Games page the door opened; any other page ends it (cleared here, on the first look)
+function cpmcGamesOn(kid){
+  const g=_cpmc.gf; if(!g) return false;
+  try{
+    const p=(typeof kcPlay!=="undefined")?kcPlay:null;
+    if(g.pending){ if(p&&p.who===g.kid&&p.mode==="games"){ g.play=p; g.pending=false; } else return kid===g.kid; }
+    if(!p||p!==g.play||p.mode!=="games"||p.who!==g.kid||typeof cplnOn!=="function"||!cplnOn(g.kid)){ _cpmc.gf=null; return false; }
+    return kid===g.kid;
+  }catch(e){ return false; }
+}
+// _gamesItems' guarded line: his cards on the Envirothon decks only while the filter is on (the same array otherwise)
+function cpmcItems(kid,items){ if(!Array.isArray(items)||!cpmcGamesOn(kid)) return items; const D=_cpmc.gf.decks; return items.filter(i=>!!i&&D.has(i.subject)); }
+// gameDeckOn's guarded line: true = this deck is off while the filter is on (any deck but his Envirothon ones)
+function cpmcDeckOff(kid,deck){ return cpmcGamesOn(kid)&&!_cpmc.gf.decks.has(String(deck)); }
+// the chip on top of the section, and its ✕
+function cpmcGamesChip(kid){
+  if(!cpmcGamesOn(kid)) return "";
+  return '<div data-cpmc="chip" style="margin:0 0 8px"><button onclick="cpmcGamesOff()" style="min-height:36px;padding:0 14px;border-radius:999px;border:2px solid #15803d;background:#f0fdf4;color:#14532d;font-size:13px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">\u{1F33F} Envirothon only · ✕</button></div>';
+}
+function cpmcGamesOff(){ _cpmc.gf=null; try{ if(typeof renderAll==="function") renderAll(); }catch(e){} }
+// CPMYCLASS_END
 // CPGEAR_START — each role's ⚙️ shows only its own things (design §7g). Her answer 2026-10-28 (Q19): the bar color is the
 // class's, set by the teacher; kids and parents have no color option at all. So the 🎨 Color card is gone from every role
 // (kid, parent, teacher, admin) and envsSetColor with it; the color moves to 🏫 Class setup (CPCLASS).
@@ -637,7 +777,7 @@ function envsSettingsHtml(){
   let h='';
   const pr=(typeof envsPageRole==="function")?envsPageRole():_envs.role;   // CPKIDMODE: the page's role (kid view on a parent login → kid)
   if(pr==="kid"&&typeof envRaToggleHtml==="function") h+='<div class="envs-card">'+envRaToggleHtml(kid)+'<div class="envs-muted" style="margin-top:6px">Auto reads each card and each check-in question out loud. Off: only when you tap \u{1F50A}.</div></div>';   // 🔊 ENVREADALOUD
-  if(pr==="parent") h+='<div class="envs-card"><div class="envs-h2">\u{1F510} Parent PIN</div><div class="envs-muted" style="margin-bottom:6px">The PIN opens the parent view on a shared device.</div><div class="envs-row"><input id="envs-pin" class="envs-in" type="text" inputmode="numeric" maxlength="4" placeholder="4 digits" style="width:110px;text-align:center;letter-spacing:6px"><button class="envs-btn sec" onclick="envsSetPin()">Save PIN</button></div></div>';
+  if(pr==="parent"&&_envs.homeApp!=="howe") h+='<div class="envs-card"><div class="envs-h2">\u{1F510} Parent PIN</div><div class="envs-muted" style="margin-bottom:6px">The PIN opens the parent view on a shared device.</div><div class="envs-row"><input id="envs-pin" class="envs-in" type="text" inputmode="numeric" maxlength="4" placeholder="4 digits" style="width:110px;text-align:center;letter-spacing:6px"><button class="envs-btn sec" onclick="envsSetPin()">Save PIN</button></div></div>';
   if(_envs.kidMode&&_envs.role==="parent") h+='<div class="envs-card"><div class="envs-h2" style="margin:0">Signed in</div><div class="envs-muted">A parent\u2019s login, in '+envsEsc(envsKidName(kid))+'\u2019s view. \u{1F469} Parent (top right) and the password go back.</div></div>';   // CPKIDMODE: no Sign out in a kid's view
   else h+='<div class="envs-card"><div class="envs-row"><div style="flex:1"><div class="envs-h2" style="margin:0">Signed in</div><div class="envs-muted">'+envsEsc(_envs.email||(_envs.role==="kid"?"student code":""))+'</div></div><button class="envs-btn red" onclick="envsSignOut()">Sign out</button></div></div>';
   h+='<div class="envs-muted" style="text-align:center;padding:8px">'+envsEsc(envsLicenseLine())+'</div>';
@@ -731,7 +871,7 @@ function cpLine(role,b,who,cls){
 function cpTopHtml(role,who,right){
   if(!cpOn()) return ""; cpCss(); const cls=cpCls(), b=cpBrand(cls), con=role==="teacher"||role==="admin";
   if(con&&typeof _envc!=="undefined"&&_envc.view!=="setup") _cp.d=null;   // away from 🏫 Class setup: its draft starts again from the class next time
-  if(con&&right==null){ const n=(typeof envcStudents==="function")?envcStudents().length:0; right='<div style="font-size:11.5px;font-weight:700">'+n+' student'+(n===1?'':'s')+'</div>'; }
+  if(con&&right==null){ const n=(typeof envcStudents==="function")?envcStudents().length:0; right='<div style="font-size:11.5px;font-weight:700">'+n+' student'+(n===1?'':'s')+'</div>'+((typeof envsHomeBtnHtml==="function")?envsHomeBtnHtml():""); }   // 🏠 CPHOMELINK
   return cpBarHtml(b,cpLine(role,b,who,cls),right,'<button onclick="'+(con?'envcView':'envsView')+'(\'settings\')" aria-label="Settings">⚙️</button>');
 }
 function cpCss(){
@@ -747,7 +887,7 @@ function cpCss(){
 // ── the class record arriving (envsReadShared, envcPickClass): the lock date may close it ──
 function cpClassIn(){
   if(!cpOn()) return false; try{ _envs.lock=envsLockState(_envs.lockRaw); }catch(e){ return false; }
-  if(_envs.lock&&_envs.lock.locked&&_envs.role!=="admin"&&!envsDemo()){ envsCard("closed"); return true; }
+  if(_envs.lock&&_envs.lock.locked&&_envs.role!=="admin"&&_envs.homeOf!=="admin"&&!envsDemo()){ envsCard("closed"); return true; }
   return false;
 }
 // ── 🏫 CLASS SETUP (teacher + admin) ──
@@ -8684,9 +8824,9 @@ function cpWeekParentHtml(kid){
   try{
     if(!cpwkSite()||!kid||typeof _envs==="undefined"||!_envs.sid) return ""; cpwkCss();
     const demo=cpwkDemo()&&typeof _envc!=="undefined"&&_envc.demo; if(demo) cpwkDemoSeed();
-    const row=demo?(_envc.students||{})[_envs.sid]:null, sm=row?row.summary:((typeof envsSummary==="function")?envsSummary(kid):null);
+    const hw=!demo&&_envs.homeApp==="howe", row=demo?(_envc.students||{})[_envs.sid]:hw?{summary:_envs.homeSum,weeks:_envs.homeWeeks}:null, sm=row?row.summary:((typeof envsSummary==="function")?envsSummary(kid):null);   // CPHOMELINK: a Howe-app kid's mirrored weeks
     const cur=cpWeekId(cpwkToday()), wk=cpWeekShift(cur,-_cpwk.pback), name=(typeof envsKidName==="function")?envsKidName(kid):kid, s={sid:_envs.sid,summary:sm,weeks:row?row.weeks:null,meta:{name}};
-    const v=cpwkView(s,wk,demo?{name,parent:true}:{name,parent:true,own:true,kid});
+    const v=cpwkView(s,wk,(demo||hw)?{name,parent:true}:{name,parent:true,own:true,kid});
     let h='<div class="envs-card"><div class="envs-h2">\u{1F4CA} '+(wk===cur?'This week':_cpwk.pback===1?'Last week':'Week of '+cpwkEsc(cpwkMo(cpWeekStart(wk))))+'</div>';
     h+='<div class="cpwk-nav"><button onclick="cpwkTap(\'pb\',1)" aria-label="An earlier week"'+(_cpwk.pback>=CPWK_PARENT_BACK?' disabled':'')+'>◀</button><div>'+cpwkEsc(cpWeekLabel(wk))+'</div><button onclick="cpwkTap(\'pb\',-1)" aria-label="A later week"'+(_cpwk.pback<=0?' disabled':'')+'>▶</button></div>';
     h+='<div class="cpwk-syn">'+cpwkEsc(v.text)+'</div>';
@@ -8777,7 +8917,8 @@ function cptpTestsOf(sc,sm){ const cls={r:0,n:0,k:0}, pre={r:0,n:0,k:0}, post={r
   const sh=[]; if(cls.n) sh.push(cls.r/cls.n*100); if(post.n) sh.push(post.r/post.n*100);
   return {cls,pre,post,pct:sh.length?Math.round(sh.reduce((a,b)=>a+b,0)/sh.length):null}; }
 // study completion → {pct, met, weeks} (CPWEEK's), or the empty one without it
-function cptpStudyOf(s){ try{ if(typeof cpWeekStudy==="function") return cpWeekStudy(s,CPTP_WEEKS); }catch(e){} return {pct:null,met:0,weeks:0}; }
+function cptpStudyOf(s){ try{ if(typeof cpPtsStudy==="function"){ const p=cpPtsStudy(s,CPTP_WEEKS); if(p) return p; } }catch(e){}   // ⭐ CPPOINTS: days done + extra cards once the student's summary carries them
+  try{ if(typeof cpWeekStudy==="function") return cpWeekStudy(s,CPTP_WEEKS); }catch(e){} return {pct:null,met:0,weeks:0}; }
 // strong in: every student's best section in 💪 Who is strong where's own ranking → {sid: {sec, rank, score, of}}
 function cptpStrongMap(S,stns,rankFn){ const out={}; if(typeof rankFn!=="function") return out;
   (stns||[]).filter(st=>st&&st.id!=="general").forEach(st=>{ let rows=[]; try{ rows=rankFn(S,st)||[]; }catch(e){ rows=[]; }
@@ -8890,7 +9031,7 @@ function cptpPct(v){ return v==null?'–':v+'%'; }
 function cptpAttTxt(a){ return a.of?a.here+' of '+a.of:'–'; }
 function cptpPresTxt(p){ if(!p.n) return '–'; const x=p.pct*p.outOf/100; return (Math.round(x*10)/10)+' / '+p.outOf+(p.n>1?' ('+p.n+')':''); }
 function cptpTestTxt(t){ const a=[]; if(t.cls.n) a.push(t.cls.r+'/'+t.cls.n); if(t.pre.n||t.post.n) a.push((t.pre.n?t.pre.r+'/'+t.pre.n:'–')+' → '+(t.post.n?t.post.r+'/'+t.post.n:'–')); return a.length?a.join(' · '):'–'; }
-function cptpStudyTxt(s){ return s.pct==null?'–':s.pct+'% ('+s.met+' of '+s.weeks+' wk)'; }
+function cptpStudyTxt(s){ if(s.src==="points"&&s.pct!=null&&typeof cpPtsStudyTxt==="function") return cpPtsStudyTxt(s); return s.pct==null?'–':s.pct+'% ('+s.met+' of '+s.weeks+' wk)'; }   // ⭐ CPPOINTS: "86% (8 of 10 days · +30 extra)"
 function cptpStrongTxt(r){ const st=r.strong, sp=(typeof cpSpecOf==="function")?cpSpecOf(r.sid):""; if(!st&&!sp) return '–'; return (st?cptpSecName(st.sec)+' #'+st.rank:'')+(sp?' \u{1F3C5}'+(st&&st.sec===sp?'':' '+cptpSecName(sp)):''); }
 function cptpCell(r,k){ return k==="att"?cptpAttTxt(r.att):k==="pres"?cptpPresTxt(r.pres):k==="tests"?cptpTestTxt(r.tests):k==="study"?cptpStudyTxt(r.study):cptpStrongTxt(r); }
 // the goals line: the class's goal list with each one's note (the first is the target)
@@ -8943,6 +9084,193 @@ function cptpHtml(){
   return h;
 }
 // CPTEAMPICK_END
+// CPPOINTS_START — ⭐ THE CLASS SITE'S POINTS: how many stars a class-site kid earns, and for what (Adrienne's approved scheme, 2026-11-10,
+// for Brittany's class). The stars still land in each family's OWN star bank (bank/<kid>/adjustments in the family's instance, through
+// bankDirect — her answer: "same as Lincoln's"); the site's Star Store stays closed. What changes is HOW MANY and WHAT FOR, plus a per-day
+// record the teacher can see. Replaces ENVSITE's flat ENVS_STARS (3) per finished sitting.
+//   · THE RULES (the site's kid only: a kid login, or a parent login in kid view — CPKIDMODE's envsPageRole() === "kid"; never the parent's
+//     own page, never the teacher):
+//       🌿 Day done   3 — the day's pile is cleared: every new card of the day and every review due (CPAHEAD's assignment test,
+//                         cpAheadAssignOf: a class's review cap makes the assignment one capped sitting, its Keep going is extra). Once a day.
+//       🌿 Part       1 — a sitting finished, the pile not cleared. Once a day, never on top of Day done: clearing it later tops up +2.
+//       🌿 Extra      1 per 5 cards studied past the pile (🚀 Keep going / 🔓 Study ahead / Keep going on the reviews), 3 a day at most.
+//       🎮 Game round 2 at 90 % right or better, 1 at 70–89 %, 0 below — JUDGED rounds only (the app checks the answer; a say-it game only
+//                         with its GAMEJUDGE `judge` stamp — Scores' own scpSkip list decides, so an honor-system tap never earns), on the
+//                         kid's Envirothon decks only, 4 a day at most from games.
+//   · THE LEDGER (the family's own data, the rest of mastery's rules): mastery/<kid>_envstars/<YYYYMMDD> = {done, partial, extra (stars),
+//     games (stars), stars (all paid that day), due, cards, base (cards studied when the pile was cleared), rounds:{<round at>: stars}, at}.
+//     Every award is a TRANSACTION on that one day's record: the stars are banked only after it commits, so a second sitting, a reload or
+//     another device never pays twice. Each award is its own bankDirect with its reason ("🌿 Day done", "🌿 Extra · 10 cards",
+//     "🎮 Match · 9 of 10"). Dry run: nothing. Demo: the same math, the ledger in memory, _envs.bankDemo moves.
+//   · THE TEACHER'S DATA (envSummary's guarded line, cpPtsSum): summary.days.<YYYYMMDD> gains {due (the day's pile), done (cards studied in
+//     the 🌿 session), cleared, extra (cards past the pile), games:{rounds, right, total}, stars} beside its n; summary.stars = every star the
+//     ledger holds. Lincoln (his Howe app's mirror) gets the same fields: due / done / cleared / extra from his 🌿 session (today worked out
+//     live from his pile, earlier days from a memo on that device, HA_LS ha_cppts_<sid> — never his Howe database), games from his judged
+//     rounds, and stars = what this scheme WOULD give, with summary.starsInfo = true: INFORMATIONAL — his Howe stars are untouched.
+//   · THE CONSOLE: the student page's "⭐ This week" line — "⭐ 14 · days done 4 of 5 · extra 12 cards · games 3 rounds, 85%" — and 🏅 Team
+//     picks' 📊 Study reads days done ÷ planned days (+1 per 5 extra cards, at most 100) over the finished weeks the new fields cover,
+//     falling back to CPWEEK's completion while a student has none.
+// INERT off the class site, except Lincoln's summary fields (counts only): Howe's, DeWalt's and Burris's own stars never move.
+const CPPTS={done:3,part:1,extraPer:5,extraMax:3,gHi:90,gLo:70,gHiStars:2,gLoStars:1,gMax:4,memoDays:30};
+const CPPTS_SAY={gofish:1,four:1,ship:1,sure:1,kaboom:1,jeop:1};   // GAMEJUDGE's say-it games (scpSkip is the rule when it is loaded)
+const _cpPts={demo:{}};
+function cpPtxSite(){ return typeof envSiteOn==="function"&&envSiteOn(); }
+function cpPtxDemo(){ return typeof envsDemo==="function"&&envsDemo(); }
+function cpPtxDry(){ return typeof _dryRun==="function"&&_dryRun(); }
+function cpPtxDay(){ try{ if(typeof mstTodayKey==="function") return mstTodayKey(); }catch(e){} const d=new Date(); return d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0"); }
+function cpPtxSid(){ return (typeof ENV_SESSION_SID!=="undefined")?ENV_SESSION_SID:"envirothon"; }
+function cpPtxN(v){ v=Math.floor(Number(v)||0); return v>0?v:0; }
+function cpPtxArr(x){ return Array.isArray(x)?x.filter(Boolean):(x&&typeof x==="object"?Object.values(x).filter(Boolean):[]); }
+// the kid's own sitting / round: a kid login, or a parent login in kid view (CPKIDMODE) — never the parent's page or the teacher
+function cpPtsKidSide(kid){ try{ if(!cpPtxSite()||!kid||typeof _envs==="undefined"||kid!==_envs.kid) return false;
+  const r=(typeof envsPageRole==="function")?envsPageRole():_envs.role; return r==="kid"; }catch(e){ return false; } }
+// ── PURE: the day math ──
+// a judged round? (Scores' scpSkip: before judging · Teach it · a study round · a Pictures sort — none of them earns)
+function cpPtsJudged(e){ if(!e||typeof e!=="object") return false; if(typeof scpSkip==="function") return !scpSkip(e);
+  return !((CPPTS_SAY[String(e.game||"")]===1&&!e.judge)||String(e.game||"")==="teach"||!!e.study||e.cat===true); }
+// a round → {key, game, right, total} when it counts toward stars (judged, on the Envirothon decks, something answered), else null.
+// isDeck = {<deck key>: 1}; subjOf = {<card id>: <deck key>} (a mixed round counts when every card in it is an Envirothon card)
+function cpPtsRoundOf(e,isDeck,subjOf){
+  if(!cpPtsJudged(e)) return null; isDeck=isDeck||{}; subjOf=subjOf||{};
+  const its=cpPtxArr(e.items).filter(x=>!x.back); if(!its.length) return null;
+  const onDeck=!!isDeck[String(e.deck||"")]||its.every(x=>x.id!=null&&!!isDeck[subjOf[String(x.id)]]); if(!onDeck) return null;
+  return {key:String(e.at!=null?e.at:""),game:String(e.game||""),right:its.filter(x=>x.ok).length,total:its.length}; }
+// stars for one round by its share right: 2 at 90 %+, 1 at 70–89 %, 0 below
+function cpPtsGameStars(right,total){ total=cpPtxN(total); if(!total) return 0; const p=cpPtxN(right)/total*100; return p>=CPPTS.gHi?CPPTS.gHiStars:p>=CPPTS.gLo?CPPTS.gLoStars:0; }
+function cpPtxBlank(prev){ const r=Object.assign({done:false,partial:false,extra:0,games:0,stars:0},prev&&typeof prev==="object"?prev:{}); if(r.rounds&&typeof r.rounds==="object") r.rounds=Object.assign({},r.rounds); return r; }
+// a finished sitting: prev = the day's ledger record (or null); t = {cards (studied today in the 🌿 session), left (the pile still waiting),
+// cleared} → {rec, pay:[{pts, note}]}. Day done 3 once (2 when the part day was paid); Part 1 once, never with Day done; Extra 1 per 5
+// cards past the pile, 3 at most. A day with no card in the 🌿 session earns nothing here.
+function cpPtsStudyStep(prev,t){
+  const rec=cpPtxBlank(prev), pay=[]; t=t||{}; const cards=cpPtxN(t.cards);
+  if(!cards) return {rec:prev||null,pay};
+  rec.cards=Math.max(cpPtxN(rec.cards),cards);
+  if(t.cleared&&!rec.done){ const pts=rec.partial?CPPTS.done-CPPTS.part:CPPTS.done; rec.done=true; rec.base=rec.cards; pay.push({pts,note:"\u{1F33F} Day done"+(rec.partial?" (+"+pts+" on top of the part day)":"")}); }
+  else if(!t.cleared&&!rec.done&&!rec.partial){ rec.partial=true; pay.push({pts:CPPTS.part,note:"\u{1F33F} Part of the day"}); }
+  if(rec.done){ const past=Math.max(0,rec.cards-cpPtxN(rec.base)), want=Math.min(CPPTS.extraMax,Math.floor(past/CPPTS.extraPer)), had=cpPtxN(rec.extra);
+    if(want>had){ pay.push({pts:want-had,note:"\u{1F33F} Extra · "+past+" cards"}); rec.extra=want; } }
+  rec.due=rec.done?cpPtxN(rec.base):rec.cards+cpPtxN(t.left);
+  rec.stars=cpPtxN(rec.stars)+pay.reduce((a,p)=>a+p.pts,0);
+  return {rec,pay}; }
+// a judged round: prev = the day's ledger record; r = cpPtsRoundOf(…); label = the game's name → {rec, pay}. A round counts once (by its
+// `at`); games give 4 a day at most.
+function cpPtsGameStep(prev,r,label){
+  const pay=[]; if(!r||!r.key) return {rec:prev||null,pay};
+  const rec=cpPtxBlank(prev), R=rec.rounds||{}; if(Object.prototype.hasOwnProperty.call(R,r.key)) return {rec:prev,pay};
+  const s=cpPtsGameStars(r.right,r.total), got=Math.min(s,Math.max(0,CPPTS.gMax-cpPtxN(rec.games)));
+  if(!got) return {rec:prev||null,pay};
+  rec.rounds=Object.assign({},R,{[r.key]:got}); rec.games=cpPtxN(rec.games)+got; rec.stars=cpPtxN(rec.stars)+got;
+  pay.push({pts:got,note:"\u{1F3AE} "+(label||r.game||"Game")+" · "+r.right+" of "+r.total});
+  return {rec,pay}; }
+// what the scheme gives a day from its fields (Lincoln's informational stars): s = {cards, cleared, base} | null, rounds = [{right,total}]
+function cpPtsWould(s,rounds){ let n=0;
+  if(s&&cpPtxN(s.cards)>0){ if(s.cleared){ n+=CPPTS.done; n+=Math.min(CPPTS.extraMax,Math.floor(Math.max(0,cpPtxN(s.cards)-cpPtxN(s.base))/CPPTS.extraPer)); } else n+=CPPTS.part; }
+  let g=0; (rounds||[]).forEach(r=>{ g+=cpPtsGameStars(r.right,r.total); }); return n+Math.min(CPPTS.gMax,g); }
+// ── PURE: the summary's day record ── s = the day's study record ({cards, done|cleared, base, due} — the ledger's or Lincoln's memo) or null;
+// g = {rounds, right, total, list} or null; paid = the ledger's stars (null = work out what the scheme would give)
+function cpPtsDayRec(s,g,paid){
+  const o={}; if(s&&s.cards!=null){ const cl=!!(s.done===true||s.cleared===true); o.due=cpPtxN(s.due); o.done=cpPtxN(s.cards); o.cleared=cl; o.extra=cl?Math.max(0,cpPtxN(s.cards)-cpPtxN(s.base)):0; }
+  o.games={rounds:g?cpPtxN(g.rounds):0,right:g?cpPtxN(g.right):0,total:g?cpPtxN(g.total):0};
+  o.stars=(paid!=null)?cpPtxN(paid):cpPtsWould(s?{cards:s.cards,cleared:o.cleared,base:s.base}:null,(g&&g.list)||[]);
+  return o; }
+// the judged Envirothon rounds per day from the game log: {<YYYYMMDD>: {rounds, right, total, list:[{right,total}]}}
+function cpPtsGamesByDay(kid,M,isDeck,subjOf){ const gl=(((M||{}).gameLog)||{})[kid]||{}, out={};
+  Object.keys(gl).forEach(d=>{ if(!/^\d{8}$/.test(d)) return; const seen={}; cpPtxArr(gl[d]).forEach(e=>{ const r=cpPtsRoundOf(e,isDeck,subjOf); if(!r) return;
+    if(r.key&&seen[r.key]) return; if(r.key) seen[r.key]=1;   // this device's local_ copy and the pushed one are the same round
+    const o=out[d]||(out[d]={rounds:0,right:0,total:0,list:[]}); o.rounds++; o.right+=r.right; o.total+=r.total; o.list.push({right:r.right,total:r.total}); }); });
+  return out; }
+function cpPtxDeckMaps(kid,M,u){ const isDeck={}, subjOf={}; ((u&&u.decks)||[]).forEach(d=>{ if(d&&d.key) isDeck[d.key]=1; });
+  cpPtxArr((M||{})[kid]).forEach(i=>{ if(i.id!=null&&i.subject) subjOf[String(i.id)]=i.subject; }); return {isDeck,subjOf}; }
+// envSummary's guarded line. The class site: the ledger (stars = what was paid). Lincoln's mirror (no site): his memo + today live (stars =
+// what the scheme would give, starsInfo). ctx.ptsSite / ctx.ptsStudy (tests) stand in for those.
+function cpPtsSum(kid,out,M,u,ctx){
+  try{ if(!out||!out.days||typeof out.days!=="object") return out; ctx=ctx||{}; M=M||{};
+    const site=(ctx.ptsSite!=null)?!!ctx.ptsSite:cpPtxSite(), mp=cpPtxDeckMaps(kid,M,u), G=cpPtsGamesByDay(kid,M,mp.isDeck,mp.subjOf);
+    if(site){ const L=(M[kid+"_envstars"]&&typeof M[kid+"_envstars"]==="object")?M[kid+"_envstars"]:{}; let tot=0;
+      Object.keys(L).forEach(k=>{ if(/^\d{8}$/.test(k)&&L[k]) tot+=cpPtxN(L[k].stars); });
+      Object.keys(out.days).forEach(k=>{ const r=L[k]||null; Object.assign(out.days[k],cpPtsDayRec(r,G[k]||null,r?cpPtxN(r.stars):0)); });
+      out.stars=tot; return out; }
+    const S=ctx.ptsStudy||((ctx.M||ctx.now!=null)?{}:cpPtsMemo(kid)); let tot=0;
+    Object.keys(out.days).forEach(k=>{ const d=cpPtsDayRec(S[k]||null,G[k]||null,null); Object.assign(out.days[k],d); tot+=d.stars; });
+    out.stars=tot; out.starsInfo=true; return out; }catch(e){ return out; } }
+// ── the day now (the 🌿 session): {cards, left, cleared}; null when the engine is not loaded
+function cpPtsToday(kid){
+  try{ if(typeof mstLogGet!=="function"||typeof mstPile!=="function") return null; const sid=cpPtxSid(), log=mstLogGet(kid,sid), its=cpPtxArr(log&&log.items);
+    const cards=its.filter(e=>e.id!=null||e.name!=null).length; if(!cards) return {cards:0,left:0,cleared:false};
+    const pn=(typeof mastGetPrintNum==="function")?mastGetPrintNum(kid):0, pile=mstPile(kid,sid,pn,log)||{reviews:[],learning:[],newNames:[]};
+    const rec=(typeof cpahDayRec==="function"&&typeof cpAheadOn==="function"&&cpAheadOn(kid))?cpahDayRec(kid):null;
+    if(typeof cpAheadAssignOf==="function"){ const a=cpAheadAssignOf({pile,log:its,newToday:0,rec}); return {cards,left:cpPtxN(a.newLeft)+cpPtxN(a.revLeft)+cpPtxN(a.learnLeft),cleared:!!a.done}; }
+    const left=(pile.newNames||[]).length+(pile.reviews||[]).length+(pile.learning||[]).length; return {cards,left,cleared:left===0}; }catch(e){ return null; } }
+// Lincoln's memo on this device (HA_LS ha_cppts_<sid>, never a database): the days already seen + today worked out now, the last 30 kept
+function cpPtsMemo(kid){
+  let m={}; const key="ha_cppts_"+((typeof envmSid==="function")?envmSid(kid):kid);
+  try{ m=JSON.parse((typeof HA_LS!=="undefined"&&HA_LS.getItem(key))||"{}")||{}; }catch(e){ m={}; }
+  try{ const t=cpPtsToday(kid); if(t&&t.cards>0){ const d=cpPtxDay(), r=cpPtsStudyStep(m[d]||null,t).rec;
+      if(r&&JSON.stringify(r)!==JSON.stringify(m[d]||null)){ m[d]={cards:r.cards,done:!!r.done,base:r.base==null?null:r.base,due:r.due}; const ks=Object.keys(m).filter(k=>/^\d{8}$/.test(k)).sort(), keep={};
+        ks.slice(-CPPTS.memoDays).forEach(k=>{ keep[k]=m[k]; }); m=keep; try{ if(typeof HA_LS!=="undefined") HA_LS.setItem(key,JSON.stringify(m)); }catch(e){} } } }catch(e){}
+  return m; }
+// ── THE AWARD: one day's ledger record, by transaction; the stars are banked once it commits. step(prev) → {rec, pay}
+function cpPtxLedger(kid){ const M=(typeof masteryData!=="undefined"&&masteryData)||{}; return (M[kid+"_envstars"]&&typeof M[kid+"_envstars"]==="object")?M[kid+"_envstars"]:(M[kid+"_envstars"]={}); }
+function cpPtxPay(kid,pay,demo){ const n=pay.reduce((a,p)=>a+p.pts,0); if(!n) return 0;
+  if(demo){ _envs.bankDemo+=n; if(typeof envsToast==="function") envsToast("⭐ +"+n+" · "+pay.map(p=>p.note).join(" · ")+" (demo: would write bank/"+kid+"/adjustments)"); return n; }
+  pay.forEach(p=>{ try{ bankDirect(kid,p.pts,p.note); }catch(e){} });
+  if(typeof envsToast==="function") envsToast("⭐ +"+n+" · "+pay.map(p=>p.note).join(" · ")); return n; }
+function cpPtsAward(kid,step){
+  const demo=cpPtxDemo(); if(!demo&&(cpPtxDry()||typeof bankDirect!=="function")) return false;
+  const day=cpPtxDay(), L=cpPtxLedger(kid);
+  if(demo||typeof db==="undefined"||!db){ if(!demo) return false; const r=step(L[day]||null); if(!r.pay.length) return false; L[day]=r.rec; cpPtxPay(kid,r.pay,true); return true; }
+  let last=null;
+  try{ const p=db.ref("mastery/"+kid+"_envstars/"+day).transaction(cur=>{ const r=step((cur&&typeof cur==="object")?cur:(L[day]||null)); last=r; if(!r.pay.length) return; const o=JSON.parse(JSON.stringify(r.rec)); o.at=Date.now(); last.rec=o; return o; });
+    if(p&&typeof p.then==="function") p.then(res=>{ if(!res||!res.committed||!last||!last.pay.length) return; L[day]=last.rec; cpPtxPay(kid,last.pay,false); try{ if(typeof envmSchedule==="function") envmSchedule("points"); }catch(e){} }).catch(()=>{});
+    return true; }catch(e){ return false; } }
+// ENVSITE's envSiteSittingDone hands every finished sitting here
+function cpPtsSitting(kid,done){
+  if(!cpPtsKidSide(kid)||!done||!(done.total>0)) return false;
+  const t=cpPtsToday(kid)||{cards:cpPtxN(done.total),left:1,cleared:false};   // the engine unknown → a part day, never a guess at Day done
+  return cpPtsAward(kid,prev=>cpPtsStudyStep(prev,t)); }
+// GAMELOG's gameLogRound hands every finished round here (the round's own kid)
+function cpPtsGame(kid,e){
+  if(!cpPtsKidSide(kid)||!e) return false;
+  const M=(typeof masteryData!=="undefined"&&masteryData)||{}, mp=cpPtxDeckMaps(kid,M,(typeof envmUnit==="function")?envmUnit():null), r=cpPtsRoundOf(e,mp.isDeck,mp.subjOf); if(!r) return false;
+  const g=(typeof GAMES_LIST!=="undefined"&&Array.isArray(GAMES_LIST))?GAMES_LIST.find(x=>x&&x.key===r.game):null;
+  return cpPtsAward(kid,prev=>cpPtsGameStep(prev,r,g&&g.label)); }
+// ── THE CONSOLE ── PURE: a week of summary days (wk = its YYYY-MM-DD dates) → the counts
+function cpPtsWeekOf(days,wk){ const D=days||{}, o={stars:0,done:0,extra:0,rounds:0,right:0,total:0,days:0,any:false};
+  (wk||[]).forEach(d=>{ const e=D[String(d).replace(/-/g,"")]; if(!e||typeof e!=="object") return; if(e.stars!=null||e.cleared!=null||e.games) o.any=true;
+    o.stars+=cpPtxN(e.stars); if(e.cleared===true) o.done++; o.extra+=cpPtxN(e.extra); if(cpPtxN(e.n)>0) o.days++;
+    const g=e.games||{}; o.rounds+=cpPtxN(g.rounds); o.right+=cpPtxN(g.right); o.total+=cpPtxN(g.total); });
+  return o; }
+// PURE: "⭐ 14 · days done 4 of 5 · extra 12 cards · games 3 rounds, 85%" (planned null → "days done 4")
+function cpPtsWeekLine(w,planned){ w=w||{}; const pl=(n,s)=>n+" "+s+(n===1?"":"s");
+  const g=cpPtxN(w.rounds)?"games "+pl(cpPtxN(w.rounds),"round")+", "+Math.round(cpPtxN(w.right)/Math.max(1,cpPtxN(w.total))*100)+"%":"no games";
+  return "⭐ "+cpPtxN(w.stars)+" · days done "+cpPtxN(w.done)+(planned!=null?" of "+cpPtxN(planned):"")+" · extra "+pl(cpPtxN(w.extra),"card")+" · "+g; }
+function cpPtxWeekDays(today){ if(typeof cpWeekId==="function"&&typeof cpWeekDays==="function") return cpWeekDays(cpWeekId(today));
+  const ms=Date.UTC(+today.slice(0,4),+today.slice(5,7)-1,+today.slice(8,10)), mon=ms-((new Date(ms).getUTCDay()+6)%7)*86400000, a=[]; for(let i=0;i<7;i++) a.push(new Date(mon+i*86400000).toISOString().slice(0,10)); return a; }
+function cpPtxToday(){ return (typeof cpwkToday==="function")?cpwkToday():new Date(Date.now()).toISOString().slice(0,10); }
+// the demo's sample students carry no points fields: the line reads a copy where each study day is a cleared day (memory, nothing kept)
+function cpPtxDemoDays(days){ const out={}; Object.keys(days||{}).forEach(k=>{ const e=days[k]||{}, n=cpPtxN(e.n); out[k]=Object.assign({},e,(e.cleared!=null)?{}:{due:Math.min(n,12),cleared:n>=8,extra:n>=8?Math.max(0,n-12):0,stars:(n>=8?3+Math.min(3,Math.floor(Math.max(0,n-12)/5)):1)}); }); return out; }
+// the student page's "⭐ This week" card (the console)
+function cpPtsStudentHtml(sid){
+  try{ if(!cpPtxSite()||typeof _envc==="undefined"||!_envc.students) return ""; const s=_envc.students[sid]||{}, sm=s.summary||null; if(!sm) return "";
+    const today=cpPtxToday(), wk=cpPtxWeekDays(today), days=cpPtxDemo()?cpPtxDemoDays(sm.days):(sm.days||{}), w=cpPtsWeekOf(days,wk);
+    const pl=(typeof cpwkPlanned==="function"&&typeof cpWeekId==="function")?cpwkPlanned(sid,cpWeekId(today),today):null, esc=v=>(typeof envsEsc==="function")?envsEsc(v):String(v);
+    let h='<div class="envs-card"><div class="envs-h2">⭐ This week</div><div style="font-weight:800">'+esc(cpPtsWeekLine(w,pl))+'</div>';
+    h+='<div class="envs-muted" style="margin-top:4px">'+esc("Stars: 3 for a day's cards all done (1 for part of them), 1 per 5 extra cards (3 a day at most), 1–2 a game round at 70% right or better (4 a day at most).")+(sm.starsInfo?' '+esc("Studies in the Howe Academy app: these stars are counted here, not banked."):(sm.stars!=null?' '+esc("All season: ⭐ "+cpPtxN(sm.stars)+"."):""))+'</div></div>';
+    return h; }catch(e){ return ""; } }
+// 🏅 Team picks' 📊 Study (cptpStudyOf's guarded line): days done ÷ planned days over the finished weeks the new fields cover, + 1 per 5
+// extra cards, at most 100 → {pct, met, weeks, done, planned, extra, src:"points"}; null while the student has no points fields (CPWEEK's
+// completion stays the input). n = how many finished weeks back.
+function cpPtsStudy(s,n){
+  try{ const sm=s&&s.summary, D=(sm&&sm.days)||{}, ks=Object.keys(D).filter(k=>/^\d{8}$/.test(k)&&D[k]&&typeof D[k].cleared==="boolean").sort(); if(!ks.length) return null;
+    const all=Object.keys(D).filter(k=>/^\d{8}$/.test(k)).sort(), from=[ks[0],all[0]].sort().pop(), today=cpPtxToday(), wk0=cpPtxWeekDays(today)[0], isDay=(typeof cpwkIsDay==="function")?(d=>cpwkIsDay(s.sid,d)):(d=>{ const x=new Date(d+"T12:00:00Z").getUTCDay(); return x>0&&x<6; });
+    let planned=0, done=0, extra=0; const weeks={};
+    for(let i=1;i<=(n||12)*7;i++){ const ms=Date.UTC(+wk0.slice(0,4),+wk0.slice(5,7)-1,+wk0.slice(8,10))-i*86400000, d=new Date(ms).toISOString().slice(0,10), k=d.replace(/-/g,""); if(k<from) break;
+      const e=D[k]; if(e){ extra+=cpPtxN(e.extra); } if(!isDay(d)) continue; planned++; weeks[Math.ceil(i/7)]=1; if(e&&e.cleared===true) done++; }
+    if(!planned) return null;
+    const pct=Math.min(100,Math.round(Math.min(done,planned)/planned*100)+Math.floor(extra/CPPTS.extraPer));
+    return {pct,met:done,weeks:Object.keys(weeks).length,done,planned,extra,src:"points"}; }catch(e){ return null; } }
+function cpPtsStudyTxt(s){ return s.pct+'% ('+s.done+' of '+s.planned+' days'+(s.extra?' · +'+s.extra+' extra':'')+')'; }
+// CPPOINTS_END
 // CPDRILLPARENT_START — 🧠 THE PARENT CAN TAKE OVER A STUDENT'S REVIEW CARDS, per kid, on the class site (DESIGN_class_platform_2026-10-28.md
 // §7(a) 2–3, §2, §9, §13 row 13, §14 Q5; PR 13 of the class platform). Her words 2026-10-28: "For the parent, I think they can get the
 // option to pick per kid, and the default would be that it stays in the student's own session. But the mom, if she knows her kid and

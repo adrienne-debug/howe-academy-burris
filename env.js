@@ -156,6 +156,7 @@ function envSummary(kid,ctx){
   if(typeof cpSkillSummary==="function"){ const sk=cpSkillSummary(kid,M,now); if(sk) out.skills=sk; }   // 🧩 CPSKILL: summary.skills on the class site only (null for Howe and Lincoln)
   if(typeof cpWatchSum==="function"){ const rv=cpWatchSum(kid,M,now); if(rv) out.review=rv; }   // 🧠 CPWATCH: summary.review, the parent drill watch (the class site only; null for Howe and Lincoln)
   if(typeof cpWeekSum==="function") cpWeekSum(kid,out,M,u);   // 📊 CPWEEK: each day's cards split by section, days.<date>.by.<section> = {n,c,m,secs} (counts only; Lincoln's mirror too, §8.11)
+  if(typeof cpPtsSum==="function") cpPtsSum(kid,out,M,u,ctx);   // ⭐ CPPOINTS: days.<date> + {due, done, cleared, extra, games, stars}, summary.stars (Lincoln's mirror too: his stars are what the scheme WOULD give, starsInfo)
   return out;
 }
 function envmHash(s){ const o=Object.assign({},s); delete o.at; const str=JSON.stringify(o); let h=5381; for(let i=0;i<str.length;i++) h=((h*33)^str.charCodeAt(i))>>>0; return h.toString(36)+":"+str.length; }
@@ -252,6 +253,7 @@ function envmRelAttach(kid,_lz){
   if(typeof cplnLoad==="function") cplnLoad(kid,cid,_envm.edb,envmSid(kid));   // 🌿 CPLINCOLN: his class settings, plan and override, read once (memory only)
   if(typeof cplntAttach==="function") cplntAttach(kid,cid,_envm.edb,_envm.subs,envmSid(kid));   // 👩‍🏫 CPLINCOLNL3: the teacher's drills for him (drills/<cid>/<sid>), graded into Howe once each
   if(typeof cplnpLoad==="function") cplnpLoad(kid,cid,_envm.edb,envmSid(kid));   // 🌿 CPLINCOLNPARITY: his class's card, trim and test layers, read once (memory only)
+  if(typeof cpmcAttach==="function") cpmcAttach(kid,cid,_envm.edb,_envm.subs,envmSid(kid));   // 🏫 CPMYCLASS: the class boards (boards/<cid>) for his 🌿 tile, one listener with the others (off the class site only)
 }
 // A release record {<deckKey>|<station>: truthy}: clear each matching deck's hold once — the family database's one targeted removal.
 function envmRelease(kid,rel){
@@ -340,7 +342,7 @@ function envmSendNow(){ if(typeof momHere!=="function"||!momHere()||!envmReady()
 //     the password lives only in Auth), and the © + license line. LOCKED SEASON (release/locked, Adrienne only; AUTO after 2027-04-24 —
 //     envsLockState) → the "season closed" card and nothing else loads; data is kept; an admin's {locked:false, at:<after that date>}
 //     reopens it for the next season.
-//   · WRITES from this block (live, never in demo or dry run): bank/<kid>/adjustments (ENVS_STARS stars per finished sitting, bankDirect);
+//   · WRITES from this block (live, never in demo or dry run): bank/<kid>/adjustments (stars for a finished sitting, bankDirect — how many: CPPOINTS);
 //     the first signed-in boot's auto-enroll of the family's kid into the unit, every deck held (her 8.4: "a kid can start at school before
 //     the parent ever opens the app"), through the app's own _ustApply/_ustWrite; settings/pin from the parent's ⚙️
 //     panel (the app's own path; the 🎨 Color card went with CPGEAR 2026-10-28). Everything else here is a read or a screen.
@@ -349,15 +351,15 @@ function envmSendNow(){ if(typeof momHere!=="function"||!momHere()||!envmReady()
 const ENVS_TAB="envsite", ENVS_STARS=3, ENVS_AUTOLOCK="20270424", ENVS_SEASON="2026-27", ENVS_ROLES=["kid","parent","teacher","admin"];
 const ENVS_OFF_TABS=["schedule","notebook","play","moms-plan","babysitter","supplies","history","pace","activities","grid","generate","chorePlan","kitchen","workbooks","eic","purchases","helpers","mastery","units","kids"];   // every door the micro doc lists as off, plus the app's own tabs: the site has ONE page
 const ENVS_FULL_APP=["🗓 A daily schedule laid out for each kid, re-laid from now when the day slips","📓 Weekly notebooks and workbooks generated for each kid","🧹 Chores, laundry and routines with stars that buy things Mom sets up","🍽 Meals, the shopping list and the kitchen","👩 Mom's Day and Dad's Day","📚 Every unit you add, your own cards, Problem words, the Curriculum Builder"];
-const ENVS_TIPS=[  // PLACEHOLDER — Adrienne's six lines + contact line (her 8.7: the card ships with placeholders until she writes them)
-  "PLACEHOLDER tip 1 — two views: the student's screen is his; a parent's login sees how he is doing.",
-  "PLACEHOLDER tip 2 — the kid's code card works on a school device or a phone; add the page to the home screen.",
-  "PLACEHOLDER tip 3 — a little most days beats a lot once: the cards come back on their own schedule.",
-  "PLACEHOLDER tip 4 — the teacher sends out each station as the class reaches it; a station starts with a short check-in.",
-  "PLACEHOLDER tip 5 — ⭐ stars arrive after each finished sitting; what they are for is coming.",
-  "PLACEHOLDER tip 6 — questions about the app go to the line below, questions about the class go to the teacher."];
-const ENVS_CONTACT="PLACEHOLDER contact line — e.g. Adrienne · adrienne@example.com";
-const _envs={demo:null,demoRole:"",role:"",uid:"",email:"",familyId:"",kid:"",sid:"",kids:[],kidNames:{},kidMode:"",kidSwap:true,newCard:null,cid:"",dbUrl:"",lockRaw:undefined,lock:null,view:"study",sub:{},dbEdition:"",writes:[],toastT:null,css:false,mirrorArmed:false,autoEnroll:"",err:"",boards:null,who:"",cls:null,gateDone:false,stars:0,bankDemo:0};
+const ENVS_TIPS=[  // Adrienne's six lines + contact line, approved 2026-11-10
+  "Your student's screen is theirs. Your login shows you how they're doing without changing anything.",
+  "The code card works on any device. Open the page, tap Students, type the code. Adding the page to the home screen makes it one tap.",
+  "A little most days beats a lot once. The cards come back on their own schedule, so short sittings add up.",
+  "Ms. Brittany sends out each station as the class reaches it. A station starts with a short check-in so the app knows what to practice.",
+  "Stars arrive after every finished sitting. More on what they earn soon.",
+  "Stuck on a card? Tap the flag and it goes straight to Ms. Brittany. App trouble goes to the line below."];
+const ENVS_CONTACT="App questions: Adrienne \u00B7 adrienne@howeenterprises.com";
+const _envs={demo:null,demoRole:"",role:"",uid:"",email:"",familyId:"",kid:"",sid:"",kids:[],kidNames:{},kidMode:"",kidSwap:true,home:null,homeOf:"",homeApp:"",homeSum:null,homeWeeks:null,newCard:null,cid:"",dbUrl:"",lockRaw:undefined,lock:null,view:"study",sub:{},dbEdition:"",writes:[],toastT:null,css:false,mirrorArmed:false,autoEnroll:"",err:"",boards:null,who:"",cls:null,gateDone:false,stars:0,bankDemo:0};
 function envsQuery(){ try{ return (typeof location!=="undefined"&&location.search)||""; }catch(e){ return ""; } }
 function envsFam(){ try{ return (typeof window!=="undefined"&&window.HA_FAMILY)||null; }catch(e){ return null; } }
 function envsDemo(){
@@ -494,12 +496,13 @@ function envSiteGate(user,cont){
   let sdb; try{ sdb=firebase.database(); }catch(e){ envsCard("error",{msg:String((e&&e.message)||e)}); return true; }
   const val=s=>(s&&typeof s.val==="function")?s.val():null;
   sdb.ref("release/locked").once("value").then(s=>{ _envs.lockRaw=val(s); return sdb.ref("logins/"+_envs.uid).once("value"); })
-    .then(s=>{ const L=val(s); if(L&&L.role) return L; return sdb.ref("admins/"+_envs.uid).once("value").then(a=>val(a)===true?{role:"admin"}:null); })
+    .then(s=>{ const L=val(s); if(L&&L.role) return (L.home===true&&typeof envsHomeGate==="function")?envsHomeGate(sdb,L):L; return sdb.ref("admins/"+_envs.uid).once("value").then(a=>val(a)===true?{role:"admin"}:null); })
+    // CPHOMELINK (2026-11-10): only a row with home:true reads admins/teachers too (envsHomeGate) — a plain parent or kid row reads exactly as before
     // CPTEACHERGATE (2026-11-09): + Teacher writes teachers/<uid> and no logins row (the logins rule wants a family and a kid, which a teacher has not) —
     // so a teacher record alone signs her in, to the first class it lists; her own record is readable under the teachers/$uid rule. Found on Brittany's setup.
     .then(L=>L||sdb.ref("teachers/"+_envs.uid).once("value").then(t=>{ const T=val(t), ks=Object.keys((T&&T.classes)||{}); return ks.length?{role:"teacher",cid:ks[0],name:String(T.name||"")}:null; }))
     .then(L=>{ if(!L){ envsCard("notset"); return; } envsApplyLogin(L); _envs.lock=envsLockState(_envs.lockRaw);
-      if(_envs.lock.locked&&_envs.role!=="admin"){ envsCard("closed"); return; } envsEnter(cont); })
+      if(_envs.lock.locked&&_envs.role!=="admin"&&_envs.homeOf!=="admin"){ envsCard("closed"); return; } envsEnter(cont); })
     .catch(e=>{ _envs.err=String((e&&e.message)||e); envsCard("error",{msg:_envs.err}); });
   return true;
 }
@@ -513,6 +516,7 @@ function envsApplyLogin(L){
   envsModeApply(L);   // CPKIDMODE: a device left in a kid's view opens in it again (parent logins only)
   _envs.sid=(_envs.familyId&&_envs.kid)?_envs.familyId+"_"+_envs.kid:"";
   _envs.dbUrl=(_envs.role==="kid"||_envs.role==="parent")&&_envs.familyId?(L.dbUrl||envsFamilyDbUrl(_envs.familyId)):"";
+  if(typeof envsHomeApply==="function") envsHomeApply(L);   // CPHOMELINK: the console's home record, or the home page (a Howe-app kid: no kid view, no family instance)
 }
 // CPSIBLINGS: the parent taps another kid → remembered on this device, then a fresh boot (every listener on this page is keyed on the one sid)
 function envsPickKid(kid){ if(_envs.role!=="parent"||_envs.kids.indexOf(kid)<0||kid===_envs.kid) return false; try{ if(typeof HA_LS!=="undefined") HA_LS.setItem("envs_kid_pick",kid); }catch(e){} try{ location.reload(); }catch(e){} return true; }
@@ -551,6 +555,7 @@ function envsEnter(cont){
   envsCss(); try{ tab=ENVS_TAB; }catch(e){}
   try{ document.body.classList.add("env-site","env-role-"+_envs.role); }catch(e){}
   try{ if(_envs.kidMode) document.body.classList.add("env-kidmode"); }catch(e){}   // CPKIDMODE: a parent login in a kid's view (role stays parent)
+  if(_envs.role==="parent"&&_envs.homeApp==="howe"){ _envs.view="home"; try{ haAuthHide(); }catch(e){} if(typeof envsHomeReadHowe==="function") envsHomeReadHowe(); try{ renderAll(); }catch(e){} try{ haAuthWatch(); }catch(e){} return; }   // CPHOMELINK: no family instance, no app boot, no mirror — the shared instance's mirrored summary only
   if(_envs.role==="kid"||_envs.role==="parent"){
     try{ const f=envsFam(); if(f&&!envsDemo()){ f.envirothon=Object.assign({},f.envirothon||{},{firebase:Object.assign({},FB_CFG),familyId:_envs.familyId,kids:(_envs.kids&&_envs.kids.length)?_envs.kids.slice():[_envs.kid]}); if(_envs.cid) f.envirothon.classId=_envs.cid; } }catch(e){}   // 🌿 ENVMIRROR publishes students/<sid>/summary to THIS project under this login · CPSIBLINGS: every kid on this login
     try{ if(typeof _envm!=="undefined"&&!envsDemo()){ _envm.app=firebase.app(); _envm.edb=firebase.database(); _envm.auth=firebase.auth(); _envm.user=firebase.auth().currentUser||null; } }catch(e){}
@@ -581,7 +586,7 @@ function envsReadShared(){
   if(typeof cpSpecListen==="function") cpSpecListen(sdb,re);   // 🏅 CPSPECIALIST: the student's specialist mark (students/<sid>/specialist), live
   if(typeof cpAheadListen==="function") cpAheadListen(sdb,re);   // 🚀 CPAHEAD: the student’s own early access (students/<sid>/ahead), live; a record from another device opens here too
   if(_envs.role==="parent"&&_envs.kids.length>1) _envs.kids.forEach(k=>sdb.ref("students/"+_envs.familyId+"_"+k+"/meta/name").once("value",s=>{ const n=val(s); if(n){ _envs.kidNames[k]=String(n).slice(0,40); re(); } }));   // CPSIBLINGS: the tabs' names
-  sdb.ref("release/locked").on("value",s=>{ _envs.lockRaw=val(s); _envs.lock=envsLockState(_envs.lockRaw); if(_envs.lock.locked&&_envs.role!=="admin") envsCard("closed"); });
+  sdb.ref("release/locked").on("value",s=>{ _envs.lockRaw=val(s); _envs.lock=envsLockState(_envs.lockRaw); if(_envs.lock.locked&&_envs.role!=="admin"&&_envs.homeOf!=="admin") envsCard("closed"); });
 }
 // showTab: the site has one page — every tap lands back on it (every door the micro doc lists as off is simply not reachable)
 function envSiteTabGate(t){ if(!envSiteOn()||!_envs.role) return false; try{ tab=ENVS_TAB; }catch(e){} try{ renderAll(); }catch(e){} return true; }
@@ -660,7 +665,7 @@ function envsKidSubmit(ev){
 }
 function envsForgot(){ if(!envSiteOn()) return; const e=((document.getElementById("ha-auth-e")||{}).value||"").trim(); if(!e){ envSiteAuthShow("Type your email first, then tap the link."); return; }
   try{ firebase.auth().sendPasswordResetEmail(e).then(function(){ envSiteAuthShow("Sent \u2014 check your email for the reset link."); }).catch(function(err){ envSiteAuthShow(envsAuthErr(err)); }); }catch(err){ envSiteAuthShow(envsAuthErr(err)); } }
-function envsSignOut(){ if(envsDemo()){ envsToast("demo: would sign out"); return; } try{ if(typeof HA_LS!=="undefined") HA_LS.removeItem(ENVS_MODE_KEY); }catch(e){} try{ haSignOut(); }catch(e){ try{ location.reload(); }catch(x){} } }
+function envsSignOut(){ if(envsDemo()){ envsToast("demo: would sign out"); return; } try{ if(typeof HA_LS!=="undefined"){ HA_LS.removeItem(ENVS_MODE_KEY); HA_LS.removeItem(ENVS_HOME_KEY); } }catch(e){} try{ haSignOut(); }catch(e){ try{ location.reload(); }catch(x){} } }
 // ── writes: demo → a toast and a record, never a write; dry run → nothing; live → the shared instance (the console's writes come through here too)
 function envsWrite(path,val,op){
   op=op||"set"; const rec={op,path,val:(val===undefined?null:val)};
@@ -688,7 +693,7 @@ function envSiteRender(c){
     else body=(typeof envConsoleHtml==="function")?envConsoleHtml():'<div class="envs-card">The console is not in this build.</div>';
   }catch(e){ body='<div class="envs-card" style="color:#b91c1c">Couldn\u2019t draw this screen: '+envsEsc((e&&e.message)||e)+'</div>'; try{ console.error("[HA] ENVSITE",e); }catch(x){} }
   c.innerHTML='<div class="envs-wrap">'+envsDemoBarHtml()+body+'</div>';
-  if(!envsDemo()){ envsAutoEnroll(); envsArmMirror(); }
+  if(!envsDemo()&&_envs.homeApp!=="howe"){ envsAutoEnroll(); envsArmMirror(); }   // CPHOMELINK: never on the Howe-app home page
   return true;
 }
 // ── KID ──
@@ -725,12 +730,14 @@ function envsGamesHtml(kid,col){
     return '<div class="envs-card">'+(sub||'<div class="envs-muted">\u{1F3CB}\uFE0F Word workout \u2014 Match, Memory flip and Which one? open on your Envirothon decks once a few cards are on your ladder.</div>')+'</div><div>'+body+'</div>'; }
   catch(e){ return '<div class="envs-card" style="color:var(--muted)">Games open once a few cards are on your ladder.</div>'; }
 }
-function envsSummary(kid){ try{ return (typeof envSummary==="function")?envSummary(kid):null; }catch(e){ return null; } }
+function envsSummary(kid){ if(_envs.homeApp==="howe") return _envs.homeSum||null;   // CPHOMELINK: the Howe-app kid's summary as his app mirrored it
+  try{ return (typeof envSummary==="function")?envSummary(kid):null; }catch(e){ return null; } }
 function envsWhen(k){ const a=envsDaysAgo(k); if(a==null) return "never"; if(a<=0) return "today"; if(a===1) return "yesterday"; return a+" days ago"; }
 // station rows: mastered bar · in progress · check-in / final / 🎓 · accuracy (14 d) · last studied — the parent page and the console's student page draw these
 function envsStationRowsHtml(summary,opts){
   opts=opts||{}; let h='';
   envsStations().forEach(st=>{ const s=envsStationStat(summary,st);
+    if(opts.released&&!s.released) return;   // 🏫 CPMYCLASS: his 🌿 tile shows the stations sent out only (every other caller leaves it off)
     h+='<div style="padding:8px 0;border-top:1px solid #f1efe9"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div style="font-weight:800;flex:1;min-width:120px">'+envsEsc(st.label)+(s.grad?' \u{1F393}':'')+'</div>';
     if(!s.released) h+='<span class="envs-muted">\u{1F512} not sent out yet</span>';
     else h+='<span class="envs-muted">'+s.mastered+' mastered \u00B7 '+s.learning+' in progress \u00B7 '+s.new+' to come'+(s.acc14!=null?' \u00B7 '+s.acc14+'% right (14 d)':'')+' \u00B7 last '+envsWhen(s.last)+'</span>';
@@ -765,14 +772,13 @@ function envsTipsHtml(role){
 }
 // ⇢ classes.js: CPGEAR
 function envsSetPin(){ const v=((document.getElementById("envs-pin")||{}).value||"").trim(); if(!/^\d{4}$/.test(v)){ envsToast("A PIN is exactly 4 digits."); return; } if(envsDemo()){ envsToast("demo: would set settings/pin"); return; } try{ APP_PIN=v; HA_LS.setItem("ha_app_pin",v); if(db&&!_dryRun()) db.ref("settings/pin").set(v); envsToast("PIN saved"); }catch(e){ envsToast("Couldn\u2019t save: "+((e&&e.message)||e)); } }
-// ⭐ stars per finished sitting (the one line in _mstSaveInner; her 8.5 "stars for a finished study sitting: yes, small fixed count")
+// ⭐ stars for a finished sitting (the one line in _mstSaveInner; her 8.5 "stars for a finished study sitting: yes, small fixed count"; HOW MANY is
+// CPPOINTS' since 2026-11-10 — her approved scheme replaced the flat ENVS_STARS per sitting)
 function envSiteSittingDone(kid,done){
   if(!envSiteOn()||!(_envs.role==="kid"||_envs.role==="parent")||!kid||kid!==_envs.kid) return false;
   if(!done||!(done.total>0)) return false;
   if(typeof cpdtPickSend==="function") cpdtPickSend(kid);   // 🧠 CPDRILLTEACHER: a sitting moved cards, so today's drillPick may have changed
-  if(envsDemo()){ _envs.bankDemo+=ENVS_STARS; envsToast("\u2B50 +"+ENVS_STARS+" for a finished sitting (demo: would write bank/"+kid+"/adjustments)"); return true; }
-  if(typeof _dryRun==="function"&&_dryRun()) return false;
-  try{ if(typeof bankDirect==="function"){ bankDirect(kid,ENVS_STARS,"\u{1F33F} Envirothon study sitting"); envsToast("\u2B50 +"+ENVS_STARS+" stars"); return true; } }catch(e){}
+  if(typeof cpPtsSitting==="function") return cpPtsSitting(kid,done);   // ⭐ CPPOINTS (2026-11-10): Day done 3 · Part 1 · Extra 1 per 5 cards — the kid's own sitting only, once a day (its ledger)
   return false;
 }
 // the first signed-in boot (kid or parent) enrolls the family's kid in the unit, every deck held — through the app's own enroll (every stage, so
@@ -816,20 +822,22 @@ function envsParentHtml(){
   let h=(typeof cpTopHtml==="function")?cpTopHtml("parent",name,mb):'<div class="envs-top" style="background:'+col+'"><div class="t"><div class="envs-brand">Howe <span>Academy</span></div>\u{1F33F} '+envsEsc(name)+'\u2019s Envirothon</div>'+mb+'<button onclick="envsView(\'settings\')" aria-label="Settings">\u2699\uFE0F</button></div>';   // 🏫 CPCLASS: the class's emoji, title and color
   h+=envsKidTabsHtml();   // CPSIBLINGS: one tab per kid on this login
   h+=envsKidSwapHtml();   // CPKIDMODE: kids can switch to each other without my password · On/Off
+  const hw=_envs.homeApp==="howe";   // CPHOMELINK: a Howe-app kid's home page is read-only (no review switch, study days, flags or cards — his app is where he studies)
+  if(hw) h+='<div class="envs-card" style="border-color:#bbf7d0;background:#f0fdf4"><div style="font-size:13px">\u{1F3E1} <b>'+envsEsc(String(name).split(" ")[0])+' studies in the Howe app.</b> No kid view here \u2014 this page shows what the app sends to the class.</div></div>';
   const chips=[["home","\u{1F4C8} How "+name+" is doing"],["boards","\u{1F3C6} Team"],["tips","\u{1F4A1} Tips"]];
   h+='<div class="envs-chips">'+chips.map(x=>'<button class="'+(v===x[0]?'on':'')+'" onclick="envsView(\''+x[0]+'\')">'+envsEsc(x[1])+'</button>').join("")+'</div>';
   if(v==="pdrill"&&typeof cpdrDrillHtml==="function") h+=cpdrDrillHtml(kid);   // 🧠 CPDRILLPARENT: the parent's drill (🧠 Drill with Maya)
   else if(v==="boards") h+=envsBoardsHtml(_envs.boards,_envs.sid);
   else if(v==="tips") h+=envsTipsHtml("parent");
   else if(v==="settings") h+=(typeof envsSettingsHtml==="function")?envsSettingsHtml():"";   // 🪶 LAZYSPLIT: CPCLASS (classes.js)
-  else { if(typeof cpdrCardHtml==="function") h+=cpdrCardHtml(kid); h+=envsStreakHtml(s); h+='<div class="envs-card"><div class="envs-h2">\u{1F4CA} Stations \u00B7 the same numbers the teacher sees</div>'+envsStationRowsHtml(s,{weak:true,kid})+'</div>';   // 🧠 CPDRILLPARENT: the review switch + 🧠 Drill, first on the page
+  else { if(!hw&&typeof cpdrCardHtml==="function") h+=cpdrCardHtml(kid); h+=envsStreakHtml(s); h+='<div class="envs-card"><div class="envs-h2">\u{1F4CA} Stations \u00B7 the same numbers the teacher sees</div>'+envsStationRowsHtml(s,{weak:true,kid})+'</div>';   // 🧠 CPDRILLPARENT: the review switch + 🧠 Drill, first on the page
     if(typeof cpWeekParentHtml==="function") h+=cpWeekParentHtml(kid);   // 📊 CPWEEK: This week, the same synopsis the teacher sees
-    if(typeof cpCalParentHtml==="function") h+=cpCalParentHtml(kid);   // 📅 CPCAL: Our study days (the family's own, behind the class's switch) + the goals
+    if(!hw&&typeof cpCalParentHtml==="function") h+=cpCalParentHtml(kid);   // 📅 CPCAL: Our study days (the family's own, behind the class's switch) + the goals
     if(typeof cpPaceParentHtml==="function") h+=cpPaceParentHtml(kid);   // 📅 CPPACE: on pace for the goal
     h+='<div class="envs-card"><div class="envs-h2">\u{1F469}\u200D\u{1F3EB} Who drills</div><div style="font-size:13px">'+envsEsc(envsWhoNote())+'</div></div>';
-    if(typeof cpFlagParentHtml==="function") h+=cpFlagParentHtml(kid);   // 🚩 CPFLAG: 🚩 Things you flagged, folded
-    h+=envsCodesCardHtml();   // CPSIBLINGS: 🎟 Student cards — a new code for any kid on this login, shown once
-    h+='<div class="envs-card" style="opacity:.8"><div class="envs-muted">Read-only: '+envsEsc(name)+' studies on the student login; this page shows how it is going. Class: '+envsEsc(envsClassName())+'.</div></div>'; }
+    if(!hw&&typeof cpFlagParentHtml==="function") h+=cpFlagParentHtml(kid);   // 🚩 CPFLAG: 🚩 Things you flagged, folded
+    if(!hw) h+=envsCodesCardHtml();   // CPSIBLINGS: 🎟 Student cards — a new code for any kid on this login, shown once
+    h+='<div class="envs-card" style="opacity:.8"><div class="envs-muted">Read-only: '+envsEsc(name)+(hw?' studies in the Howe app at home':' studies on the student login')+'; this page shows how it is going. Class: '+envsEsc(envsClassName())+'.</div></div>'; }
   return h;
 }
 // ── DEMO ──
@@ -838,7 +846,7 @@ function envsDemoBarHtml(){
   const r=_envs.demoRole; const btn=(k,l)=>'<button class="'+(r===k?'on':'')+'" onclick="envsDemoGo(\''+k+'\')">'+l+'</button>';
   return '<div class="envs-demo"><span>\u{1F9EA} Demo \u00B7 sample data, nothing is saved \u00B7 viewing as:</span>'+btn("signin","Sign-in")+btn("kid","Kid")+btn("parent","Parent")+btn("teacher","Teacher")+btn("admin","Adrienne")+'</div>';
 }
-function envsDemoGo(role){ if(!envsDemo()) return; _envs.demoRole=role; _envs.kidMode=""; envsParentClose(); _envs.role=role==="signin"?"kid":role; _envs.view=(role==="teacher"||role==="admin")?"grid":role==="parent"?"home":"study"; try{ if(typeof envcDemoRole==="function") envcDemoRole(role); }catch(e){} envsRe(); try{ window.scrollTo(0,0); }catch(e){} }
+function envsDemoGo(role){ if(!envsDemo()) return; _envs.demoRole=role; _envs.kidMode=""; _envs.homeOf=""; envsParentClose(); _envs.role=role==="signin"?"kid":role; _envs.view=(role==="teacher"||role==="admin")?"grid":role==="parent"?"home":"study"; try{ if(typeof envcDemoRole==="function") envcDemoRole(role); }catch(e){} envsRe(); try{ window.scrollTo(0,0); }catch(e){} }
 function envsDemoSigninHtml(){ return '<div style="background:#0f2e1f;border-radius:18px;padding:18px;display:flex;justify-content:center">'+envsAuthHtml().replace('onsubmit="return envsAuthSubmit(event)"','onsubmit="return envsDemoFake(event)"').replace('onsubmit="return envsKidSubmit(event)"','onsubmit="return envsDemoFake(event)"').replace('onclick="envsForgot()"','onclick="envsToast(\'demo: would send a password-reset email\')"')+'</div><div class="envs-muted" style="text-align:center;padding:10px">This is the first screen every family sees. In the demo, pick a role above instead of signing in.</div>'; }
 function envsDemoFake(ev){ if(ev&&ev.preventDefault) ev.preventDefault(); envsToast("demo: would sign in \u2014 pick a role at the top instead"); return false; }
 // the sample class: one class, eight invented students (no real names), varied progress, three teams. Dates are relative to today.
@@ -947,14 +955,16 @@ function envsModeKids(st){ st=st||_envs; return (st.kids&&st.kids.length)?st.kid
 // Go to <each other kid> when the login has two or more and kidSwap is on. Any other role: none.
 function envsModeBtns(st){
   st=st||_envs; if(st.role!=="parent") return [];
+  const back=(st.homeOf&&!st.kidMode)?[{console:true}]:[];   // CPHOMELINK: 👩‍🏫 Back to the console, on the home page only (kid view goes through 👩 Parent first)
+  if(st.homeApp==="howe") return back;   // CPHOMELINK: a Howe-app kid has no kid view here
   const ks=envsModeKids(st);
-  if(!st.kidMode) return ks.map(k=>({go:k}));
+  if(!st.kidMode) return ks.map(k=>({go:k})).concat(back);
   const out=[]; if(envsKidSwapOn(st.kidSwap)&&ks.length>1) ks.forEach(k=>{ if(k!==st.kidMode) out.push({go:k}); });
   out.push({parent:true}); return out;
 }
 function envsModeBtnsHtml(){
   if(!envSiteOn()) return ""; const b=envsModeBtns(); if(!b.length) return "";
-  return '<div class="envs-mode">'+b.map(x=>x.parent?'<button onclick="envsParentAsk()" aria-label="Back to the parent page">\u{1F469} Parent</button>':'<button onclick="envsGoKid(\''+envsEsc(x.go)+'\')">Go to '+envsEsc(envsKidName(x.go))+'</button>').join("")+'</div>';
+  return '<div class="envs-mode">'+b.map(x=>x.console?'<button onclick="envsHomeBack()" aria-label="Back to the console">\u{1F469}\u200D\u{1F3EB} Back to the console</button>':x.parent?'<button onclick="envsParentAsk()" aria-label="Back to the parent page">\u{1F469} Parent</button>':'<button onclick="envsGoKid(\''+envsEsc(x.go)+'\')">Go to '+envsEsc(envsKidName(x.go))+'</button>').join("")+'</div>';
 }
 // Go to <kid>: from the parent page, or kid → kid while kidSwap is on. Live: remembered on the device (+ the CPSIBLINGS pick), then a fresh
 // boot (every listener is keyed on one sid). Demo: in memory.
@@ -1027,6 +1037,91 @@ function envsSetKidSwap(on){
   return true;
 }
 // CPKIDMODE_END
+// CPHOMELINK_START — 🏠 the home link (her decisions 2026-11-10): a teacher or admin login may ALSO carry a parent record — Brittany (teacher)
+// opens her son Josiah's home page, Adrienne (admin) Lincoln's. (a) She stays teacher/admin at sign-in. (b) "🏠 <kid>" in the console's top
+// bar opens that family's parent page (HA_LS envs_home = "1", then a fresh boot), drawn exactly as for the family's own parent login, kid tabs
+// and the CPKIDMODE "Go to" buttons included; "👩‍🏫 Back to the console" (no password: same person) clears the flag. In kid view the 👩 Parent
+// password check is unchanged. A Howe-app kid (Lincoln: family howe, or students/<sid>/app = howe) gets the parent view only — from the
+// summary his app mirrors here, read-only, no kid mode, no family instance, no app boot, and the mirror never arms (it would overwrite his app's
+// summary). (c) The family's own parent login keeps working: the home link is a second parent on the family, not a replacement.
+//   Data (Adrienne writes it; no rules change — logins/$uid and students/$sid/logins have no $other:false): logins/<uid> = the normal parent
+//   row + home:true · students/<sid>/logins/home = <uid> · a micro family's instance also needs allowed/<uid> = true (Admin ▸ Families ▸ seed
+//   JSON lists it; an instance made before this gets it by hand — its allowed/ is write:false). A plain parent or kid login (no home:true)
+//   reads nothing more and sees nothing new.
+const ENVS_HOME_KEY="envs_home";
+// PURE: a logins row → the home (parent) record it carries, or null (only a parent row with home:true, a family and a kid)
+function envsHomeRec(L){
+  if(!L||L.role!=="parent"||L.home!==true) return null; const c=v=>String(v==null?"":v).replace(/[^a-z0-9_-]/gi,""), fid=c(L.familyId), kid=c(L.kid); if(!fid||!kid) return null;
+  const r={role:"parent",familyId:fid,kid,cid:String(L.cid||""),name:String(L.name||"").slice(0,40)}; if(L.kids&&typeof L.kids==="object") r.kids=Object.assign({},L.kids); if(L.kidSwap===false) r.kidSwap=false; return r;
+}
+// PURE: the role decision. P = the home record, admin = admins/<uid>, T = teachers/<uid>, on = the device's envs_home flag, app = students/<sid>/app.
+// → null (no console role: the row signs in as the plain parent it is) · flag off: the console login carrying .home · flag on: the parent
+// record carrying .homeOf (teacher|admin) and .homeApp ("howe" | "")
+function envsHomePick(P,admin,T,on,app){
+  const ks=Object.keys((T&&T.classes)||{}), C=admin===true?{role:"admin"}:ks.length?{role:"teacher",cid:ks[0],name:String((T&&T.name)||"")}:null;
+  if(!P||!C) return null;
+  if(!on){ C.home=P; return C; }
+  return Object.assign({},P,{home:P,homeOf:C.role,homeApp:(P.familyId==="howe"||app==="howe")?"howe":""});
+}
+// the gate, for a logins row with home:true: admins → teachers (as CPTEACHERGATE) → with the flag on, the student's app (family howe needs no read)
+function envsHomeGate(sdb,L){
+  const P=envsHomeRec(L); if(!P) return Promise.resolve(L);
+  const val=s=>(s&&typeof s.val==="function")?s.val():null, uid=_envs.uid; let on=false, admin=null, T=null;
+  try{ on=typeof HA_LS!=="undefined"&&HA_LS.getItem(ENVS_HOME_KEY)==="1"; }catch(e){}
+  return sdb.ref("admins/"+uid).once("value").then(a=>{ admin=val(a); return admin===true?null:sdb.ref("teachers/"+uid).once("value").then(t=>{ T=val(t); }); })
+    .then(()=>{ if(!envsHomePick(P,admin,T,false,"")) return L;
+      if(!on||P.familyId==="howe") return envsHomePick(P,admin,T,on,"");
+      return sdb.ref("students/"+P.familyId+"_"+P.kid+"/app").once("value").then(s=>envsHomePick(P,admin,T,true,val(s)),()=>envsHomePick(P,admin,T,true,"")); });
+}
+// envsApplyLogin's tail: the console keeps the home record; the home page knows whose console it came from. Anything else clears both.
+function envsHomeApply(L){
+  _envs.home=null; _envs.homeOf=""; _envs.homeApp="";
+  if(!L||!L.home||typeof L.home!=="object") return;
+  if(L.homeOf==="teacher"||L.homeOf==="admin"){
+    if(_envs.role!=="parent") return; _envs.homeOf=L.homeOf; _envs.homeApp=L.homeApp==="howe"?"howe":"";
+    if(L.home.name&&L.home.kid) _envs.kidNames[L.home.kid]=String(L.home.name).slice(0,40);
+    if(_envs.homeApp==="howe"){ _envs.kidMode=""; _envs.dbUrl=""; }   // no kid view, and no instance to point at (there is no howe-envirothon-howe)
+    return;
+  }
+  if(_envs.role==="teacher"||_envs.role==="admin") _envs.home=L.home;
+}
+// the console's 🏠 <kid> (cpTopHtml, before ⚙️). Demo: the sample teacher / Adrienne get one for Maya.
+function envsHomeBtnHtml(){
+  if(!envSiteOn()||!(_envs.role==="teacher"||_envs.role==="admin")) return "";
+  const H=envsDemo()?{kid:_envs.kid||"maya",name:""}:_envs.home; if(!H||!H.kid) return "";
+  const n=String(H.name||envsKidName(H.kid)).split(" ")[0];
+  return '<button onclick="envsHomeGo()" aria-label="'+envsEsc(n)+'’s home page">\u{1F3E0} '+envsEsc(n)+'</button>';
+}
+// 🏠: remembered on the device, then a fresh boot (the parent page needs the family's instance and its own listeners). Demo: in memory.
+function envsHomeGo(){
+  if(!envSiteOn()||!(_envs.role==="teacher"||_envs.role==="admin")) return false;
+  if(envsDemo()){ const of=_envs.role; envsDemoGo("parent"); _envs.homeOf=of; envsRe(); return true; }
+  if(!_envs.home) return false;
+  try{ if(typeof HA_LS!=="undefined"){ HA_LS.setItem(ENVS_HOME_KEY,"1"); HA_LS.removeItem(ENVS_MODE_KEY); } }catch(e){}
+  try{ sessionStorage.setItem("ha_reload_why","envsite-home"); }catch(e){}
+  try{ location.reload(); }catch(e){} return true;
+}
+// 👩‍🏫 Back to the console: from the home page only (never from a kid's view — that goes through 👩 Parent and the password first)
+function envsHomeBack(){
+  if(!envSiteOn()||_envs.role!=="parent"||!_envs.homeOf||_envs.kidMode) return false;
+  if(envsDemo()){ envsDemoGo(_envs.homeOf); return true; }
+  try{ if(typeof HA_LS!=="undefined"){ HA_LS.removeItem(ENVS_HOME_KEY); HA_LS.removeItem(ENVS_MODE_KEY); } }catch(e){}
+  try{ sessionStorage.setItem("ha_reload_why","envsite-home"); }catch(e){}
+  try{ location.reload(); }catch(e){} return true;
+}
+// the Howe-app home page's reads (shared instance, listeners, nothing written): the class, the boards, who drills, the lock, and the student's
+// mirrored summary + weeks — the same records the teacher's console reads for him
+function envsHomeReadHowe(){
+  if(envsDemo()||_envs.homeApp!=="howe"||!_envs.sid) return false; let sdb; try{ sdb=firebase.database(); }catch(e){ return false; }
+  const val=s=>(s&&typeof s.val==="function")?s.val():null, re=()=>{ try{ if(typeof renderAllSoon==="function") renderAllSoon(); }catch(e){} }, sid=_envs.sid;
+  sdb.ref("students/"+sid+"/summary").on("value",s=>{ _envs.homeSum=val(s); re(); });
+  sdb.ref("students/"+sid+"/weeks").on("value",s=>{ _envs.homeWeeks=val(s); re(); });
+  const go=cid=>{ if(!cid) return; _envs.cid=cid; sdb.ref("classes/"+cid).on("value",s=>{ _envs.cls=val(s); re(); }); sdb.ref("boards/"+cid).on("value",s=>{ _envs.boards=val(s); re(); }); sdb.ref("settings/whoDrills/"+cid).on("value",s=>{ _envs.who=val(s)||""; re(); }); };
+  if(_envs.cid) go(_envs.cid); else sdb.ref("students/"+sid+"/class").once("value",s=>go(val(s)));
+  sdb.ref("release/locked").on("value",s=>{ _envs.lockRaw=val(s); _envs.lock=envsLockState(_envs.lockRaw); if(_envs.lock.locked&&_envs.role!=="admin"&&_envs.homeOf!=="admin") envsCard("closed"); });
+  return true;
+}
+// CPHOMELINK_END
 // ENVSITE_END
 // ENVCONSOLE_START — 👩‍🏫 THE TEACHER'S PART of the Envirothon site (and Adrienne's admin part): DESIGN_envirothon_console_2026-10-27.md §5 as
 // re-cut by its ✅ DECISIONS (her 8.3 the teacher creates both logins · 8.4 roster = first name + last initial · 8.5 station by default, each
@@ -1181,6 +1276,7 @@ function envcStudentHtml(sid){
   let h='<div class="envs-card"><div class="envs-row"><button class="envs-btn sec" onclick="envcView(\'grid\')">← class</button><div style="flex:1"><div class="envs-h2" style="margin:0">'+envcEsc(envcName(s))+(envcApp(s)==="howe"?' · Howe Academy app':'')+'</div><div class="envs-muted">'+(sm?'content v'+(sm.unitVer||1)+' · streak '+((sm.streak&&sm.streak.days)||0)+' d · '+Object.keys(sm.days||{}).filter(k=>envsDaysAgo(k)<30).length+' study days this month · last mirrored '+envcEsc(envsWhen(sm.at?envsDayKey(sm.at):null)):'no study mirrored yet')+'</div></div></div></div>';
   if(typeof cpWatchStudentHtml==="function") h+=cpWatchStudentHtml(sid);   // 🧠 CPWATCH: ⚠ the parent's drill not run, with Leave it
   if(typeof cpMoveBackStudentHtml==="function") h+=cpMoveBackStudentHtml(sid);   // ↩ CPMOVEBACK: the teacher moves the reviews back (or lets the parent choose again)
+  if(typeof cpPtsStudentHtml==="function") h+=cpPtsStudentHtml(sid);   // ⭐ CPPOINTS: ⭐ This week — stars, days done, extra cards, games
   h+='<div class="envs-card"><div class="envs-h2">Stations</div>'+envsStationRowsHtml(sm,{weak:true})+'</div>';
   if(typeof cpSecStudentHtml==="function") h+=cpSecStudentHtml(sid);   // 🎚 CPSECTIONS: On · Review only · Off per section
   if(typeof cpSpecStudentHtml==="function") h+=cpSpecStudentHtml(sid);   // 🏅 CPSPECIALIST: the 🏅 Specialist card
@@ -1408,14 +1504,14 @@ function envcAdminHtml(){
   h+='<div class="envs-card"><div class="envs-h2">Teachers</div>'+Object.keys(_envc.teachers||{}).map(u=>'<div style="font-size:12.5px;padding:3px 0">'+envcEsc((_envc.teachers[u]&&_envc.teachers[u].name)||"?")+' <span class="envs-muted">'+envcEsc(u)+' · '+envcEsc(Object.keys((_envc.teachers[u]&&_envc.teachers[u].classes)||{}).join(", "))+'</span></div>').join("")+'<div class="envs-row" style="margin-top:8px"><input id="envc-t-uid" class="envs-in" style="flex:1;min-width:160px" placeholder="uid (from Authentication, after you created the user)"><input id="envc-t-name" class="envs-in" style="width:140px" placeholder="Name"><button class="envs-btn sec" onclick="envcTeacherAdd()">+ Teacher</button></div><div class="envs-muted" style="margin-top:4px">Writes teachers/&lt;uid&gt; = {name, classes:{'+envcEsc(_envc.cid)+':true}} and classes/'+envcEsc(_envc.cid)+'/teacher.</div></div>';
   const S=envcStudents();
   h+='<div class="envs-card" style="padding:8px 6px;overflow-x:auto"><div class="envs-h2" style="padding:0 6px">Families · '+envcEsc(_envc.cid)+'</div><table class="envs-grid"><thead><tr><th>student</th><th>family id</th><th>app</th><th>parent uid</th><th>student uid</th><th>last mirror</th><th>instance</th></tr></thead><tbody>'+
-    S.map(s=>{ const L=s.logins||{}; const fid=(s.meta&&s.meta.familyId)||s.sid.split("_")[0]; return '<tr><td style="font-weight:800">'+envcEsc(envcName(s))+'</td><td>'+envcEsc(fid)+'</td><td>'+envcEsc(envcApp(s))+'</td><td style="font-family:monospace;font-size:10.5px">'+envcEsc(L.parent||"–")+'</td><td style="font-family:monospace;font-size:10.5px">'+envcEsc(L.kid||"–")+'</td><td>'+envcEsc(s.summary?envsWhen(envsDayKey(s.summary.at||0)):"never")+'</td><td>'+(envcApp(s)==="howe"?'<span class="envs-muted">their own project</span>':'<button class="envs-btn sec" style="min-height:30px;font-size:11px" onclick="envcSeedShow(\''+envcJ(s.sid)+'\')">seed JSON</button>')+'</td></tr>'; }).join("")+'</tbody></table>';
+    S.map(s=>{ const L=s.logins||{}; const fid=(s.meta&&s.meta.familyId)||s.sid.split("_")[0]; return '<tr><td style="font-weight:800">'+envcEsc(envcName(s))+'</td><td>'+envcEsc(fid)+'</td><td>'+envcEsc(envcApp(s))+'</td><td style="font-family:monospace;font-size:10.5px">'+envcEsc(L.parent||"–")+(L.home?'<div title="home link (a teacher or Adrienne as a second parent)">\u{1F3E0} '+envcEsc(L.home)+'</div>':'')+'</td><td style="font-family:monospace;font-size:10.5px">'+envcEsc(L.kid||"–")+'</td><td>'+envcEsc(s.summary?envsWhen(envsDayKey(s.summary.at||0)):"never")+'</td><td>'+(envcApp(s)==="howe"?'<span class="envs-muted">their own project</span>':'<button class="envs-btn sec" style="min-height:30px;font-size:11px" onclick="envcSeedShow(\''+envcJ(s.sid)+'\')">seed JSON</button>')+'</td></tr>'; }).join("")+'</tbody></table>';
   if(_envc.seedFor){ const s=Object.assign({sid:_envc.seedFor},_envc.students[_envc.seedFor]||{}); h+='<div style="padding:8px 6px"><div class="envs-muted">Realtime Database → create instance <b>'+envcEsc(envsProjectId()+"-"+((s.meta&&s.meta.familyId)||""))+'</b>, paste envirothon/SITE_RULES.json §family, then Import JSON:</div><textarea class="envs-in" rows="8" readonly style="font-family:monospace;font-size:11px">'+envcEsc(JSON.stringify(envcSeedJson(s),null,1))+'</textarea></div>'; }
   h+='</div>';
   return h;
 }
 // PURE: the family instance's seed (what Adrienne imports once per family): the two logins allowed, the one-kid roster, the pages, the edition
 function envcSeedJson(s){ const L=s.logins||{}, m=s.meta||{}, fid=m.familyId||String(s.sid||"").split("_")[0], kid=m.kid||String(s.sid||"").split("_")[1]||"kid", first=String(m.name||kid).split(" ")[0];
-  const allowed={}; if(L.parent) allowed[L.parent]=true; if(L.kid) allowed[L.kid]=true;
+  const allowed={}; if(L.parent) allowed[L.parent]=true; if(L.kid) allowed[L.kid]=true; if(L.home) allowed[L.home]=true;   // CPHOMELINK: students/<sid>/logins/home, the second parent
   return {allowed,settings:{edition:"envirothon",family:[{id:kid,name:first,color:"#2d6a4f",badge:"#dcfce7",schoolAge:true}],pages:{notebook:false,mastery:true,units:true,play:false,"moms-plan":false,kids:true,purchases:false,workbooks:false,eic:false,helpers:false},pin:String(1000+Math.floor(Math.random()*9000)),envirothon:{classId:s.class||_envc.cid||"",sid:fid+"_"+kid,kid,unit:"nc_envirothon"}}}; }
 function envcSeedShow(sid){ _envc.seedFor=_envc.seedFor===sid?null:sid; envcRe(); }
 function envcLock(on){ if(!envcAdmin()) return; const rec={locked:!!on,at:Date.now(),by:_envs.uid}; envcWrite("release/locked",rec).then(()=>{ _envc.lockRaw=rec; _envs.lockRaw=rec; _envs.lock=envsLockState(rec); envcRe(); }).catch(()=>{}); }

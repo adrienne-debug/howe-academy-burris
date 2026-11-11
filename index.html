@@ -4628,6 +4628,15 @@ function toMin(s){
   if(p[3].toUpperCase()==="AM"&&h===12)h=0;
   return h*60+parseInt(p[2]);
 }
+// KIDNAME_ROSTER_START — a kid's display name always comes from the roster through cap(), never from the raw id.
+// Her report 2026-11-10: "the kid is named D3 for Burris. It's supposed to be 3D". Kid ids can't start with a digit
+// (they feed CSS class names), so a child whose name starts with a digit gets an id that differs from the name
+// (id d3, name 3D). cap() already resolves KID_NAME and only capitalizes the id when the roster has no name.
+// Call sites switched from charAt(0).toUpperCase()+id.slice(1) to cap(id), each tagged // KIDNAME_ROSTER:
+//   digestRecordHtml (weekly education record), renderHistoryReport (kName), haNbContext (nbKidName → starter
+//   notebook header), haNbPickerRows (starter notebook label), loadActJson (NB_KIDS starter label),
+//   mastRescueStaleLog (mastery header), ckStartHtml (check-up heading).
+// KIDNAME_ROSTER_END
 function cap(s){ if(typeof KID_NAME!=="undefined"&&KID_NAME&&KID_NAME[s]) return KID_NAME[s]; s=String(s); return s.charAt(0).toUpperCase()+s.slice(1); }
 
 // Returns the current weekday as a DAYS string ("monday" etc.), or null if weekend
@@ -26263,7 +26272,7 @@ function digestRecordHtml(data,opts){
 
   (data.kids||[]).forEach((k,ki)=>{
     const kt=tasks.filter(t=>t&&t.who===k&&!/lunch/i.test(t.title||""));
-    const name=esc((opts.kidNames||{})[k]||k.charAt(0).toUpperCase()+k.slice(1));
+    const name=esc((opts.kidNames||{})[k]||cap(k)); // KIDNAME_ROSTER
     h+='<div class="student'+(ki===0?' first':'')+'"><h2>'+name+'</h2>';
 
     // Attendance — same rule as the Attendance tab: worked that day, unless overridden.
@@ -26470,7 +26479,7 @@ function digestToggleKid(k){ digestKidOpen[k]=!digestKidOpen[k];
 function renderHistoryReport(){
   if(!momHere()) return '<div style="text-align:center;color:var(--muted);padding:40px 20px">📋 The weekly report is a Mom-only view.<br>Unlock Mom mode to read it.</div>';
   const KC={lincoln:"#2a78d6",ellis:"#1baf7a",lucy:"#eda100",julian:"#9333ea"};
-  const kName=k=>k.charAt(0).toUpperCase()+k.slice(1);
+  const kName=k=>cap(k); // KIDNAME_ROSTER
   const wk=digestWkSel||WK, isCur=wk===WK;
   const rep=isCur?digestBuildWeekReport(digestGatherData(WK)):digestFreezeIfNeeded(wk);
   let h='<div style="padding:8px 12px 20px">';
@@ -35591,10 +35600,11 @@ function haNbContext(kid){
   let loe=null; try{ if(typeof loeTaught==="function") loe=loeTaught(kid)||null; }catch(e){}   // LU_PHONO: the phonograms LOE Foundations B has taught this kid (Lucy's phonogram of the day) — null = static list
   // PREKTHEME_WIRE (her ask 2026-11-08): the kid's Family record can name a notebook look (notebookTheme:"shark"); the
   // themed notebook prints the record's notebookName (the name the child traces, when the app shows a nickname) or its name.
+  // NBNAME: a name Mom set on the Notebook tab (notebookSettings/<kid>/notebookName) comes first — it reaches the kid's own look too.
   // No field = the kid's notebook exactly as before.
   let nbRec={}; try{ nbRec=ROSTER_DEF.find(k=>k&&k.id===kid)||{}; }catch(e){}
   const nbNm=v=>(typeof v==="string"&&v.trim())||null;
-  return { nbKidName:kid.charAt(0).toUpperCase()+kid.slice(1), kidName:nbNm(nbRec.notebookName)||nbNm(nbRec.name), notebookTheme:nbThemeOf(kid), nbLevel:nbLevelOf(kid), nbGrade:nbGradeOf(kid), spelling:spelling, wordBank:wordBank, cogatBank:cogatBank, quantBank:quantBank, convBank:convBank, dailyGrams:dailyGrams, loe:loe, weekData:{dates:dates, tasks:tasks}, weekNum:tgtWk, weekDates:weekDates, juPicks:juPicks, numberCursor:((((notebookSettings||{})[kid])||{}).numberCursor)||null, letterCursor:((((notebookSettings||{})[kid])||{}).letterCursor)||null, countEmoji:((((typeof masteryData!=="undefined"&&masteryData[kid+"_settings"])||{}).count_emoji)||null), letterSounds:((((typeof masteryData!=="undefined"&&masteryData[kid+"_settings"])||{}).definitions)||null), masteryItems:mItems, reviewCap:nbReviewCap(kid), personal:personal, prevSummary:prevSummary, prevStats:prevStats, pace:pace, coloring:coloring, dotdot:dotdot, symmetry:symmetry, maze:maze, pattern:pattern, dolls:dolls, passage:passage, units:units, extraPages:(((notebookSettings||{})[kid])||{}).extraPages||{}, bindingMargin:(notebookSettings||{}).bindingMargin===true };
+  return { nbKidName:cap(kid), kidName:nbNm((((notebookSettings||{})[kid])||{}).notebookName)||nbNm(nbRec.notebookName)||nbNm(nbRec.name), notebookTheme:nbThemeOf(kid), nbLevel:nbLevelOf(kid), nbGrade:nbGradeOf(kid), spelling:spelling, wordBank:wordBank, cogatBank:cogatBank, quantBank:quantBank, convBank:convBank, dailyGrams:dailyGrams, loe:loe, weekData:{dates:dates, tasks:tasks}, weekNum:tgtWk, weekDates:weekDates, juPicks:juPicks, numberCursor:((((notebookSettings||{})[kid])||{}).numberCursor)||null, letterCursor:((((notebookSettings||{})[kid])||{}).letterCursor)||null, countEmoji:((((typeof masteryData!=="undefined"&&masteryData[kid+"_settings"])||{}).count_emoji)||null), letterSounds:((((typeof masteryData!=="undefined"&&masteryData[kid+"_settings"])||{}).definitions)||null), masteryItems:mItems, reviewCap:nbReviewCap(kid), personal:personal, prevSummary:prevSummary, prevStats:prevStats, pace:pace, coloring:coloring, dotdot:dotdot, symmetry:symmetry, maze:maze, pattern:pattern, dolls:dolls, passage:passage, units:units, extraPages:(((notebookSettings||{})[kid])||{}).extraPages||{}, bindingMargin:(notebookSettings||{}).bindingMargin===true }; // KIDNAME_ROSTER
 }
 async function haNbOpen(kid,which){
   const lib=window.HoweNotebooks; if(!lib){ alert("Notebook builder not loaded yet."); return; }
@@ -35719,7 +35729,7 @@ function haNbPickerRows(lib){
   const kids=Object.keys((lib&&lib.GENERATORS)||{}).filter(k=>ROSTER.includes(k)).concat([...ROSTER].filter(k=>!((lib&&lib.GENERATORS)||{})[k]));   // CALEB_WIRE: this family's kids only (+ 📓 starter notebooks)
   if(!kids.length) return '<div style="font-size:12px;color:var(--muted);padding:12px 0">No generators available.</div>';
   return kids.map(k=>{
-    const g=lib.GENERATORS[k]||{label:k.charAt(0).toUpperCase()+k.slice(1)+" (starter notebook)"};
+    const g=lib.GENERATORS[k]||{label:cap(k)+" (starter notebook)"}; // KIDNAME_ROSTER
     return `<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border)">
       <div style="flex:1;font-weight:700;font-size:13px;color:#1f2937">${g.label}</div>
       <!-- NBPRINT: 🖨 Print = the letter-size PDF (prints right from Safari/iPad/AirPrint), her call 2026-10-03 for every family; 👁 = the quick page view -->
@@ -42558,7 +42568,7 @@ function kcPlayBodyHTML(k,mode){
     if(typeof gameKidSwitch==="function") gameKidSwitch(k);
     masteryKid=k;   // both views read masteryKid — always this kid while the page shows it
     if(mode==="card") body=_kcCardBodyHTML(k,col);   // 🎴 KC_CARD
-    else if(mode==="games"){ if(!gamesActive()) mastView="games"; body=gamesSubHtml(col)+'<div style="margin-top:10px">'+gamesBodyHtml(col)+'</div>'; }
+    else if(mode==="games"){ if(!gamesActive()) mastView="games"; body=((typeof cpmcGamesChip==="function")?cpmcGamesChip(k):"")+gamesSubHtml(col)+'<div style="margin-top:10px">'+gamesBodyHtml(col)+'</div>'; }   // 🏫 CPMYCLASS: the "🌿 Envirothon only · ✕" chip on top while the door's filter is on
     else body=renderMastStudy({noCheckup:true});
   }catch(e){ body='<div style="padding:20px;color:var(--muted)">Couldn’t load '+(mode==="games"?'your games':mode==="card"?'this one':'your study cards')+' — try again</div>'; }
   return '<div class="kc-play" style="padding:12px 12px 80px">'+body+'</div>';
@@ -45955,7 +45965,7 @@ const NB_KIDS=[
   {k:"caleb",  label:"Caleb (K 🚜)",     aam:false}    // DeWalt — notebooks.js CALEB block (2026-10-04)
 ].filter(x=>ROSTER.includes(x.k));   // CALEB_WIRE: only THIS family's kids — the list was Howe's four everywhere (2026-10-04)
 // 📓 GENERICNB (her ask 2026-10-04): every other kid in the family gets a starter notebook (notebooks.js generateGeneric)
-[...ROSTER].filter(k=>!NB_KIDS.some(x=>x.k===k)).forEach(k=>NB_KIDS.push({k,label:k.charAt(0).toUpperCase()+k.slice(1)+" (starter notebook)",aam:false,generic:true}));
+[...ROSTER].filter(k=>!NB_KIDS.some(x=>x.k===k)).forEach(k=>NB_KIDS.push({k,label:cap(k)+" (starter notebook)",aam:false,generic:true})); // KIDNAME_ROSTER
 // Lucy's activity-page slots — each upload fills its brain-break page.
 const NB_ACT_CATS=[
   {cat:"coloring", label:"🎨 Coloring",   hint:"unicorn · fairy · mermaid"},
@@ -46004,6 +46014,40 @@ function nbSetLevel(kid,key){ if(!momHere()) return;
   if(tab==="notebook"){ const el=document.getElementById("content"); if(el) renderNotebook(el); }
 }
 // PREKLEVEL_WIRE_END
+// NBNAME_START — the name in a Pre-K notebook, set on the Notebook tab (her ask 2026-11-10: "can we also have the option on
+// notebooks for caleb 3d and julian to edit the name, so 3d will be David in his notebook"). Mom only. Save writes ONE targeted
+// path, notebookSettings/<kid>/notebookName (removed by "Use the family name"); dry-run inert; the local notebookSettings is kept
+// in step the way the look picker does. Not the Family record: the Family editor drops edits right now, and every device reloads
+// on a settings/family change. The notebook reads it first (haNbContext kidName), then the record's notebookName, then its name.
+// A change shapes the NEXT notebook built; nothing already printed or sent to a tablet changes.
+function nbNameOf(kid){ const v=((notebookSettings||{})[kid]||{}).notebookName; if(typeof v==="string"&&v.trim()) return v.trim(); const r=nbRecOf(kid); return (typeof r.notebookName==="string"&&r.notebookName.trim())||(typeof r.name==="string"&&r.name.trim())||cap(kid); }
+function nbNameSaved(kid){ const v=((notebookSettings||{})[kid]||{}).notebookName; return typeof v==="string"&&!!v.trim(); }
+function nbNameCardHtml(sel,lookOpts){
+  if(!momHere()||!lookOpts||!lookOpts.prek) return "";
+  return '<div style="font-size:12px;font-weight:800;color:#9a3412;margin:12px 0 2px">✏️ Name in the notebook</div>'+
+    '<div style="font-size:11px;color:var(--muted);line-height:1.45;margin-bottom:6px">What the notebook prints and traces. It changes the next notebook you print.</div>'+
+    '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+
+      '<input id="nbname-'+sel+'" type="text" maxlength="24" value="'+esc(nbNameOf(sel))+'" onkeydown="if(event.key===\'Enter\')nbSaveName(\''+sel+'\')" style="flex:1;min-width:120px;padding:6px 10px;border-radius:8px;border:1.5px solid var(--border);font-size:13px;font-family:\'DM Sans\',sans-serif">'+
+      '<button onclick="nbSaveName(\''+sel+'\')" style="padding:6px 12px;border-radius:8px;border:none;background:#ea580c;color:#fff;font-size:12px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">Save</button>'+
+      (nbNameSaved(sel)?'<a href="#" onclick="nbClearName(\''+sel+'\');return false" style="font-size:11px;font-weight:700;color:#9a3412">Use the family name</a>':'')+
+    '</div>';
+}
+function nbSaveName(kid){ if(!momHere()) return;
+  const el=document.getElementById("nbname-"+kid); const v=String((el&&el.value)||"").trim().slice(0,24);
+  if(!v) return nbClearName(kid);
+  if(!notebookSettings[kid]) notebookSettings[kid]={};
+  notebookSettings[kid].notebookName=v;
+  try{ HA_LS.setItem("ha_nb_settings",JSON.stringify(notebookSettings)); }catch(e){}
+  try{ if(typeof db!=="undefined"&&db&&!_dryRun()) db.ref("notebookSettings/"+kid+"/notebookName").set(v); }catch(e){}
+  if(tab==="notebook"){ const c=document.getElementById("content"); if(c) renderNotebook(c); }
+}
+function nbClearName(kid){ if(!momHere()) return;
+  if(notebookSettings[kid]) delete notebookSettings[kid].notebookName;
+  try{ HA_LS.setItem("ha_nb_settings",JSON.stringify(notebookSettings)); }catch(e){}
+  try{ if(typeof db!=="undefined"&&db&&!_dryRun()) db.ref("notebookSettings/"+kid+"/notebookName").remove(); }catch(e){}
+  if(tab==="notebook"){ const c=document.getElementById("content"); if(c) renderNotebook(c); }
+}
+// NBNAME_END
 // Extra-pages config (Notebook tab) — per-page {on, days:{monday:true,…}}, synced like reviewCap.
 // Missing config = page ON with no day assigned, so defaults match the old always-print behavior.
 function nbXpCfg(kid,key){ const c=(((notebookSettings||{})[kid]||{}).extraPages||{})[key]||{}; return { on:c.on!==false, days:c.days||{} }; }
@@ -50226,6 +50270,7 @@ function _unitNudgePanelHtml(kid){
 // ⇢ classes.js: CPLINCOLN
 // ⇢ classes.js: CPLINCOLNL3
 // ⇢ classes.js: CPLINCOLNPARITY
+// ⇢ classes.js: CPMYCLASS
 // ⇢ env.js: ENVSITE
 // ⇢ env.js: ENVCONSOLE
 // ⇢ env.js: ENVCLASSSET
@@ -51135,6 +51180,7 @@ function envFlashGameHtml(){ const kid=(typeof masteryKid!=="undefined")?mastery
 // ⇢ classes.js: CPMISSED
 // ⇢ classes.js: CPWEEK
 // ⇢ classes.js: CPTEAMPICK
+// ⇢ classes.js: CPPOINTS
 // ⇢ classes.js: CPDRILLPARENT
 // ⇢ classes.js: CPWATCH
 // ⇢ classes.js: CPWATCHFALLBACK
@@ -51411,6 +51457,7 @@ function renderNotebook(el){
       '<div style="font-size:11px;color:var(--muted);line-height:1.45;margin-bottom:7px">'+(lookOpts.looks.length>1?'Pick the pictures and colors. It changes the next notebook you print — nothing already printed changes.':'This notebook has one look for now.')+'</div>'+
       '<div style="display:flex;gap:6px;flex-wrap:wrap">'+looks+'</div>'+
       (lvRows?'<div style="font-size:12px;font-weight:800;color:#9a3412;margin:12px 0 2px">📏 Level</div><div style="font-size:11px;color:var(--muted);line-height:1.45;margin-bottom:4px">The same notebook at a different level — turn on what this child is ready for.</div>'+lvRows:'')+
+      nbNameCardHtml(sel,lookOpts)+   // NBNAME: ✏️ Name in the notebook (Pre-K notebooks)
     '</div>';
   }
   // Week switcher — only when a next week is already built and parked (generated ahead on the
@@ -61684,7 +61731,7 @@ function _matchPlain(h){ return String(h||"").replace(/<[^>]*>/g," ").replace(/&
 //   say  — the spoken instruction; pick — the chip instruction; speak — what the app says after "I said it";
 //   chipOf — renders a card as a chip on the asked side (lures use the same renderer, so they look alike).
 function _matchAsk(st,t,it){
-  const word=c=>'<span style="font-size:15px;font-weight:800;color:#c2410c;pointer-events:none;word-break:break-word">'+(c.prompt||"")+'</span>';
+  const word=c=>'<span class="tf" style="font-size:15px;font-weight:800;color:#c2410c;pointer-events:none;word-break:break-word">'+(c.prompt||"")+'</span>';
   const nm=c=>_matchPlain(c.prompt), mn=c=>_matchPlain(_matchPairHtml(c));   // 🗣 SAIDPICK: speakOf — what the kid says, for any card of the deck
   if(st.pairMode==="same") return {say:"Say its name",pick:"Pick its name",speak:_matchPlain(it.prompt),chipOf:word,speakOf:nm};
   if(!t.isPrompt) return {say:"Say the word",pick:"Pick the word",speak:_matchPlain(it.prompt),chipOf:word,speakOf:nm};
@@ -61812,7 +61859,7 @@ function _matchSaidHtml(g,color){
     const mine=g.picked===i;
     const bd=done?(c.ok?'#16a34a':(mine?'#dc2626':'#e2ddd6')):'#e2ddd6', bg=done?(c.ok?'#f0fdf4':(mine?'#fef2f2':'#fff')):'#fff';
     h+='<div class="said-ch" onclick="mastMatchSaidPick('+i+')" style="min-height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:6px;border-radius:12px;border:2.5px solid '+bd+';background:'+bg+';cursor:'+(done?'default':'pointer')+'">';
-    h+='<span style="font-size:16px;font-weight:800;color:#292524;word-break:break-word;pointer-events:none">'+(done&&c.ok?'\u2713 ':'')+esc(c.text)+'</span>';
+    h+='<span class="tf" style="font-size:16px;font-weight:800;color:#292524;word-break:break-word;pointer-events:none">'+(done&&c.ok?'\u2713 ':'')+esc(c.text)+'</span>';
     if(tts) h+='<button class="said-hear" onclick="mastMatchSaidHear('+i+',event)" aria-label="Hear it" style="padding:4px 12px;border-radius:999px;border:1.5px solid '+color+';background:#fff;color:'+color+';font-size:15px;cursor:pointer">\u{1F50A}</button>';
     h+='</div>';
   });
@@ -61910,7 +61957,7 @@ function _matchPairHtml(it){
   const def=mastGetDef(masteryKid,it.prompt,it.subject)||((it.answer&&it.answer!==it.prompt)?it.answer:"")||it.definition||"";   // OURWORDS
   // Rendered RAW like everywhere else in the app — prompts/defs carry markup (<u> for the
   // rule-deck target word, .mast-hl spans); escaping showed literal "<u>" on the tiles.
-  if(def) return '<span style="font-size:11.5px;font-weight:600;line-height:1.35;pointer-events:none;word-break:break-word">'+String(def).slice(0,120)+'</span>';
+  if(def) return '<span class="tf" style="font-size:11.5px;font-weight:600;line-height:1.35;pointer-events:none;word-break:break-word">'+String(def).slice(0,120)+'</span>';
   return null;
 }
 // Same-pair mode: any tile-able visual counts, glyphs included — two "B" cards to find
@@ -61959,7 +62006,7 @@ function mastMatchStart(deck){
       tiles.push({pid:it.id,matched:false,miss:false,up:false,html:v});
       tiles.push({pid:it.id,matched:false,miss:false,up:false,html:v});
     } else {
-      tiles.push({pid:it.id,matched:false,miss:false,up:false,isPrompt:true,html:'<span style="font-size:'+((it.prompt||"").length<=4?26:15)+'px;font-weight:800;color:#c2410c;pointer-events:none;word-break:break-word">'+it.prompt+'</span>'});
+      tiles.push({pid:it.id,matched:false,miss:false,up:false,isPrompt:true,html:'<span class="tf" style="font-size:'+((it.prompt||"").length<=4?26:15)+'px;font-weight:800;color:#c2410c;pointer-events:none;word-break:break-word">'+it.prompt+'</span>'});
       tiles.push({pid:it.id,matched:false,miss:false,up:false,html:_matchPairHtml(it)});
     }
   });
@@ -62176,6 +62223,83 @@ function mastMatchLogResult(){
   _mastRe();
 }
 
+// TILEFIT_START — 🔠 every answer square shows its whole word (her words 2026-11-10: "in all the games the options after say it the
+// words wrap and dont finish in the square and it doesnt look great could we make this look more professional either shrink the words
+// to fit or another option you could see fit"). One shared rule for every text tile in the games, the practice panel, Memory flip,
+// Pick it and the "I said it → pick" choices: a word is never broken mid-word, never clipped, never ellipsized (the kid has to read
+// it to answer). Phrases wrap only at spaces.
+//   · CSS first pass: a tile's text element carries class "tf" → no mid-word break, no hyphens, no ellipsis (!important, so it wins
+//     over each game's own overflow-wrap). Nothing else about a game's look changes.
+//   · Shrink to fit: tileFitSoon() (called once by each tile render site, tag // TILEFIT) queues ONE fit pass as a microtask — it runs
+//     right after the caller drops the HTML into the page and BEFORE the browser paints, so nothing flashes. Each .tf steps its
+//     font-size down (×0.9 a step) from its own size to a floor of TILEFIT_FLOOR (60%) of it, stopping at the first size that fits.
+//   · A tile keeps its own slot: its min-width is set to 0 first, so an unbroken long word can't quietly widen the grid column and
+//     push the next choice off the screen (seen at phone width in the scratch check) — the word shrinks instead.
+//   · Still too big at the floor (one very long word): the tile grows (.tf-grow — taller, and wider by just that word) instead of
+//     cutting the word; its neighbours are re-fitted to the space left. A slightly bigger tile beats a cut word.
+//   · Idempotent and cheap: a tile already fitted at its current width is skipped; a resize / a web font arriving re-fits only what
+//     changed. A hidden tile (width 0) waits for its next render. No database writes, nothing stored.
+const TILEFIT_FLOOR=0.6;
+const TILEFIT_CSS='.tf{overflow-wrap:normal!important;word-break:keep-all!important;-webkit-hyphens:none!important;hyphens:none!important;white-space:normal!important;text-overflow:clip!important;max-width:100%;min-width:0}'+
+  '.tf-grow{overflow:visible!important;aspect-ratio:auto!important;height:auto!important;min-width:min-content!important}';
+// PURE: the sizing loop. base → floor in ×0.9 steps (0.5 px grain); fits(size) applies a size and says whether the tile holds it.
+// Returns the first size that fits, or the floor with fit:false. Never goes below the floor.
+function tileFitSize(base,floor,fits){
+  base=+base||0; floor=Math.min(base,Math.max(0,+floor||0));
+  let s=base;
+  if(fits(s)) return {size:s,fit:true};
+  while(s>floor){
+    s=Math.max(floor,Math.floor(s*0.9*2)/2);
+    if(fits(s)) return {size:s,fit:true};
+  }
+  return {size:floor,fit:false};
+}
+function _tfCss(){
+  try{ if(typeof document==="undefined"||!document.head||document.getElementById("tf-css")) return;
+    const s=document.createElement("style"); s.id="tf-css"; s.textContent=TILEFIT_CSS; document.head.appendChild(s); }catch(e){}
+}
+// one text element in its tile (the .tf-box ancestor if a site marks one, else the parent)
+function _tfBox(el){ return (el.closest&&el.closest(".tf-box"))||el.parentElement; }
+function _tfOne(el,force){
+  const box=_tfBox(el); if(!box) return;
+  const w=box.clientWidth; if(!w) return;   // hidden — fitted on its next render
+  if(!force&&el.getAttribute("data-tf-w")===String(w)) return;   // already fitted at this width
+  if(el.getAttribute("data-tf-fs0")==null) el.setAttribute("data-tf-fs0",el.style.fontSize||"");
+  el.style.fontSize=el.getAttribute("data-tf-fs0");   // back to the site's own size (clamp / length class) before measuring
+  if(box.classList.contains("tf-grow")){ box.classList.remove("tf-grow"); box.style.minHeight=box.getAttribute("data-tf-mh0")||""; }
+  const base=parseFloat(getComputedStyle(el).fontSize)||16, h0=box.clientHeight;
+  const over=()=>el.scrollWidth>el.clientWidth+1||box.scrollWidth>box.clientWidth+1||box.scrollHeight>box.clientHeight+1;
+  const r=tileFitSize(base,base*TILEFIT_FLOOR,s=>{ el.style.fontSize=s+"px"; return !over(); });
+  if(r.size===base) el.style.fontSize=el.getAttribute("data-tf-fs0");
+  if(!r.fit){ if(box.getAttribute("data-tf-mh0")==null) box.setAttribute("data-tf-mh0",box.style.minHeight||""); box.style.minHeight=h0+"px"; box.classList.add("tf-grow"); }
+  el.setAttribute("data-tf-w",String(box.clientWidth));
+}
+function tileFit(root,force){
+  if(typeof document==="undefined") return;
+  _tfCss();
+  const r=root||document; if(!r.querySelectorAll) return;
+  const els=Array.prototype.slice.call(r.querySelectorAll(".tf"));
+  els.forEach(el=>{ const b=_tfBox(el); if(b&&b.style.minWidth!=="0px") b.style.minWidth="0px"; });   // every tile keeps its slot (writes only)
+  els.forEach(el=>{ try{ _tfOne(el,!!force); }catch(e){} });
+  els.forEach(el=>{ try{ _tfOne(el,false); }catch(e){} });   // a grown tile squeezed its neighbours → re-fit only those whose width moved
+}
+let _tfPending=false;
+function tileFitSoon(){
+  if(_tfPending||typeof document==="undefined") return;
+  _tfPending=true;
+  const run=()=>{ _tfPending=false; try{ tileFit(document); }catch(e){} };
+  if(typeof queueMicrotask==="function") queueMicrotask(run); else Promise.resolve().then(run);
+  if(typeof requestAnimationFrame==="function") requestAnimationFrame(()=>{ try{ tileFit(document); }catch(e){} });   // a render inserted a beat later
+}
+_tfCss();
+try{
+  if(typeof window!=="undefined"&&window.addEventListener&&typeof document!=="undefined"){
+    let _tfRaf=false;
+    window.addEventListener("resize",()=>{ if(_tfRaf||typeof requestAnimationFrame!=="function") return; _tfRaf=true; requestAnimationFrame(()=>{ _tfRaf=false; try{ tileFit(document); }catch(e){} }); });
+    if(document.fonts&&document.fonts.addEventListener) document.fonts.addEventListener("loadingdone",()=>{ try{ tileFit(document,true); }catch(e){} });   // Fraunces arriving changes every width
+  }
+}catch(e){}
+// TILEFIT_END
 // WHICHONE_START — 👆 "Which one?" (her yes 2026-10-23; PLAN_practice_games_2026-10-23.md build #2).
 // The first truly solo game for a pre-reader (Julian, Pre-K): the app SAYS a card's name, three big
 // pictures come up, he taps the one he heard. Built on the Drills "Show me" pick-3 pieces (_smTileVis
@@ -62382,6 +62506,7 @@ function whichLogResult(){
   _mastRe();
 }
 function buildWhichHtml(color){
+  if(typeof tileFitSoon==="function") tileFitSoon();   // TILEFIT
   const q=s=>String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");
   let h='<style>.which-tile{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:20px;border:3px solid #e2ddd6;background:#fff;cursor:pointer;overflow:hidden;transition:transform .25s,opacity .2s;-webkit-tap-highlight-color:transparent}'+
     '.which-tile .which-vis{transform:scale(1.15);pointer-events:none}@media(min-width:560px){.which-tile .which-vis{transform:scale(1.7)}}'+
@@ -62435,7 +62560,7 @@ function buildWhichHtml(color){
     (t?t.tiles:[]).forEach((pid,ti)=>{
       const it=items.find(x=>x&&x.id===pid);
       const cls='which-tile'+(t.wrong[pid]?' which-wrong':'')+(st.grow===ti?' which-grow':'');
-      if(ans){ const bk=_whichBack(it); h+='<div class="'+cls+'" role="button" aria-label="Answer '+(ti+1)+'" onclick="whichTap('+ti+')"><span class="which-ans" style="font-size:'+(bk.length<=3?'clamp(30px,9vw,60px)':bk.length<=7?'clamp(22px,6vw,40px)':bk.length<=13?'clamp(16px,4.2vw,28px)':'clamp(13px,3.4vw,21px)')+'">'+esc(bk)+'</span></div>'; return; }
+      if(ans){ const bk=_whichBack(it); h+='<div class="'+cls+'" role="button" aria-label="Answer '+(ti+1)+'" onclick="whichTap('+ti+')"><span class="which-ans tf" style="font-size:'+(bk.length<=3?'clamp(30px,9vw,60px)':bk.length<=7?'clamp(22px,6vw,40px)':bk.length<=13?'clamp(16px,4.2vw,28px)':'clamp(13px,3.4vw,21px)')+'">'+esc(bk)+'</span></div>'; return; }
       h+='<div class="'+cls+'" role="button" aria-label="Picture '+(ti+1)+'" onclick="whichTap('+ti+')"><span class="which-vis">'+(_smTileVis(it)||'')+'</span></div>';
     });
     h+='</div></div>';
@@ -62504,6 +62629,7 @@ function gameLogRound(st,pre){
   if(typeof db!=="undefined"&&db&&!(typeof _dryRun==="function"&&_dryRun())){
     try{ db.ref("mastery/gameLog/"+kid+"/"+day).push(e); }catch(err){}   // append-only push — never a whole-node set
   }
+  if(typeof cpPtsGame==="function") cpPtsGame(kid,e);   // ⭐ CPPOINTS: a judged round on the Envirothon decks → 0–2 stars (the class site's kid only; false everywhere else)
   return e;
 }
 // 🎯 MATCHLOG (PLAN_scores_page_2026-11-03.md §4 #6, 2026-11-08): Match and Memory flip kept a round only on "Save to Scores"
@@ -62789,6 +62915,7 @@ function mpFinish(U){
 function mpClose(){ const U=mpUI, early=!!(U&&U.phase==="play"); if(U&&U.phase==="play"&&U.log.length) mpFinish(U); mpUI=null; const ov=(typeof document!=="undefined")&&document.getElementById("mp-panel"); if(ov) ov.remove(); try{ if(typeof renderAll==="function") renderAll(); }catch(e){} try{ if(typeof adPartClosed==="function") adPartClosed("cards",{early:early}); }catch(e){} }   // ✅ AFTERDRILL: on to what's next
 function mpRender(){
   if(typeof document==="undefined") return;
+  if(typeof tileFitSoon==="function") tileFitSoon();   // TILEFIT
   const U=mpUI; if(!U){ const o=document.getElementById("mp-panel"); if(o) o.remove(); return; }
   const E=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   const nm=(typeof cap==="function")?cap(U.kid):U.kid, color="#7c3aed";
@@ -62815,7 +62942,7 @@ function mpRender(){
     }
     h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">';
     c.tiles.forEach((pid,ti)=>{ const t=items.find(x=>x&&x.id===pid), cls='mp-tile'+(c.wrong[pid]?' mp-wrong':'')+(U.grow===ti?' mp-grow':'');
-      if(ans){ const bk=(typeof _whichBack==="function")?_whichBack(t):String((t&&t.answer)||""); h+='<div class="'+cls+'" role="button" aria-label="Answer '+(ti+1)+'" onclick="mpTap('+ti+')"><span class="mp-ans" style="font-size:'+(bk.length<=3?'clamp(28px,8vw,54px)':bk.length<=7?'clamp(20px,5.5vw,36px)':'clamp(14px,4vw,24px)')+'">'+E(bk)+'</span></div>'; }
+      if(ans){ const bk=(typeof _whichBack==="function")?_whichBack(t):String((t&&t.answer)||""); h+='<div class="'+cls+'" role="button" aria-label="Answer '+(ti+1)+'" onclick="mpTap('+ti+')"><span class="mp-ans tf" style="font-size:'+(bk.length<=3?'clamp(28px,8vw,54px)':bk.length<=7?'clamp(20px,5.5vw,36px)':'clamp(14px,4vw,24px)')+'">'+E(bk)+'</span></div>'; }
       else h+='<div class="'+cls+'" role="button" aria-label="Picture '+(ti+1)+'" onclick="mpTap('+ti+')"><span class="mp-vis">'+((typeof _smTileVis==="function"&&_smTileVis(t))||'')+'</span></div>'; });
     h+='</div>';
   } else {
@@ -63202,6 +63329,7 @@ function _gkResume(){
 // GAMEKID_END
 
 function buildMatchHtml(color){
+  if(typeof tileFitSoon==="function") tileFitSoon();   // TILEFIT
   let h='<div class="ha-nosel" style="padding:4px 14px 20px">';
   const decks=mastMatchDecks();
   if(!decks.length){
@@ -66121,7 +66249,8 @@ function mastSidesPaint(wrap,justLit){
 // picture — mastery/<kid>_settings/count_emoji, Mom picks it on the kid's row in the Math Fluency Path
 // unit. Unset → 🦕, so Julian's cards look exactly as before. The intro hint names the picture.
 const MAST_COUNT_PICS=[["\u{1F995}","dinosaurs"],["\u{1F697}","cars"],["\u{1F69C}","tractors"],["\u{1F436}","puppies"],["\u{1F431}","kitties"],["\u{1F984}","unicorns"],
-  ["\u{1F41E}","ladybugs"],["\u{1F98B}","butterflies"],["\u{2B50}","stars"],["\u{1F34E}","apples"],["\u{26BD}","balls"],["\u{1F680}","rockets"]];
+  ["\u{1F41E}","ladybugs"],["\u{1F98B}","butterflies"],["\u{2B50}","stars"],["\u{1F34E}","apples"],["\u{26BD}","balls"],["\u{1F680}","rockets"],
+  ["\u{1F988}","sharks"]];   // COUNTPIC_SHARK: her ask 2026-11-10 "could we add sharks to the mojis to count" (the shark Pre-K notebook counts them too)
 function mastCountEmoji(kid){ const s=(typeof masteryData!=="undefined"&&masteryData[(kid||masteryKid)+"_settings"])||{}; return s.count_emoji||"\u{1F995}"; }
 function mastCountWord(kid){ const e=mastCountEmoji(kid); const p=MAST_COUNT_PICS.find(x=>x[0]===e); return p?p[1]:"pictures"; }
 function mastSetCountEmoji(kid,e){
@@ -66407,7 +66536,7 @@ function mastRestoreLog(){
 // mastSaveResults' "log another" merge.
 function mastRescueStaleLog(s){
   const _n=Object.keys(s.scores).length;
-  const _kid=masteryKid.charAt(0).toUpperCase()+masteryKid.slice(1);
+  const _kid=cap(masteryKid); // KIDNAME_ROSTER
   if(!confirm("Found an UNSAVED drill session for "+_kid+" from "+s.date+" ("+_n+" cards marked).\n\nSave it to that date's scores? (Cancel throws it away.)")){ mastClearLogPersist(); return; }
   let items=masteryData[masteryKid]||[];
   if(!Array.isArray(items)) items=Object.values(items);
@@ -67631,10 +67760,18 @@ function ckRenderHtml(kid,session){
     h+='<div style="text-align:center;font-size:12px;color:#0f766e;font-weight:800;text-transform:uppercase;letter-spacing:.05em">'+ckEsc(it.fam)+'</div>';
     // Her catch 2026-10-04: the answer must never sit on screen while the kid answers — it's on the
     // flip, like the study cards: Mom taps the fact to see it, and it hides again for the next fact.
+    const _pic=(typeof ckPicFirst==="function")?ckPicFirst(c,ckRun.kid):null;   // CKPIC: a picture deck shows its picture, the name on the flip
+    if(_pic){
+      h+='<div onclick="ckFlip()" style="cursor:pointer;text-align:center;margin:12px 0 4px;min-height:120px;display:flex;align-items:center;justify-content:center">'+_pic+'</div>';
+      h+=(ckRun.show
+        ?'<div onclick="ckFlip()" style="cursor:pointer;text-align:center;font-size:28px;color:#0f766e;font-weight:800">'+ckEsc(String(c.name))+(ans?' <span style="font-size:15px">= '+ckEsc(ans)+'</span>':'')+'</div>'
+        :'<div onclick="ckFlip()" style="cursor:pointer;text-align:center;font-size:12px;color:#99a3ad;font-weight:700">tap the picture to check the name</div>');
+    } else {
     h+='<div onclick="ckFlip()" style="cursor:pointer;text-align:center;font-size:64px;font-weight:800;color:#111827;margin:12px 0 4px;font-family:\'DM Sans\',sans-serif">'+ckEsc(String(c.name).replace(/([×÷+\-])/g," $1 "))+'</div>';
     if(ans) h+=(ckRun.show
       ?'<div onclick="ckFlip()" style="cursor:pointer;text-align:center;font-size:15px;color:#0f766e;font-weight:800">= '+ckEsc(ans)+'</div>'
       :'<div onclick="ckFlip()" style="cursor:pointer;text-align:center;font-size:12px;color:#99a3ad;font-weight:700">tap the fact to check the answer</div>');
+    }
     h+='<div id="ck-timer" style="text-align:center;font-size:12px;color:var(--muted);margin-top:4px">⏱ 0 s · over 3 seconds = took a moment</div>';
     h+='<div style="display:flex;gap:10px;margin-top:16px">';
     h+='<button onclick="ckTap(\'c\')" style="'+bt("#16a34a","#f0fdf4")+'">✓ Got it</button>';
@@ -67681,6 +67818,27 @@ function ckMomStart(kid,sid){
   if(typeof kitPinGate==="function") kitPinGate(go,"Mom or Dad types their code to run the check-up on this screen."+(spell?" "+CK_SPELL_HOWTO:""),{dad:true}); else go();   // DADPIN
 }
 function ckRelock(){ if(typeof kcCkRelock==="function") kcCkRelock(); if(!ckKidUnlock) return; ckKidUnlock=false; if(typeof haMomOff==="function") haMomOff(); else if(typeof adminPinUnlocked!=="undefined") adminPinUnlocked=false; if(typeof renderAll==="function") renderAll(); }
+// CKPIC_START — 🩺 the check-up shows the PICTURE for a picture deck (her report 2026-11-10: "i did a basic shapes
+// check up for 3d and it writes the word but doesnt show the picture for mom to say if it is right or not … they dont
+// have the shapes pictures this should go to all families"). The card used to print only c.name (64px), so a Shapes /
+// Colors / Counting / unit-picture card showed its answer and no picture. Now: when the deck's card has a picture
+// (mastItemVis — the same one the study cards draw), the picture is the front, Mom asks "what is it?", and the name
+// sits on the flip with the answer (her 10/4 rule: the answer never on screen while the kid answers). Letters, words
+// and math facts have no picture and look exactly as before. Read-only: no new writes.
+function ckPicFirst(c,kid){
+  try{
+    const it={subject:c&&c._dk||"",prompt:String(c&&c.name||""),id:"ck_"+ckSlug(c&&c.name)};
+    const sub=it.subject;
+    const picDeck=sub==="Shapes"||sub==="Colors"||sub==="Counting"||(typeof MAST_ANIMAL_EMOJI!=="undefined"&&!!MAST_ANIMAL_EMOJI[it.prompt])||(typeof mastLiveVisual==="function"&&!!mastLiveVisual(it,kid));
+    if(!picDeck||typeof mastItemVis!=="function") return null;
+    let pic=sub==="Shapes"&&typeof mastShapeVis==="function"?mastShapeVis(it.prompt,120):mastItemVis(it);
+    if(!pic) return null;
+    if(sub==="Colors") pic=String(pic).replace(/width:36px;height:36px/,"width:110px;height:110px");
+    if(!/^</.test(String(pic).trim())) pic='<span style="font-size:96px;line-height:1.1">'+pic+'</span>';   // an emoji
+    return pic;
+  }catch(e){ return null; }
+}
+// CKPIC_END
 function ckFlip(){ if(!ckRun) return; ckRun.show=!ckRun.show; ckRe(); }
 function ckStop(){ ckRun=null; if(ckTimerIv){ clearInterval(ckTimerIv); ckTimerIv=null; } ckRe(); ckRelock(); }
 function ckTap(r,name){
@@ -69593,16 +69751,28 @@ const TRAIN_TRAY={3:5,4:10,5:26}, TRAIN_FAINT_ROUNDS=2, TRAIN_SNAP=0.8;   // hoo
     ["4","Level 4","Hook up ten \u{2014} the same with 10 cars."],
     ["5","Level 5","The whole train \u{2014} all 26 cars onto one long track; the letters show faintly for the first two rounds."]); })();
 const TRAIN_HZ={C4:261.63,D4:293.66,E4:329.63,F4:349.23,G4:392.00,A4:440.00};
-// The ABC song on the Twinkle Twinkle melody — s: what is sung, n: the note, b: beats, k: "L" a letter (lit + popped on its note), "c" the same letter
-// held on (W's "dou-ble-u"), "w" a word of the last two lines (the whole train lit, the words shown).
+// ABCTRAIN_SONG_START — 🚂 the W–X–Y–"and"–Z stretch of the ABC song (her report 2026-11-10: "when it sings the alphabet midi when
+// it gets to w it messes up w is two beats and then it should go to x y and pause for the word and before going to z and its messing
+// up pretty glitchy here"). Was: W on three notes (G G F — three rows, the W re-popped on each), X on F, Y on E, then "and" (E) marked
+// as a last-lines word — the whole train lit, the strip slid to the middle under "Now I know my A B C's" a line early, then slid back
+// for Z. Now, the same notes and beats (G G F F E E D-): W held two beats (G G, popped once), X on F, Y on F, then two beats for "and"
+// (E E — no car lit, the train holds still on Y, the word "and" shows), then Z held on D. A held note ("c") changes nothing on screen.
+// The ABC song on the Twinkle Twinkle melody — s: what is sung, n: the note, b: beats, k: "L" a letter (lit + popped on its note), "c" the
+// note before, held on (W's second beat, "and"'s second beat), "a" the word "and" (no car lit), "w" a word of the last two lines (the whole
+// train lit, the words shown).
 const TRAIN_SONG=[
   {s:"A",n:"C4",b:1,k:"L"},{s:"B",n:"C4",b:1,k:"L"},{s:"C",n:"G4",b:1,k:"L"},{s:"D",n:"G4",b:1,k:"L"},{s:"E",n:"A4",b:1,k:"L"},{s:"F",n:"A4",b:1,k:"L"},{s:"G",n:"G4",b:2,k:"L"},
   {s:"H",n:"F4",b:1,k:"L"},{s:"I",n:"F4",b:1,k:"L"},{s:"J",n:"E4",b:1,k:"L"},{s:"K",n:"E4",b:1,k:"L"},{s:"L",n:"D4",b:.5,k:"L"},{s:"M",n:"D4",b:.5,k:"L"},{s:"N",n:"D4",b:.5,k:"L"},{s:"O",n:"D4",b:.5,k:"L"},{s:"P",n:"C4",b:2,k:"L"},
   {s:"Q",n:"G4",b:1,k:"L"},{s:"R",n:"G4",b:1,k:"L"},{s:"S",n:"F4",b:2,k:"L"},{s:"T",n:"E4",b:1,k:"L"},{s:"U",n:"E4",b:1,k:"L"},{s:"V",n:"D4",b:2,k:"L"},
-  {s:"W",n:"G4",b:1,k:"L"},{s:"W",n:"G4",b:1,k:"c"},{s:"W",n:"F4",b:1,k:"c"},{s:"X",n:"F4",b:1,k:"L"},{s:"Y",n:"E4",b:1,k:"L"},{s:"and",n:"E4",b:1,k:"w"},{s:"Z",n:"D4",b:2,k:"L"},
+  {s:"W",n:"G4",b:1,k:"L"},{s:"W",n:"G4",b:1,k:"c"},{s:"X",n:"F4",b:1,k:"L"},{s:"Y",n:"F4",b:1,k:"L"},{s:"and",n:"E4",b:1,k:"a"},{s:"and",n:"E4",b:1,k:"c"},{s:"Z",n:"D4",b:2,k:"L"},
   {s:"Now",n:"C4",b:1,k:"w"},{s:"I",n:"C4",b:1,k:"w"},{s:"know",n:"G4",b:1,k:"w"},{s:"my",n:"G4",b:1,k:"w"},{s:"A",n:"A4",b:1,k:"w"},{s:"B",n:"A4",b:1,k:"w"},{s:"C’s",n:"G4",b:2,k:"w"},
   {s:"Next",n:"F4",b:1,k:"w"},{s:"time",n:"F4",b:1,k:"w"},{s:"won’t",n:"E4",b:1,k:"w"},{s:"you",n:"E4",b:1,k:"w"},{s:"sing",n:"D4",b:1,k:"w"},{s:"with",n:"D4",b:1,k:"w"},{s:"me?",n:"C4",b:2,k:"w"}
 ];
+// PURE: the row a note belongs to — a held note ("c") is its first note's (W's second beat is W, "and"'s second beat is "and")
+function _trainSongHead(i){ while(i>0&&TRAIN_SONG[i]&&TRAIN_SONG[i].k==="c") i--; return i; }
+// PURE: the car the train sits on for a note — a letter its own; "and" the letter before it (Y), so the train holds still till Z
+function _trainSongCar(i){ for(i=_trainSongHead(i);i>=0;i--){ const x=TRAIN_SONG[i]; if(x&&x.k==="L") return x.s; } return "A"; }
+// ABCTRAIN_SONG_END
 const TRAIN_LINE_A="Now I know my A B C’s", TRAIN_LINE_B="Next time won’t you sing with me?";
 // The voice's name for each letter — spelled, so no engine says "capital A" (her report 2026-11-08). The screen still shows "A".
 const TRAIN_LETTER_NAMES={A:"ay",B:"bee",C:"see",D:"dee",E:"ee",F:"eff",G:"gee",H:"aitch",I:"eye",J:"jay",K:"kay",L:"el",M:"em",N:"en",O:"oh",P:"pee",Q:"cue",R:"are",S:"ess",T:"tee",U:"you",V:"vee",W:"double-you",X:"ex",Y:"why",Z:"zee"};
@@ -69854,7 +70024,7 @@ function _trainLeft(st){ if(typeof document!=="undefined"&&!document.getElementB
 const TRAIN_CAR_W=80, TRAIN_GAP=8, TRAIN_ENG_W=96;
 function trainSongShift(i){
   if(i==null||i<0) return "translateX(60vw)";
-  const x=TRAIN_SONG[i], L=(!x||x.k==="w")?"M":x.s, ci=TRAIN_ABC.indexOf(L);
+  const x=TRAIN_SONG[i], L=(!x||x.k==="w")?"M":_trainSongCar(i), ci=TRAIN_ABC.indexOf(L);   // ABCTRAIN_SONG: "and" holds on Y
   return "translateX(-"+(TRAIN_ENG_W+TRAIN_GAP+ci*(TRAIN_CAR_W+TRAIN_GAP)+TRAIN_CAR_W/2)+"px)";
 }
 function trainSing(st){
@@ -69877,6 +70047,7 @@ function _trainSongPaint(st){
   try{
     const strip=document.getElementById("trn-strip"), pop=document.getElementById("trn-pop"); if(!strip) return;
     const i=st.song.i, x=trainSongTimes()[i];
+    if(x&&x.k==="c") return;   // ABCTRAIN_SONG: a held note (W's second beat, "and"'s second) changes nothing on screen — no re-pop
     strip.style.transition="transform .45s ease-in-out";
     strip.style.transform=trainSongShift(i);
     const lit=_trainLit(i);
@@ -69885,9 +70056,10 @@ function _trainSongPaint(st){
   }catch(e){}
 }
 // PURE: what is lit at note i — a letter, "*" (the whole train: the last two lines and after), "" (before the song)
-function _trainLit(i){ if(i==null||i<0) return ""; const x=TRAIN_SONG[i]; return (!x||x.k==="w")?"*":x.s; }
+function _trainLit(i){ if(i==null||i<0) return ""; const x=TRAIN_SONG[_trainSongHead(i)]; return (!x||x.k==="w")?"*":x.k==="a"?"":x.s; }   // ABCTRAIN_SONG: "and" lights no car
 function _trainPopHtml(i){
-  const x=TRAIN_SONG[i]; if(!x) return "";
+  const x=TRAIN_SONG[_trainSongHead(i)]; if(!x) return "";
+  if(x.k==="a") return '<span class="trn-popw">'+x.s+'</span>';   // ABCTRAIN_SONG: the word "and", between Y and Z
   if(x.k==="w") return '<span class="trn-popw">'+(i<TRAIN_SONG.findIndex(y=>y.s==="Next")?TRAIN_LINE_A:TRAIN_LINE_B)+'</span>';
   return '<span class="trn-popl">'+x.s+'<small>'+x.s.toLowerCase()+'</small></span>';
 }
@@ -70194,6 +70366,7 @@ function gameJudgeMom(right){ const t=_gjTurn("mom"); if(!t||!t.gj.momShow||!_gj
 // ── under the card ──
 function gameJudgeHtml(turn,color,lock){
   const gj=turn&&turn.gj; if(!gj) return '';
+  if(typeof tileFitSoon==="function") tileFitSoon();   // TILEFIT
   if(!gj.done) gameJudgeCur=turn;
   const E=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   const done=gj.done, off=!!lock||done, btn='padding:16px 30px;border-radius:999px;border:none;font-size:19px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif;-webkit-tap-highlight-color:transparent';
@@ -70205,7 +70378,7 @@ function gameJudgeHtml(turn,color,lock){
     gj.ch.forEach((c,i)=>{
       const mine=gj.picked===i, bd=done?(c.ok?'#16a34a':(mine?'#dc2626':'#e2ddd6')):'#e2ddd6', bg=done?(c.ok?'#f0fdf4':(mine?'#fef2f2':'#fff')):'#fff';
       h+='<div class="said-ch" role="button" aria-label="'+E(c.text)+'"'+(off?'':' onclick="gameJudgePick('+i+')"')+' style="min-height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:8px;border-radius:16px;border:3px solid '+bd+';background:'+bg+';cursor:'+(off?'default':'pointer')+'">';
-      h+='<span style="font-family:\'Fraunces\',serif;font-size:22px;font-weight:800;color:#292524;overflow-wrap:anywhere;pointer-events:none">'+(done&&c.ok?'✓ ':'')+E(c.text)+'</span>';
+      h+='<span class="tf" style="font-family:\'Fraunces\',serif;font-size:22px;font-weight:800;color:#292524;overflow-wrap:anywhere;pointer-events:none">'+(done&&c.ok?'✓ ':'')+E(c.text)+'</span>';
       if(tts) h+='<button class="said-hear" onclick="gameJudgeHear('+i+',event)" aria-label="Hear it" style="padding:4px 14px;border-radius:999px;border:1.5px solid '+color+';background:#fff;color:'+color+';font-size:16px;cursor:pointer">\u{1F50A}</button>';
       h+='</div>';
     });
@@ -70335,6 +70508,7 @@ function gameLikeListHtml(kid,key){
 }
 // GAMELIKE_END
 // ⇢ games.js: JIGSAW
+// ⇢ games.js: JEOROUND
 // STUDYCOUNTS_START — 📚 Study sessions count everywhere (F3 of PLAN_learning_system, her yes 2026-10-24). A study
 // sitting logs to mastery/studyLog/<kid>/<sid>/<yyyymmdd>, but Scores, the Weekly report, sprint readiness (the ≥ 90%
 // untimed check) and the notebook's 🔁 review flags read only the drill's mastery/history/<kid>/<yyyymmdd>, so Lincoln —
@@ -70546,7 +70720,7 @@ function ckStartHtml(u,kid,ks){
   const lopt=(cur,blank,L)=>'<option value="">'+blank+'</option>'+(L||lessons).map(n=>'<option value="'+n+'"'+(String(cur)===String(n)?' selected':'')+'>Lesson '+n+'</option>').join('');
   const g=ckGradeOf(kid), sug=ckSuggest(kid);
   let h='<div style="margin-top:6px;border:1.5px solid #99f6e4;border-radius:11px;padding:9px 11px;background:#f0fdfa;font-size:11px;color:#134e4a;font-weight:700">';
-  h+='<div style="font-size:12px;font-weight:800;margin-bottom:6px">🩺 New check-up for '+e(kid.charAt(0).toUpperCase()+kid.slice(1))+'</div>';
+  h+='<div style="font-size:12px;font-weight:800;margin-bottom:6px">🩺 New check-up for '+e(cap(kid))+'</div>'; // KIDNAME_ROSTER
   h+='<div style="display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center">';
   h+='<span>Level</span><span><select style="'+sel+'" onchange="ckStartSet(\'level\',this.value)">'+levels.map(s=>'<option value="'+s.n+'"'+(s.n===F.level?' selected':'')+'>'+e(s.label)+'</option>').join('')+'</select>'
     +' through <select style="'+sel+'" onchange="ckStartSet(\'levelTo\',this.value)">'+levels.filter(s=>s.n>=F.level).map(s=>'<option value="'+s.n+'"'+(s.n===(F.levelTo||F.level)?' selected':'')+'>'+e(s.label)+'</option>').join('')+'</select></span>';   // CKSPAN
@@ -70834,6 +71008,7 @@ function mstCardHtml(session,card){
     t+='<div class="mast-flip-def">'+mstEsc(def)+'</div>';
     if(!mstChecked){
       t+='<input id="mst-type-in" type="text" value="'+mstEsc(mstTyped)+'" oninput="mstTyped=this.value" onkeydown="if(event.key===\'Enter\'){event.preventDefault();mstCheckTyped();}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="der / die / das \u2026" style="margin-top:12px;width:100%;max-width:320px;box-sizing:border-box;padding:12px 14px;border-radius:12px;border:2px solid #c4b5fd;font-size:20px;text-align:center;font-family:\'DM Sans\',sans-serif">';
+      if(typeof typeKeysRowHtml==="function") t+=typeKeysRowHtml("mst-type-in",typeKeysForDeck(card.deck,"name"));   // ⌨️ TYPEKEYS: the deck's own special letters
       t+='<button onclick="mstCheckTyped()" style="margin-top:12px;min-height:48px;padding:0 32px;border-radius:14px;border:none;background:#7c3aed;color:#fff;font-size:16px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">Check</button>';
     } else {
       const ok=mstChecked.ok;
@@ -70919,6 +71094,7 @@ function mstTypeAnsHtml(session,card,def,lrn){
   t+='<div class="mast-slide-name">'+mstEsc(name)+'</div>';
   if(!mstChecked){
     t+='<input id="mst-typeans-in" type="text" value="'+mstEsc(mstTyped)+'" oninput="mstTyped=this.value" onkeydown="if(event.key===\'Enter\'){event.preventDefault();mstCheckTypeAns();}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="your answer" style="margin-top:12px;width:100%;max-width:320px;box-sizing:border-box;padding:12px 14px;border-radius:12px;border:2px solid #c4b5fd;font-size:22px;text-align:center;font-family:\'DM Sans\',sans-serif">';
+    if(typeof typeKeysRowHtml==="function") t+=typeKeysRowHtml("mst-typeans-in",typeKeysForDeck(card.deck,"def"));   // ⌨️ TYPEKEYS
     t+='<button onclick="mstCheckTypeAns()" style="margin-top:12px;min-height:48px;padding:0 32px;border-radius:14px;border:none;background:#7c3aed;color:#fff;font-size:16px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">Check</button>';
   } else {
     const ok=mstChecked.ok;
@@ -70939,6 +71115,103 @@ function mstCheckTypeAns(){
   _mastRe();
 }
 // MST_TYPEANS_END
+// TYPEKEYS_START — ⌨️ Keys a plain keyboard lacks, for a typed answer (her report 2026-11-10: "the decimal questions
+// will not allow me to add a . when needing to type so no way it can be right also when needing to type german words in
+// we dont always have the special characters needed could we have those added to be able to be pushed when typing").
+// (1) THE DECIMAL: the games' number pad (Go Fish, Jeopardy, Connect 4, Sure?, Kaboom — games.js) takes every card whose
+//     back is a number by GF_NUM /^[-+]?\d+([.,]\d+)?$/ — so 3.5 and -4 too — but its keys were only 1–9, 0, ⌫, ✔, so 3.5
+//     could never be typed. typeKeysPadFor(state) gives the pad a "." (or ",") and a "-" when the game's own cards'
+//     number backs use them; a deck of whole numbers keeps the pad as it was. Judging is unchanged (mstTypeAnsOk already
+//     reads 3.50 as 3.5).
+// (2) SPECIAL LETTERS: a row of letter keys under the Study session's typed-answer boxes (⌨️ Type it in German —
+//     mst-type-in, and ⌨️ Type the answer — mst-typeans-in). The letters come from the DECK, never the card: every answer
+//     in the deck is scanned for letters outside a–z (ä ö ü ß, é ñ, and ¿ ¡), deduped, the 12 most used kept, then sorted
+//     (small letters, then capitals) — the same row on every card of the deck, so it never spells or orders the answer.
+//     No such letters (English, math) → no row. A tap puts the letter at the caret, keeps the keyboard up (the key never
+//     takes focus) and fires the box's own input event, as a typed key does.
+// Writes nothing.
+const TYPEKEYS_CAP=12;
+const TYPEKEYS_NUM=/^[-+]?\d+([.,]\d+)?$/;   // the games' own "this back goes to the number pad" rule (GF_NUM …)
+// PURE: the deck's answer strings → the special letters to offer, sorted. Only the deck's list goes in — no current card.
+function typeKeysFrom(strs,cap){
+  cap=cap||TYPEKEYS_CAP; const n={};
+  (strs||[]).forEach(s=>{
+    for(const ch of String(s==null?"":s).normalize("NFC")){
+      if(ch.charCodeAt(0)<128) continue;                                  // a–z, digits, plain punctuation: every keyboard has them
+      if(!/\p{L}/u.test(ch)&&ch!=="¿"&&ch!=="¡") continue;      // letters only (and ¿ ¡) — no × ÷ ½ “ ” …
+      n[ch]=(n[ch]||0)+1;
+    }
+  });
+  let ks=Object.keys(n);
+  if(ks.length>cap) ks=ks.sort((a,b)=>(n[b]-n[a])||(a<b?-1:1)).slice(0,cap);   // the most used
+  const grp=c=>(c.toLowerCase()===c&&c.toUpperCase()!==c)?0:(c.toUpperCase()===c&&c.toLowerCase()!==c)?1:2;   // small · capital · ¿ ¡
+  return ks.sort((a,b)=>(grp(a)-grp(b))||a.localeCompare(b)||(a<b?-1:1));
+}
+// PURE: a deck's number backs → the pad's extra keys: "." / "," when a back has that decimal mark, "-" when one is negative.
+function typeKeysPadExtra(backs){
+  const nums=(backs||[]).map(b=>String(b==null?"":b).trim()).filter(b=>TYPEKEYS_NUM.test(b)), out=[];
+  if(nums.some(b=>b.indexOf(".")>=0)) out.push(".");
+  if(nums.some(b=>b.indexOf(",")>=0)) out.push(",");
+  if(nums.some(b=>b.charAt(0)==="-")) out.push("-");
+  return out;
+}
+// A game's pad extras, from every card in that game (kinds · cells · turns · jar · pile — whichever the game keeps).
+// Remembered per game state in a WeakMap, so nothing is added to the state a game parks.
+const _typeKeysPadMemo=(typeof WeakMap==="function")?new WeakMap():null;
+function typeKeysPadFor(st){
+  if(!st) return [];
+  if(_typeKeysPadMemo&&_typeKeysPadMemo.has(st)) return _typeKeysPadMemo.get(st);
+  const pids={}, add=p=>{ if(p!=null) pids[p]=1; };
+  Object.keys(st.kinds||{}).forEach(add);
+  ["cells","turns","jar"].forEach(k=>{ (Array.isArray(st[k])?st[k]:[]).forEach(x=>{ if(x) add(x.pid); }); });
+  (Array.isArray(st.pile)?st.pile:[]).forEach(add);
+  let items=(typeof masteryData!=="undefined"&&masteryData&&masteryData[st.kid])||[]; if(!Array.isArray(items)) items=Object.values(items);
+  const backs=[]; items.forEach(i=>{ if(i&&pids[i.id]) backs.push(typeof _whichBack==="function"?_whichBack(i):i.answer); });
+  const out=typeKeysPadExtra(backs);
+  if(_typeKeysPadMemo) _typeKeysPadMemo.set(st,out);
+  return out;
+}
+// The Study deck's answer strings — side "name" (⌨️ Type it: the word is typed) or "def" (⌨️ Type the answer): every bank
+// item of the deck + this sitting's new cards of the deck. Remembered for the sitting.
+let _typeKeysDeckMemo={k:null,st:null,keys:[]};
+function typeKeysForDeck(deck,side){
+  try{
+    let items=(typeof masteryData!=="undefined"&&masteryData&&masteryData[masteryKid])||[]; if(!Array.isArray(items)) items=Object.values(items);
+    const ms=(typeof mstState!=="undefined")?mstState:null, sc=(ms&&ms.cards)||{};
+    const k=[masteryKid,deck,side,items.length,Object.keys(sc).length].join("|");
+    if(_typeKeysDeckMemo.k===k&&_typeKeysDeckMemo.st===ms) return _typeKeysDeckMemo.keys;
+    const strs=[], val=c=>side==="def"?mstCardDef(c):c.name;
+    items.forEach(i=>{ if(i&&i.subject===deck) strs.push(val({id:i.id,name:i.prompt,deck:i.subject})); });
+    Object.keys(sc).forEach(x=>{ const c=sc[x]; if(c&&c.deck===deck) strs.push(val(c)); });
+    const keys=typeKeysFrom(strs);
+    _typeKeysDeckMemo={k:k,st:ms,keys:keys};
+    return keys;
+  }catch(e){ return []; }
+}
+// The key row under a typed-answer box. No keys → nothing.
+function typeKeysRowHtml(inputId,keys){
+  if(!keys||!keys.length) return "";
+  const id=String(inputId).replace(/[^\w-]/g,"");
+  let h='<div class="typekeys" role="group" aria-label="Special letters" style="display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin:10px auto 0;max-width:340px">';
+  keys.forEach(ch=>{
+    const e=String(ch).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    h+='<button type="button" tabindex="-1" data-ch="'+e+'" onpointerdown="if(event.button)return;event.preventDefault();typeKeysIns(\''+id+'\',this.dataset.ch)" onclick="if(event.detail===0)typeKeysIns(\''+id+'\',this.dataset.ch)" aria-label="'+e+'" style="min-width:44px;min-height:44px;padding:0 8px;border-radius:12px;border:2px solid #c4b5fd;background:#f5f3ff;color:#5b21b6;font-size:21px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif;touch-action:manipulation;-webkit-user-select:none;user-select:none">'+e+'</button>';
+  });
+  return h+'</div>';
+}
+// A tap: the letter goes in at the caret (replacing a selection; at the end when the box isn't focused yet), the caret
+// lands after it, the box keeps focus and hears the same input event a typed key sends (so mstTyped follows it).
+function typeKeysIns(inputId,ch){
+  const el=(typeof document!=="undefined")?document.getElementById(inputId):null;
+  if(!el||el.disabled||!ch) return;
+  const len=el.value.length, focused=(document.activeElement===el);
+  const s=(focused&&el.selectionStart!=null)?el.selectionStart:len, e=(focused&&el.selectionEnd!=null)?el.selectionEnd:s;
+  if(typeof el.setRangeText==="function") el.setRangeText(ch,s,e,"end");
+  else { el.value=el.value.slice(0,s)+ch+el.value.slice(e); try{ el.setSelectionRange(s+ch.length,s+ch.length); }catch(_){} }
+  try{ el.dispatchEvent(new Event("input",{bubbles:true})); }catch(_){}
+  try{ el.focus({preventScroll:true}); }catch(_){ el.focus(); }
+}
+// TYPEKEYS_END
 // PATPICK_START — 🎯 "Pick it": a learning-pattern step (her research plan 2026-10-23, PLAN_learning_patterns_2026-10-23.md:
 // picking from 3 is a good first-day step, and the wrong choices must be believable). The card's front as the "rec" face
 // shows it, plus three chips: the right answer and two lures from the SAME deck, chosen by the Memory game's _matchLures
@@ -70975,7 +71248,7 @@ function _mstPickChipOf(pic){
   return e=>{
     if(pic){ const v=_mstPickVis(e); return v?v+'<span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">'+mstEsc(e.card.name||"")+'</span>':null; }
     const d=String(mstCardDef(e.card)||"").trim();
-    return d?'<span style="pointer-events:none;word-break:break-word">'+mstEsc(d)+'</span>':null;
+    return d?'<span class="tf" style="pointer-events:none;word-break:break-word">'+mstEsc(d)+'</span>':null;
   };
 }
 function mstPickChips(card){
@@ -71006,6 +71279,7 @@ function mstPickOn(session,card){
   return !!mstPickChips(card);
 }
 function mstPickHtml(session,card,lrn){
+  if(typeof tileFitSoon==="function") tileFitSoon();   // TILEFIT
   const chips=mstPickChips(card)||[], name=card.name||"";
   const sel=(mstPickSel&&mstPickSel.state===mstState&&mstPickSel.key===card.key)?mstPickSel.ci:null;
   let h='<div class="mast-slide"><div class="mast-flip-wrap"><div class="mast-flip-inner"><div class="mast-flip-front">';
@@ -71259,6 +71533,7 @@ function renderMastStudy(opts){
       if(typeof cpReviewMoreHtml==="function") h+=cpReviewMoreHtml(session,pile,"start");   // 🔁 CPREVIEW: "12 of 40 reviews due — done at 12"
     }
   }
+  if(!running&&typeof cpMyClassHtml==="function") h+=cpMyClassHtml(kid,session);   // 🏫 CPMYCLASS: "My class" (class stars · Team · My scores · 🎮 just Envirothon) under his 🌿 start, his class layer in only ("" for everyone else)
   return h;
 }
 
@@ -74525,7 +74800,7 @@ function mastHmHealth(sitems){
 // Each game keeps its own mastView underneath ("match" / "which"), so the game code and any mastSetView('match')
 // caller work unchanged; "games" is the bare section (no game picked / none ready). A new game = one GAMES_LIST
 // entry. Last game per kid is kept in memory on this device only. No Firebase writes.
-function _gamesItems(k){ let it=(masteryData||{})[k]||[]; if(!Array.isArray(it)) it=Object.values(it); return it; }
+function _gamesItems(k){ let it=(masteryData||{})[k]||[]; if(!Array.isArray(it)) it=Object.values(it); if(typeof cpmcItems==="function") it=cpmcItems(k,it); return it; }   // 🏫 CPMYCLASS: his Envirothon decks only while "🎮 Games, just Envirothon" is on (the same array otherwise)
 // Pair modes ("two" word↔meaning, "same" identical cards) that give this kid at least one Match deck.
 function _gamesMatchPairs(k){
   const kk=masteryKid, keep=matchPairMode, out=[];
@@ -74658,6 +74933,7 @@ function gdKey(deck){ return String(deck==null?"":deck).replace(/[.#$\/\[\]]/g,"
 function _gdMD(){ return (typeof masteryData!=="undefined"&&masteryData)||{}; }
 function _gdCanEdit(){ return (typeof momHere==="function"&&momHere())||(typeof mastAdminPinOk!=="undefined"&&!!mastAdminPinOk); }
 function gameDeckOn(kid,game,deck){
+  if(typeof cpmcDeckOff==="function"&&cpmcDeckOff(kid,deck)) return false;   // 🏫 CPMYCLASS: "🎮 Games, just Envirothon" — every other deck off while it is on (nothing stored)
   try{ const s=_gdMD()[kid+"_settings"], G=s&&s.gameDecks, g=G&&G[gdKey(deck)]; if(!g||g[game]==null) return true; return g[game]!==false; }catch(e){ return true; }
 }
 function gameDeckSet(kid,game,deck,on){
