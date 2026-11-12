@@ -4533,6 +4533,7 @@ function initFb() {
       // showing (Mastery HQ, Editor-in-Chief cards, drill strips), not just the Mastery tab.
       if(_mastFirst){ try{ renderAllSoon(); }catch(e){} try{ if(typeof stHeal==="function") stHeal(); }catch(e){} } if(_mastFirst){ try{ if(typeof ckSpentHeal==="function") ckSpentHeal(); }catch(e){} }   // 📝 STHEAL: the records are in — the week's test cards can be checked now (live 2026-10-14: the cards arrived first, the heal waited, nothing re-ran it)
       else if(tab==="mastery"){const el=document.getElementById("content");if(el)renderMastery(el);}
+      try{ if(typeof sbBackChanged==="function"&&sbBackChanged(masteryData)&&!_mastFirst&&tab!=="mastery") renderAllSoon(); }catch(e){}   // ↩ SBREOPEN: a send-back / redo shows on every page, no reload
       try{ if(typeof reLoaded==="function") reLoaded("mastery"); }catch(e){}   // 🧠 REVIEWENGINE: the morning leveling
     });
     db.ref("config/anthropic_key").once("value",s=>{ if(s.val()) mastAIKey=s.val(); });
@@ -9700,6 +9701,7 @@ function finalizeDone(id, doneTs, score){
     if(_why){ if(typeof gwShowToast==="function") gwShowToast("⛔ Not yet — “"+_why+"” isn’t done. Lessons check off in order."); dbg("order guard blocked "+id+" ("+_why+")"); return false; } }catch(e){}
   // 📝 STTESTCARD: the lesson card unlocks when its spelling test is checked or graded
   try{ const _tg=weekData.tasks.find(x=>x.id===id); if(_tg&&typeof stLessonLock==="function"&&stLessonLock(_tg)){ if(typeof gwShowToast==="function") gwShowToast("📝 Spelling test first — then this lesson"); dbg("spelling test lock "+id); return false; } }catch(e){}
+  try{ const _tg=weekData.tasks.find(x=>x.id===id); if(_tg&&typeof sbKidLock==="function"&&sbKidLock(_tg)){ if(typeof gwShowToast==="function") gwShowToast("↩ Mom sent this back — do the study session again first"); dbg("sent-back lock "+id); return false; } }catch(e){}   // ↩ SBREOPEN
   checked[id]=doneTs; sv(WK+"_checked",checked); lastCheckedWrite=Date.now();
   manualUnchecks.delete(id);   // ✅ re-checked → cancel this session's earlier uncheck, else every FB snapshot strips it again (Makenzie AAS 4, DeWalt 2026-10-06)
   // Targeted child write — a whole-map set() here let a device with stale local state
@@ -46439,6 +46441,7 @@ function runCascade(){
   weekData.tasks.forEach(t=>{
     if(checked[t.id]) return;
     if(manualUnchecks.has(t.id)) return;
+    if(typeof sbHeld==="function"&&sbHeld(t)) return;   // ↩ SBREOPEN: sent back today — open until the redo, whatever a stale history says
     const h=histState[t.id];
     // _histOwnsCard: never "rescue" a check onto a card the record doesn't describe —
     // after an id collision a record for one kid's lesson can sit under an id now owned
@@ -69042,6 +69045,24 @@ function mstPile(kid, sid, pn, todayLog) {
       mastIsDue(item, pn) &&
       !scoredIds.has(item.id)
     );
+    // MIXONCE_START — her report 2026-11-12 (Lincoln): "on Daily Mix, it is repeating some of the cards multiple times, especially it
+    // seems like German … after it goes from the learning point, it shouldn't be doing it multiple times." Cause 1: a Both-directions
+    // twin (dir "prod", twinOf the base) has its base's deck + prompt, and the Mix has no Both directions switch of its own, so since
+    // MSTTWINMODE (10/27) the twin is drawn as the very same flip card — every logged Mix 10/26–11/04 showed 3–7 German cards twice, and
+    // the live pile for school day 217 had 6 pairs in its 60. Now the Mix takes ONE card per deck + prompt: the oldest due (the base on a
+    // tie); the other stays due and comes in a later Mix. A deck + prompt already scored in today's Mix is not drawn again (Keep going).
+    // Two live items with one prompt (duplicate data) are caught the same way. Cause 2 (a missed card back in line) is mstAnswer's. No writes.
+    const _mixKey = it => { const pr = String(it.prompt == null ? "" : it.prompt).trim(); return pr ? String(it.subject) + "|" + pr : "id:" + it.id; };   // no prompt → its own card
+    const _mixScored = new Set(log.filter(e => e && e.name != null && (e.result === "c" || e.result === "m")).map(e => String(e.deck) + "|" + String(e.name).trim()));
+    const _mixNd = x => (x.next_due == null ? -1 : x.next_due), _mixTw = x => (x.twinOf ? 1 : 0);
+    const _mixPick = {};
+    mixReviews.forEach(it => {
+      const k = _mixKey(it); if (_mixScored.has(k)) return;
+      const was = _mixPick[k];
+      if (!was || _mixNd(it) < _mixNd(was) || (_mixNd(it) === _mixNd(was) && (_mixTw(it) < _mixTw(was) || (_mixTw(it) === _mixTw(was) && _mstCmp(it.id, was.id) < 0)))) _mixPick[k] = it;
+    });
+    mixReviews = mixReviews.filter(it => _mixPick[_mixKey(it)] === it);
+    // MIXONCE_END
     // MIX_FINISH_START — her ask 2026-10-21: "he can go complete say the cap of 20 but he can keep going and those register … has to do
     // the 20 first to get to check it off and then can keep going to get his amount bottlenecking down". The Mix had no limit: every
     // graduated card lands here and all of them that are due show (Lincoln 10/21: ~36 of 96 due). Now a sitting is the oldest-due
@@ -69244,6 +69265,7 @@ function mstSittingInit(pile, session, opts) {
     const key = "r:" + item.id;
     cards[key] = { key, kind: "review", id: item.id, deck: item.subject, name: item.prompt, goods: 0, first: null, done: false };
     if (item.dir === "prod" && !!(session && session.bothWays)) cards[key].mode = "type";   // ↔ a 🇬🇧→🇩🇪 twin is typed in his own sitting — MSTTWINMODE: only while the session still has Both directions on (off → a plain flip card)
+    if (session && session.kind === "mix") cards[key].once = true;   // MIXONCE: a Daily Mix card is asked once (her rule 2026-11-12: after learning, not "multiple times")
     queue.push(key);
     counts.review++;
   });
@@ -69292,7 +69314,7 @@ function mstAnswer(state, key, ans) {
 
   if (card.kind === "review") {
     state.queue.splice(idx, 1);
-    if (ans === "good") {
+    if (ans === "good" || card.once) {   // MIXONCE: a Mix card's miss is scored ✗ (and joins the missed-card games list) — it does not go back in line
       card.done = true;
     } else {
       state.queue.push(key);
@@ -72879,6 +72901,7 @@ function mstCardHtml(session,card){
     r+='<div class="mast-flip-hint">\u{1F4A1} tap to flip back</div></div>';
     return r+'</div></div></div>';
   }
+  if(typeof mstSpellTypeOn==="function"&&mstSpellTypeOn(card)) return mstSpellTypeHtml(session,card,_lrn);   // ✍️ SPELLPRODUCE: typed, never heard-and-flipped
   if(typeof mstTilesOn==="function"&&mstTilesOn(session,card)) return mstTilesHtml(session,card,def,_lrn);   // 🔤 PATTILES (ahead of the spell-deck flip: a "tiles" day builds the word)
   if(mstIsSpellCard(card)){
     // 🔊 Spell deck: hear it, spell it out loud, flip to check — the word only on the back.
@@ -73383,6 +73406,7 @@ function renderMastStudy(opts){
       mstLockArm();   // MST_NAV: taps in the first 350 ms after this draw are swallowed
       if(typeof gameCardShown==="function") gameCardShown(card);   // ⏱ CARDSECS: the card is on screen — its clock starts at the first draw
       h+=mstCardHtml(session,card);
+      if(typeof mstSpellTypeOn==="function"&&mstSpellTypeOn(card)){ /* ✍️ SPELLPRODUCE: a typed spelling word — Check / Next live inside the card, no ✗/✓ */ } else
       if(typeof mstCopyOn==="function"&&mstCopyOn(session,card)){ /* 👀 PATCCC: Check / Next live inside the card */ } else
       if(mstCardMode(card)==="type"||(typeof mstTypeAnsOn==="function"&&mstTypeAnsOn(session,card))||(typeof mstPickOn==="function"&&mstPickOn(session,card))){   // ⌨️ MST_TYPEANS · 🎯 PATPICK
         // Check / Next live inside the card — no self-grading on a typed answer.
@@ -73655,6 +73679,7 @@ let mstTilesSt=null;   // {show, t:{word,tiles,placed,wrong,tries,done,first,fai
 function mstTilesWord(card){ return String((card&&card.name)||"").normalize("NFC").trim(); }
 function mstTilesWordOk(w){ w=String(w||""); return w.length>=2&&w.length<=SPELL_WORD_MAX&&/^\p{L}[\p{L}'’\-]*$/u.test(w); }
 function mstTilesOn(session,card){
+  if(card&&typeof mstSpellProduce==="function"){ const _sp=mstSpellProduce(card); if(_sp) return _sp==="tiles"; }   // ✍️ SPELLPRODUCE: a spell-deck word is built (learning) or typed (past learning), whatever its slot
   if(!card||card.mode!=="tiles") return false;
   if(!session||session.audio==="off") return false;   // he has to hear the word
   if(mstIsRuleCard(card)) return false;
@@ -73698,6 +73723,7 @@ function mstTilesHtml(session,card,def,lrn){
   if(clue) h+='<div class="mast-flip-def" style="font-size:20px;margin-top:6px">'+mstEsc(clue)+'</div>';
   h+='<div style="width:100%">'+spellBoardHtml(t,{color:"#7c3aed",pre:"mstTiles",msg:st.msg,lock:st.lock})+'</div>';
   if(st.lock&&st.msg==="right"&&!t.first) h+='<div style="margin-top:8px;font-size:14px;font-weight:700;color:#6d28d9">You\u{2019}ll see it again soon</div>';
+  if(st.reveal&&typeof mstSpellRevealHtml==="function") h+=mstSpellRevealHtml(t.word,"mstSpellTilesNext()");   // ✍️ SPELLPRODUCE
   return h+'</div></div></div></div>';
 }
 function mstTilesCtx(){
@@ -73730,7 +73756,9 @@ function mstTilesCheck(){
   const r=spellJudge(t);
   if(r==="again"){ try{ matchBonk(); }catch(e){} st.msg="again"; _mastRe(); mstTilesSay(c.cur); return; }
   if(r==="right"){ try{ matchDing(); }catch(e){} st.msg="right"; } else { try{ matchBonk(); }catch(e){} st.msg="fail"; }
-  st.lock=true; _mastRe();
+  st.lock=true;
+  if(r==="fail"&&typeof mstSpellProduce==="function"&&mstSpellProduce(c.cur)==="tiles"){ st.reveal=true; _mastRe(); return; }   // ✍️ SPELLPRODUCE: the word, then Next (a miss)
+  _mastRe();
   const grade=(r==="right"&&t.first)?"good":"again", tok=st, state=mstState, key=c.cur.key;
   setTimeout(function(){
     if(mstTilesSt!==tok||mstState!==state) return;   // ← Back / Quit during the beat
@@ -73741,6 +73769,78 @@ function mstTilesCheck(){
   },r==="right"?MST_TILES_BEAT_OK:MST_TILES_BEAT_MISS);
 }
 // PATTILES_END
+// SPELLPRODUCE_START — ✍️ A spelling word in a study sitting is PRODUCED, never heard-and-tapped (her ask 2026-11-12, dictated:
+//   "for Lincoln's study sessions, if it is a spelling word, he needs to either have the tiles with some of them, or he needs
+//   to type it in … him hearing it is he's just clicking through them and he's not actually learning the words"). Before, a
+//   spell-deck card (deck mode "spell": AAS Words, Spelling, SpellingYouSee) was 🔊 hear it → spell it out loud → flip →
+//   ✓ / ✗, so ✓ could be tapped without spelling anything. Now, for every kid's spell-deck cards in any 📚 study sitting:
+//   · still being learned (a new or learning card — the ⭐ Learning tag) → 🔤 Build it with letter tiles (PATTILES' own
+//     board and check, one more try after a wrong build);
+//   · past learning (a review card), or a word the tiles can't build (two words, too long) → ⌨️ type it: 🔊, a box, Check.
+//   Either way there is no ✓ / ✗ to tap: right first time = good; any wrong build or typing = again (the card goes to the
+//   back of the line, the sitting's own miss, saved by the sitting's own Save), and the word is shown after the miss with a
+//   Next → button. The word is never on screen before he has answered. A rule or picture card and every non-spelling card
+//   draw exactly as before. Writes nothing new.
+function mstSpellProduce(card){
+  if(!card||!mstIsSpellCard(card)) return "";
+  if(mstIsRuleCard(card)) return "";
+  if(typeof mstCardPic==="function"&&mstCardPic(card)) return "";
+  const w=mstTilesWord(card); if(!w) return "";
+  const lrn=card.kind==="new"||card.kind==="learning";
+  if(lrn&&typeof spellTiles==="function"&&typeof spellBoardHtml==="function"&&mstTilesWordOk(w)) return "tiles";
+  return "type";
+}
+function mstSpellTypeOn(card){ return mstSpellProduce(card)==="type"; }
+// Spelled right? Spaces at the ends and a curly vs straight apostrophe don't count; case counts only when the word has a
+// capital (a proper noun), so a capital first letter on a plain word isn't a miss.
+function mstSpellTypedOk(typed,word){
+  const n=v=>String(v==null?"":v).normalize("NFC").replace(/[‘’ʼ`´]/g,"'").replace(/\s+/g," ").trim();
+  const t=n(typed), w=n(word); if(!t||!w) return false;
+  return /\p{Lu}/u.test(w)?t===w:t.toLowerCase()===w.toLowerCase();
+}
+function mstSpellCur(){ if(!mstState) return null; try{ return mstCurrent(mstState); }catch(e){ return null; } }
+function mstSpellSayAgain(){ const c=mstSpellCur(); if(c&&c.name){ try{ mastSpeak(mstTilesWord(c),{spell:true}); }catch(e){} } }
+function mstSpellRevealHtml(word,next){
+  let h='<div style="margin-top:12px;font-size:13px;color:var(--muted);font-weight:700">The word is</div>';
+  h+='<div class="mast-slide-name" style="margin-top:2px">'+mstEsc(word)+'</div>';
+  return h+'<button onclick="'+next+'" style="margin-top:14px;min-height:52px;padding:0 36px;border-radius:14px;border:none;background:#dc2626;color:#fff;font-size:17px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">Next →</button>';
+}
+function mstSpellTilesNext(){
+  const c=mstTilesCtx(); if(!c||!c.st.reveal) return;
+  if(mstLocked()) return;   // MST_NAV: the Check tap can't land on Next
+  mstTilesSt=null; mstTap("again");
+}
+function mstSpellTypeHtml(session,card,lrn){
+  const w=mstTilesWord(card);
+  let t='<div class="mast-slide"><div class="mast-flip-wrap"><div class="mast-flip-inner"><div class="mast-flip-front">';
+  t+='<div class="mast-slide-cat">'+mstEsc(card.deck||session.name||"")+(lrn||"")+'</div>';
+  t+='<div style="display:inline-block;margin-top:2px;padding:3px 10px;border-radius:999px;background:#ede9fe;color:#6d28d9;font-size:11px;font-weight:800">⌨️ Type the word</div>';
+  t+='<button onclick="mstSpellSayAgain()" style="margin:14px 0 4px;padding:14px 30px;border-radius:999px;border:2.5px solid #4f46e5;background:#eef2ff;color:#4f46e5;font-size:26px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">\u{1F50A} Hear it</button>';
+  if(!mstChecked){
+    t+='<input id="mst-spell-in" type="text" value="'+mstEsc(mstTyped)+'" oninput="mstTyped=this.value" onkeydown="if(event.key===\'Enter\'){event.preventDefault();mstSpellTypeCheck();}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="type the word" style="margin-top:12px;width:100%;max-width:320px;box-sizing:border-box;padding:12px 14px;border-radius:12px;border:2px solid #c4b5fd;font-size:22px;text-align:center;font-family:\'DM Sans\',sans-serif">';
+    if(typeof typeKeysRowHtml==="function") t+=typeKeysRowHtml("mst-spell-in",typeKeysForDeck(card.deck,"name"));   // ⌨️ TYPEKEYS: the deck's own special letters
+    t+='<button onclick="mstSpellTypeCheck()" style="margin-top:12px;min-height:48px;padding:0 32px;border-radius:14px;border:none;background:#7c3aed;color:#fff;font-size:16px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">Check</button>';
+  } else if(mstChecked.ok){
+    t+='<div style="margin-top:12px;font-size:20px;font-weight:800;color:#16a34a">✓ Right!</div>';
+    t+='<div class="mast-slide-name" style="margin-top:6px">'+mstEsc(w)+'</div>';
+    t+='<button onclick="mstTap(\'good\')" style="margin-top:14px;min-height:52px;padding:0 36px;border-radius:14px;border:none;background:#16a34a;color:#fff;font-size:17px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif">Next →</button>';
+  } else {
+    t+='<div style="margin-top:12px;font-size:20px;font-weight:800;color:#dc2626">✗ Not quite</div>';
+    t+='<div style="margin-top:6px;font-size:13px;color:var(--muted);font-weight:600">You typed: <span style="text-decoration:line-through">'+mstEsc(mstChecked.typed)+'</span></div>';
+    t+=mstSpellRevealHtml(w,"mstTap(\'again\')");
+  }
+  return t+'</div></div></div></div>';
+}
+function mstSpellTypeCheck(){
+  const cur=mstSpellCur(); if(!cur||!mstSpellTypeOn(cur)||mstChecked) return;
+  try{ const el=(typeof document!=="undefined")&&document.getElementById("mst-spell-in"); if(el) mstTyped=el.value; }catch(e){}
+  if(!String(mstTyped||"").trim()) return;
+  const ok=mstSpellTypedOk(mstTyped,mstTilesWord(cur));
+  try{ if(ok) matchDing(); else matchBonk(); }catch(e){}
+  mstChecked={ok:ok,typed:String(mstTyped)};
+  _mastRe();
+}
+// SPELLPRODUCE_END
 
 // ── Save — writes touched/minted cards field-by-field (mirrors mastSaveResults), merges
 // today's session log, updates local state. All remote writes guarded by db.
@@ -74064,10 +74164,74 @@ function mstSendBackDo(kid,sid,opt){   // opt {sit} = ↩ from 🕒 Study sittin
   if(_arc) _nb.log=Object.assign({},_pb.log||{},{[_arc.id]:_arc.rec});
   masteryData.studyBack[kid][sid]=_nb;
   try{ HA_LS.setItem("ha_mastery",JSON.stringify(masteryData)); }catch(_){}
+  try{ if(typeof sbReopen==="function") sbReopen(kid,sid); }catch(_){}   // ↩ SBREOPEN: today's ✓ card opens again on every device
   if(typeof gwShowToast==="function") gwShowToast("↩ "+nm+" sent back to "+who);
   try{ if(typeof renderAll==="function") renderAll(); }catch(_){}
 }
 // MSTALERT_END
+// SBREOPEN_START — ↩ a sent-back study session puts its schedule card back, live (her ask 2026-11-12: "Can we make it where
+// these study sessions, when I send them back, it doesn't need a reload? It automatically auto-generates it and puts it back?
+// It did send them back when I reloaded it, but then it repopulated and made them disappear again."). The live day, Thu 11/12:
+// 12:54–12:55 PM Mom's ↩ on four of the oldest kid's sittings removed today's logs and reopened the sessions, but Send back
+// never touched the day — the four schedule cards stayed ✓ (checked 11:51–12:01) — and after its first load the mastery
+// listener repainted only the Mastery tab, so a kid's Day / Kids' Corner page showed nothing until a reload, and after the
+// reload the cards were still done (nothing re-saved or re-checked them; the logs stayed gone).
+// Now: (1) Send back un-ticks today's ✓ card of that session for that kid — the same targeted removes as the check dialog's
+// un-tick (WK/checked/<id>, WK/history/<id>, the lesson-done record, a got-ahead bonus, the spin held for the re-tick) — and
+// re-lays the day from now, so every device's checked listener shows it open again at once; (2) a change to mastery/studyBack
+// repaints every page; (3) until the redo sitting saves (its redoneTs), a card of a session sent back TODAY is never restored
+// from history by the cascade, and a kid's own ✓ on it is refused (toast). Mom's ✓ still works. Writes: only (1)'s targeted
+// paths, db && !_dryRun(). Not added to manualUnchecks — that would hide the kid's later re-tick on Mom's device all session.
+function sbCardSid(t){
+  try{ if(!t||!t.who||!t.subjectKey||typeof gwGetSubjects!=="function") return null; const s=(gwGetSubjects(t.who)||{})[t.subjectKey]; return (s&&s.study)||null; }catch(e){ return null; }
+}
+// Mom sent it back today and the redo sitting hasn't saved yet
+function sbPendingToday(kid,sid){
+  const b=((((typeof masteryData!=="undefined"&&masteryData&&masteryData.studyBack)||{})[kid])||{})[sid];
+  return !!(b&&b.ts&&!b.redoneTs&&_mstLocalKey(b.ts)===_todayStr().replace(/-/g,""));
+}
+function _sbCard(t){ return !!(t&&t.id&&!String(t.id).endsWith("_c")&&!t.famBlock); }
+// today's card of a session sent back today → held open (no history restore, no kid ✓)
+function sbHeld(t){
+  try{ if(!_sbCard(t)||effectiveDay(t)!==_todayDay) return false; const sid=sbCardSid(t); return !!sid&&sbPendingToday(t.who,sid); }catch(e){ return false; }
+}
+function sbKidLock(t){ try{ return !(typeof momHere==="function"&&momHere())&&sbHeld(t); }catch(e){ return false; } }
+// today's ✓ cards of that session for that kid
+function sbCardsFor(kid,sid){
+  if(typeof weekData==="undefined"||typeof checked==="undefined") return [];
+  return ((weekData&&weekData.tasks)||[]).filter(t=>_sbCard(t)&&t.who===kid&&checked[t.id]&&effectiveDay(t)===_todayDay&&sbCardSid(t)===sid);
+}
+function sbReopen(kid,sid){
+  const cards=sbCardsFor(kid,sid); if(!cards.length) return 0;
+  const live=typeof db!=="undefined"&&db&&!(typeof _dryRun==="function"&&_dryRun());
+  const hist=ld(WK+"_history")||{}, ck={}, hu={};
+  cards.forEach(t=>{
+    const id=t.id;
+    ckForget(id);
+    delete checked[id]; ck[id]=null;
+    delete hist[id]; delete histState[id]; hu[id]=null;
+    if(live){
+      try{ lidDoneRemove(t,id); }catch(e){ dbg("sent back: lid done remove skip: "+e); }
+      try{ if(Array.isArray(t.lids)) t.lids.forEach(function(l){ if(l&&l!==t.lid) lidDoneRemove(Object.assign({},t,{lid:l}),id); }); }catch(e){}
+      try{ const _sr=(ld(WK+"_spin_results")||{})[id]; spinRecParts(_sr).forEach(function(p){ if(p.gaBid&&typeof bankDirectRemove==="function") bankDirectRemove(p.kid||_sr.kid,p.gaBid); }); }catch(e){}
+    }
+    try{ if(typeof spinOnceTakeBack==="function") spinOnceTakeBack(id); }catch(e){ dbg("sent back: spin take-back: "+e); }   // held, restored on the re-tick
+  });
+  sv(WK+"_checked",checked); sv(WK+"_history",hist); lastCheckedWrite=Date.now();
+  if(live){ db.ref(WK+"/checked").update(ck); db.ref(WK+"/history").update(hu); }
+  dbg("↩ sent back "+kid+"/"+sid+": reopened "+cards.map(t=>t.id).join(","));
+  try{ if(typeof schedCascade==="function") schedCascade(); }catch(e){}
+  return cards.length;
+}
+// mastery listener: true when any send-back / redo stamp changed since the last snapshot (the first one only records)
+let _sbSig=null;
+function sbBackChanged(md){
+  const b=(md&&md.studyBack)||{}, parts=[];
+  Object.keys(b).sort().forEach(k=>{ const r=b[k]||{}; Object.keys(r).sort().forEach(sid=>{ const x=r[sid]||{}; parts.push(k+"/"+sid+":"+(x.ts||"")+":"+(x.redoneTs||"")); }); });
+  const sig=parts.join("|"), was=_sbSig; _sbSig=sig;
+  return was!==null&&was!==sig;
+}
+// SBREOPEN_END
 // SREVIEW_START — 🕒 Study sittings today, in 🔴 Now — needs you (her ask 2026-11-08: "for study sessions, a little section in
 // Mom Needed where it tells how long each session that day took, if it's not a mom required session, for every kid. And there
 // would be an option to say great, I agree with this … and then no, this should have taken longer, let's send it back, and keep
