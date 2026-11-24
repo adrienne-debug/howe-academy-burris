@@ -75,7 +75,22 @@ function envmTierIx(t){ const o=(typeof MAST_TIER_ORDER!=="undefined"&&MAST_TIER
 function envmCtr(){ return {total:0,new:0,waiting:0,learning:0,active:0,mastered:0,held:false,correct:0,miss:0,acc:null,c14:0,m14:0,acc14:null,last:null}; }
 function envmBucket(c,it){ if(it.status==="parked") c.waiting++; else if(it.status==="introduction") c.learning++; else if(envmMastered(it)) c.mastered++; else c.active++; }
 function envmAcc(c){ c.acc=(c.correct+c.miss)?Math.round(c.correct/(c.correct+c.miss)*100):null; c.acc14=(c.c14+c.m14)?Math.round(c.c14/(c.c14+c.m14)*100):null; }
-// PURE. ctx = {M: masteryData, u: the unit record, now: ms} — every input is passed or read from memory; nothing is fetched.
+// ⚡ CPFLUENT (her "yes build all of them" 2026-11-17 — the teacher could not see that his Forestry ID Flash was 24 of 24 fluent): per ID
+// deck the kid has ID Flash state in, {f: items fluent, n: items pictured} — the same item and key ID Flash uses (envFlashItemOf, mastDefKey),
+// pictured = a picture ID Flash would show (envPicsFor, memory only; ctx.pics = a pictures index instead). null when he has none, so a kid
+// who never played ID Flash sends the same summary (and hash) as before. The 📋 Class tab shows it as ⚡ f/n.
+function envmFlash(kid,M,decks,ctx){
+  const S=M[kid+"_idflash"]; if(!S||typeof S!=="object") return null;
+  const pic=(deck,name)=>{ if(ctx&&ctx.pics){ const a=ctx.pics[name]; return Array.isArray(a)&&a.length>0; } return (typeof envPicsFor==="function")&&!!envPicsFor(deck,name); };
+  const itemOf=c=>(typeof envFlashItemOf==="function")?envFlashItemOf(c):String((c&&(c.item||String(c.name||"").split(" \u00b7 ")[0]))||"").trim();
+  const keyOf=it=>(typeof mastDefKey==="function")?mastDefKey(it):it, out={}; let any=false;
+  decks.forEach(d=>{ const ds=S[d.key]; if(d.kind!=="id"||!Array.isArray(d.cards)||!ds||typeof ds!=="object") return;
+    const by={}; d.cards.forEach(c=>{ if(!c||!c.name) return; const it=itemOf(c); if(!it) return; if(!by[it]) by[it]=pic(d.key,c.name); });
+    let n=0,f=0; Object.keys(by).forEach(it=>{ if(!by[it]) return; n++; const e=ds[keyOf(it)]; if(e&&typeof e==="object"&&e.fluent===true) f++; });
+    if(n){ out[d.key]={f:f,n:n}; any=true; } });
+  return any?out:null;
+}
+// PURE. ctx = {M: masteryData, u: the unit record, now: ms, pics?: a pictures index} — every input is passed or read from memory; nothing is fetched.
 function envSummary(kid,ctx){
   ctx=ctx||{};
   const M=ctx.M||((typeof masteryData!=="undefined"&&masteryData)||{});
@@ -142,6 +157,7 @@ function envSummary(kid,ctx){
     if(rows.length) weak[d.key]=rows.slice(0,ENVM_WEAK);
   });
   const out={unitVer:(u&&(u.starterVer||u.ver))||1,at:now,byDeck,byConcept,streak,weak,days};
+  const fl=envmFlash(kid,M,decks,ctx); if(fl) out.flash=fl;   // ⚡ CPFLUENT: ID Flash fluent / pictured per ID deck (absent when he has none)
   // Pre / post tests (ENVTEST writes mastery/<kid>_tests/<station> = {pre:{right,n,date,…}, post:{best:{right,n,date},…}, graduated}) — read defensively.
   const T=M[kid+"_tests"]; if(T&&typeof T==="object"){ const tests={};
     Object.keys(T).forEach(stn=>{ const r=T[stn]; if(!r||typeof r!=="object") return; const o={};
@@ -153,7 +169,7 @@ function envSummary(kid,ctx){
   if(typeof cprSumAns==="function") cprSumAns(kid,out,M);   // 📊 CPRESULTS: + each check-in's and the newest final's answers by question id (the site's students; Lincoln's Envirothon forms only, through his mirror)
   if(typeof cpAheadSum==="function"){ const ah=cpAheadSum(kid,M,u); if(ah) out.ahead=ah; }   // 🚀 CPAHEAD: summary.ahead, the cards learned beyond the assignment per day (the class site only; null for Howe and Lincoln)
   if(typeof cpPaceSumCore==="function") cpPaceSumCore(kid,out,ctx);   // 📅 CPPACE: the site kid's core cards per section (the site only; Lincoln's mirror in Howe is untouched)
-  if(typeof cpSkillSummary==="function"){ const sk=cpSkillSummary(kid,M,now); if(sk) out.skills=sk; }   // 🧩 CPSKILL: summary.skills on the class site only (null for Howe and Lincoln)
+  if(typeof cpSkillSummary==="function"){ const sk=cpSkillSummary(kid,M,now); if(sk) out.skills=sk; }   // 🧩 CPSKILL: summary.skills on the class site — and, 🧩 CPLINCOLNSKILLS 2026-11-17, for a mirrored kid whose skills are on (Lincoln); null for everyone else
   if(typeof cpWatchSum==="function"){ const rv=cpWatchSum(kid,M,now); if(rv) out.review=rv; }   // 🧠 CPWATCH: summary.review, the parent drill watch (the class site only; null for Howe and Lincoln)
   if(typeof cpWeekSum==="function") cpWeekSum(kid,out,M,u);   // 📊 CPWEEK: each day's cards split by section, days.<date>.by.<section> = {n,c,m,secs} (counts only; Lincoln's mirror too, §8.11)
   if(typeof cpPtsSum==="function") cpPtsSum(kid,out,M,u,ctx);   // ⭐ CPPOINTS: days.<date> + {due, done, cleared, extra, games, stars}, summary.stars (Lincoln's mirror too: his stars are what the scheme WOULD give, starsInfo)
@@ -187,6 +203,7 @@ function envMirrorOn(why){
 function envmWaiting(){
   if(typeof _haUnitsReady!=="undefined"&&!_haUnitsReady) return true;
   if(typeof haLazyReady==="function"&&!haLazyReady("classes")) return true;   // 🪶 LAZYSPLIT: classes.js still loading — its parts of the summary (envSummary) must ride the first publish
+  if(typeof _envPicsP!=="undefined"&&_envPicsP&&typeof envPicsIndex==="function"&&!envPicsIndex()) return true;   // ⚡ CPFLUENT: the pictures index is on its way (summary.flash counts pictured items) — a failed fetch clears _envPicsP
   const u=envmUnit(); if(!u) return false;
   return !!(typeof envCardsInCode==="function"&&envCardsInCode(u))&&!(u.decks||[]).every(d=>!d||Array.isArray(d.cards));
 }
@@ -254,11 +271,15 @@ function envmRelAttach(kid,_lz){
   if(typeof cplntAttach==="function") cplntAttach(kid,cid,_envm.edb,_envm.subs,envmSid(kid));   // 👩‍🏫 CPLINCOLNL3: the teacher's drills for him (drills/<cid>/<sid>), graded into Howe once each
   if(typeof cplnpLoad==="function") cplnpLoad(kid,cid,_envm.edb,envmSid(kid));   // 🌿 CPLINCOLNPARITY: his class's card, trim and test layers, read once (memory only)
   if(typeof cpmcAttach==="function") cpmcAttach(kid,cid,_envm.edb,_envm.subs,envmSid(kid));   // 🏫 CPMYCLASS: the class boards (boards/<cid>) for his 🌿 tile, one listener with the others (off the class site only)
+  if(typeof cplkLoad==="function") cplkLoad(kid,cid,_envm.edb);   // 🧩 CPLINCOLNSKILLS: his class's skills layer (classSkills/<cid>), read once (memory only; off the class site only)
+  if(typeof cplpLoad==="function") cplpLoad(kid,cid,_envm.edb);   // 🖼 CPLINCOLNPHOTOS: his class's and the unit's photo layers (classPhotos/<cid>, units/<unit>/photos), read once (memory only; off the class site only)
+  if(typeof cpprepLoad==="function") cpprepLoad(kid,cid,_envm.edb);   // 🎯 CPTESTPREP: his class's goal list (classes/<cid>/goals), read once (memory only; off the class site only)
 }
 // A release record {<deckKey>|<station>: truthy}: clear each matching deck's hold once — the family database's one targeted removal.
 function envmRelease(kid,rel){
   if(!envmCfg()||!rel||typeof rel!=="object") return 0;
   const u=envmUnit(); if(!u) return 0;
+  if(typeof envStageCardsFor==="function"&&envStageCardsFor(kid,rel,u)){ envmSchedule("release"); if(typeof renderAllSoon==="function") renderAllSoon(); }   // 📥 CPSENDCARDS: a sent-out station's cards into his bank (family app only; idempotent; catches up an older send-out)
   if(typeof cpsdRelease==="function"){ const _n=cpsdRelease(kid,rel,u); if(_n!=null){ if(_n&&typeof renderAllSoon==="function") renderAllSoon(); return _n; } }   // 📤 CPSEND: the class site's apply (Key Concepts, cat_open); null off the site
   const M=(typeof masteryData!=="undefined"&&masteryData)||{}, st=M[kid+"_settings"], hold=(st&&st.cat_hold)||null; if(!hold) return 0;
   const open=[];
@@ -418,6 +439,9 @@ function envsStationStat(summary,st){
   if(t){ out.pre=t.pre||null; out.post=(t.post&&t.post.best)||null; out.grad=t.graduated||null; }
   return out;
 }
+// ⚡ CPFLUENT (2026-11-17): the station's ID Flash count from summary.flash — {f, n} over its decks, or null (an old summary, or no ID Flash yet)
+function envsStationFlash(summary,st){ const F=summary&&summary.flash; if(!F||typeof F!=="object") return null; let f=0,n=0,any=false;
+  st.decks.forEach(d=>{ const x=F[d.key]; if(!x||typeof x!=="object") return; any=true; f+=+x.f||0; n+=+x.n||0; }); return (any&&n)?{f:f,n:n}:null; }
 function envsPct(t){ return (t&&t.n)?Math.round((t.right||0)/t.n*100):null; }
 // gain over the own pre-test, STAD-style improvement points: Σ stations max(0, post% − pre%); a station with no post yet gives 0.
 function envsGain(summary){ let g=0; const T=(summary&&summary.tests)||{}; Object.keys(T).forEach(s=>{ const t=T[s]; const a=envsPct(t&&t.pre), b=envsPct(t&&t.post&&t.post.best); if(a!=null&&b!=null) g+=Math.max(0,b-a); }); return g; }
@@ -1260,13 +1284,13 @@ function envcGridHtml(){
   S.forEach(s=>{ const sm=s.summary||null, ago=envsDaysAgo(sm&&sm.streak&&sm.streak.last);
     h+='<tr><td><a href="javascript:void(0)" onclick="envcView(\'student\',\''+envcJ(s.sid)+'\')" style="font-weight:800;color:#14532d">'+envcEsc(envcName(s))+'</a>'+(envcApp(s)==="howe"?' <span class="envs-chip" style="font-size:10px">Howe app</span>':'')+(ago!=null&&ago>7?' <span title="no study in '+ago+' days">⚠</span>':'')+((typeof cpPaceGridChip==="function")?cpPaceGridChip(s):'')+((typeof cpWatchGridChip==="function")?cpWatchGridChip(s):'')+((typeof cpAheadGridChip==="function")?cpAheadGridChip(s):'')+'</td>';   // 📅 CPPACE: on pace under the name · 🧠 CPWATCH: ⚠ when the parent's drill isn't run · 🚀 CPAHEAD: studying ahead / cards learned ahead this week
     stns.forEach(st=>{ const x=envsStationStat(sm,st); const open=envcStationOpen(s.sid,st); let cell;
-      if(!x.released&&!open) cell='<span class="envs-muted">–</span>'; else if(!x.released) cell='<span class="envs-muted" title="sent out, nothing studied yet">0%</span>'; else cell='<b>'+x.pct+'%</b>'+(x.acc14!=null?' <span class="envs-muted">·'+x.acc14+'%</span>':'');
+      if(!x.released&&!open) cell='<span class="envs-muted">–</span>'; else if(!x.released) cell='<span class="envs-muted" title="sent out, nothing studied yet">0%</span>'; else{ cell='<b>'+x.pct+'%</b>'+(x.acc14!=null?' <span class="envs-muted">·'+x.acc14+'%</span>':''); const fx=envsStationFlash(sm,st); if(fx) cell+=' <span class="envs-muted" title="ID Flash: fluent of the pictured items">\u26A1'+fx.f+'/'+fx.n+'</span>'; }   // ⚡ CPFLUENT
       if(x.grad) cell+=' \u{1F393}'; else if(x.post) cell+=' <span class="envs-muted" title="final">\u{1F4DD}</span>';
       if(typeof cpSecCellTag==="function") cell+=cpSecCellTag(s.sid,st.id);   // 🎚 CPSECTIONS: ↻ review only · ⏸ paused
       if(typeof cpSpecCellTag==="function") cell+=cpSpecCellTag(s.sid,st.id);   // 🏅 CPSPECIALIST: 🏅 in the student's specialist column
       h+='<td class="c">'+cell+'</td>'; });
     h+='<td class="c">'+((sm&&sm.streak&&sm.streak.days)||0)+' d</td><td>'+envcEsc(envsWhen(sm&&sm.streak&&sm.streak.last))+'</td></tr>'; });
-  h+='</tbody></table></div><div class="envs-muted" style="padding:0 4px">cell = % mastered of the station’s released decks · % right in the last 14 days · \u{1F4DD} final taken · \u{1F393} graduated · – not sent out · ⚠ no study in 7 days. Tap a name for the student page.</div>';
+  h+='</tbody></table></div><div class="envs-muted" style="padding:0 4px">cell = % mastered of the station’s released decks · % right in the last 14 days · \u26A1 ID Flash fluent / pictured · \u{1F4DD} final taken · \u{1F393} graduated · – not sent out · ⚠ no study in 7 days. Tap a name for the student page.</div>';
   if(typeof cpSecGridHtml==="function") h+=cpSecGridHtml();   // 🎚 CPSECTIONS: a tapped section's On · Review only · Off for everyone or picked students
   return h;
 }
